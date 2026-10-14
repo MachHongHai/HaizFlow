@@ -11,9 +11,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from haizflow.update.filesystem import no_links  # noqa: E402
+from hflow.update.filesystem import no_links  # noqa: E402
 
-ENTRIES = {"HaizFlow.exe": "launcher"}
+ENTRIES = {"HFlow.exe": "launcher"}
 
 
 def git(*args: str) -> str:
@@ -43,7 +43,7 @@ def check_tree(artifact: Path, entrypoint: str) -> None:
 def verify(artifact: Path, entrypoint: str, *, source_commit: str, version: str, engineering: bool) -> None:
     check_tree(artifact, entrypoint)
     metadata = json.loads((artifact / "BOOTSTRAP-INFO.json").read_text(encoding="utf-8"))
-    expected = dict(schema=1, application="HaizFlow", entrypoint=entrypoint,
+    expected = dict(schema=1, application="HFlow", entrypoint=entrypoint,
                     kind=ENTRIES[entrypoint], version=version, git_commit=source_commit,
                     engineering=engineering, packaging="PyInstaller onedir")
     if not isinstance(metadata, dict) or any(metadata.get(key) != value for key, value in expected.items()):
@@ -71,7 +71,7 @@ def finalize(artifact: Path, entrypoint: str, *, source_commit: str, engineering
     if dirty and not engineering:
         raise ValueError("Public bootstrap requires a clean source checkout.")
     version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
-    metadata = dict(schema=1, application="HaizFlow", entrypoint=entrypoint,
+    metadata = dict(schema=1, application="HFlow", entrypoint=entrypoint,
                     kind=ENTRIES[entrypoint], version=version, git_commit=source_commit,
                     git_dirty=dirty, engineering=engineering, packaging="PyInstaller onedir")
     (artifact / "BOOTSTRAP-INFO.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8", newline="\n")

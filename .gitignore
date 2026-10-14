@@ -1,4 +1,4 @@
-# HaizFlow desktop ignore rules
+# HFlow desktop ignore rules
 
 # Python virtual environments
 .venv/

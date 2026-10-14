@@ -41,15 +41,15 @@ try {
   $VersionResource = Join-Path $Work "bootstrap-version.txt"
   & $Python (Join-Path $PSScriptRoot "generate-version-resource.py") --output $VersionResource
   if ($LASTEXITCODE -ne 0) { throw "Bootstrap version resource generation failed." }
-  foreach ($Entry in @(,@("HaizFlow", "haizflow-launcher.py"))) {
+  foreach ($Entry in @(,@("HFlow", "hflow-launcher.py"))) {
     & $Python -m PyInstaller --noconfirm --clean --windowed --onedir `
       --name $Entry[0] --distpath $OutputDirectory --workpath (Join-Path $Work $Entry[0]) `
       --specpath $Work --paths (Join-Path $Root "src") `
       --version-file $VersionResource `
-      --add-data "$(Join-Path $Root 'src\haizflow\desktop\assets\branding\haizflow.ico');." `
-      --add-data "$(Join-Path $Root 'src\haizflow\desktop\assets\branding\startup-splash.bmp');." `
+      --add-data "$(Join-Path $Root 'src\hflow\desktop\assets\branding\hflow.ico');." `
+      --add-data "$(Join-Path $Root 'src\hflow\desktop\assets\branding\startup-splash.bmp');." `
       --exclude-module PySide6 --exclude-module torch --exclude-module numpy `
-      --icon (Join-Path $Root "src\haizflow\desktop\assets\branding\haizflow.ico") `
+      --icon (Join-Path $Root "src\hflow\desktop\assets\branding\hflow.ico") `
       (Join-Path $PSScriptRoot $Entry[1])
     if ($LASTEXITCODE -ne 0) { throw "Bootstrap build failed: $($Entry[0])" }
     if ($SignCertificateThumbprint -or $SignCertificatePath) {

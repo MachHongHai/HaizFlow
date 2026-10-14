@@ -7,12 +7,12 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from haizflow.core import hardware, memory, runtime_probe
-from haizflow.core.model_choices import recognition_context
-from haizflow.desktop.project_commands_controller import ProjectCommandsController
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.desktop.resource_pack_controller import ResourcePackController
-from haizflow.services.resource_packs import ResourcePackManager
+from hflow.core import hardware, memory, runtime_probe
+from hflow.core.model_choices import recognition_context
+from hflow.desktop.project_commands_controller import ProjectCommandsController
+from hflow.desktop.qml_controller import HFlowController
+from hflow.desktop.resource_pack_controller import ResourcePackController
+from hflow.services.resource_packs import ResourcePackManager
 
 GIB = memory.GIB
 
@@ -71,12 +71,12 @@ def test_admission_ui_and_resource_packs_agree(machine, device):
         pack_expected = expected and not (device == "gpu" and caps.gpu_supported
             and not caps.heavy_gpu_models_supported and pack in {"model-whisper-turbo", "model-hymt2-gpu"})
         assert controller._hardware_compatibility(pack)[0] is pack_expected
-    options = HaizFlowController.speechRecognitionModelOptions.fget(host)
+    options = HFlowController.speechRecognitionModelOptions.fget(host)
     assert options[0]["available"]
     assert options[1]["available"] is (device == "gpu" and machine.gpu_ok)
     assert options[2]["available"] is (device == "gpu" and machine.gpu_ok
         and caps.heavy_gpu_models_supported)
-    voice_options = HaizFlowController._tts_provider_options_for_language(host, "vi")
+    voice_options = HFlowController._tts_provider_options_for_language(host, "vi")
     providers = {item["provider"]: item for item in voice_options}
     for provider in ("vieneu-gpu", "omnivoice-gpu"):
         assert providers[provider]["available"] is (device == "gpu" and machine.gpu_ok)
@@ -94,7 +94,7 @@ def test_admission_ui_and_resource_packs_agree(machine, device):
 @pytest.mark.parametrize("device", ["cpu", "gpu"])
 @pytest.mark.parametrize("machine", [MACHINES[0], MACHINES[2], MACHINES[7], MACHINES[9], MACHINES[10]], ids=lambda value: value.name)
 def test_auto_manual_batch_preflight_share_hardware_admission(machine, device, project_type):
-    from haizflow.schemas.video import VideoConfig
+    from hflow.schemas.video import VideoConfig
 
     caps = machine.caps()
     manager = ResourcePackManager.__new__(ResourcePackManager)

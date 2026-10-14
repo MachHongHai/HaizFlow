@@ -12,10 +12,10 @@ from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
 from PySide6.QtMultimedia import QMediaPlayer, QVideoFrame
 
-from haizflow.utils.ffmpeg import _binary
+from hflow.utils.ffmpeg import _binary
 
 
-QML_DIR = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml"
+QML_DIR = Path(__file__).resolve().parents[1] / "src/hflow/desktop/qml"
 
 
 class PreviewTransportUiTests(unittest.TestCase):

@@ -12,9 +12,9 @@ from pathlib import Path
 
 import numpy as np
 
-from haizflow.pipeline.speaker_identity import _cluster, _features, model_root, verify_model
-from haizflow.pipeline.speaker_runtime import SpeakerSession
-from haizflow.utils.ffmpeg import _binary
+from hflow.pipeline.speaker_identity import _cluster, _features, model_root, verify_model
+from hflow.pipeline.speaker_runtime import SpeakerSession
+from hflow.utils.ffmpeg import _binary
 
 
 def benchmark_session(model, device):

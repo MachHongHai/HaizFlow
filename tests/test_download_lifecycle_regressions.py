@@ -14,12 +14,12 @@ from unittest.mock import Mock, patch
 import pytest
 from PySide6.QtGui import QGuiApplication
 
-from haizflow.desktop.project_commands_controller import ProjectCommandsController
-from haizflow.desktop.url_import import VideoUrlImportCoordinator
-from haizflow.services import model_bootstrap
-from haizflow.services.download_control import DownloadControl
-from haizflow.services.video_download import DownloadCancelled
-from haizflow.utils.ffmpeg import _binary
+from hflow.desktop.project_commands_controller import ProjectCommandsController
+from hflow.desktop.url_import import VideoUrlImportCoordinator
+from hflow.services import model_bootstrap
+from hflow.services.download_control import DownloadControl
+from hflow.services.video_download import DownloadCancelled
+from hflow.utils.ffmpeg import _binary
 
 _GUI = None
 
@@ -197,7 +197,7 @@ def test_queued_completion_after_stop_cannot_import(callback, tmp_path):
     if callback == "metadata":
         coordinator._handle_metadata(coordinator._generation, {"title": "late"})
     else:
-        with patch("haizflow.desktop.url_import.cleanup_download_workspace") as cleanup:
+        with patch("hflow.desktop.url_import.cleanup_download_workspace") as cleanup:
             coordinator._handle_download(coordinator._generation, str(tmp_path / "video.mp4"), str(tmp_path))
         cleanup.assert_called_once()
     assert coordinator.state == "idle"
@@ -234,7 +234,7 @@ def test_delete_waits_for_owned_runner_finally_after_stop(runner_exited):
         assert video_id == "separating"
         if runner_exited:
             queue.active_video_id = None
-    with patch("haizflow.desktop.project_commands_controller.cancel_video", side_effect=cancel):
+    with patch("hflow.desktop.project_commands_controller.cancel_video", side_effect=cancel):
         assert ProjectCommandsController(host)._stop_project_processing([SimpleNamespace(video_id="separating")]) == runner_exited
     queue.detach_pending.assert_called_once_with({"separating"})
     assert host.appAlertRequested.emit.called == (not runner_exited)
@@ -243,6 +243,6 @@ def test_delete_waits_for_owned_runner_finally_after_stop(runner_exited):
 def test_delete_never_cancels_another_projects_processing():
     queue = SimpleNamespace(active_video_id="unrelated", detach_pending=Mock(return_value=(None, ["owned"])))
     host = SimpleNamespace(_processing_queue=queue, appAlertRequested=SimpleNamespace(emit=Mock()))
-    with patch("haizflow.desktop.project_commands_controller.cancel_video") as cancel:
+    with patch("hflow.desktop.project_commands_controller.cancel_video") as cancel:
         assert ProjectCommandsController(host)._stop_project_processing([SimpleNamespace(video_id="owned")])
     cancel.assert_not_called()

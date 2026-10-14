@@ -13,9 +13,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from haizflow.services.resource_packs import _assets_by_component  # noqa: E402
-from haizflow.update.filesystem import atomic_json, no_links, remove_owned  # noqa: E402
-from haizflow.update.state import provision  # noqa: E402
+from hflow.services.resource_packs import _assets_by_component  # noqa: E402
+from hflow.update.filesystem import atomic_json, no_links, remove_owned  # noqa: E402
+from hflow.update.state import provision  # noqa: E402
 
 
 def main():
@@ -44,16 +44,16 @@ def main():
         target.parent.mkdir(parents=True, exist_ok=True)
         if not target.exists():
             shutil.copy2(source, target)
-    sample = ROOT / "src/haizflow/desktop/assets/voice_samples/omnivoice/omnivoice_female/en.mp3"
+    sample = ROOT / "src/hflow/desktop/assets/voice_samples/omnivoice/omnivoice_female/en.mp3"
     audio = fixture / "sample.wav"
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     subprocess.run([str(ROOT / "runtime/bin/ffmpeg.exe"), "-hide_banner", "-loglevel", "error", "-y", "-i", str(sample),
                     "-t", "8", "-ar", "16000", "-ac", "1", str(audio)], check=True, creationflags=flags)
     environment = os.environ.copy()
-    for name in ("HAIZFLOW_HOME", "HAIZFLOW_INSTALL_ROOT", "HAIZFLOW_RESOURCE_ROOT", "MODELS_DIR",
-                 "RUNTIME_DATA_DIR", "APP_DATA_DIR", "HAIZFLOW_SMOKE_TEST"):
+    for name in ("HFLOW_HOME", "HFLOW_INSTALL_ROOT", "HFLOW_RESOURCE_ROOT", "MODELS_DIR",
+                 "RUNTIME_DATA_DIR", "APP_DATA_DIR", "HFLOW_SMOKE_TEST"):
         environment.pop(name, None)
-    environment.update(HAIZFLOW_ENGINE_APP_ROOT=str(app), HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1",
+    environment.update(HFLOW_ENGINE_APP_ROOT=str(app), HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1",
                        PYANNOTE_METRICS_ENABLED="false")
     environment["PATH"] = str(ROOT / "runtime/bin") + os.pathsep + environment.get("PATH", "")
     results = []

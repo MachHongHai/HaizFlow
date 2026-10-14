@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "review_date": "2026-10-08",
-  "browser_delivery": "optional resource pack; direct official upstream download; not redistributed by HaizFlow",
+  "browser_delivery": "optional resource pack; direct official upstream download; not redistributed by HFlow",
   "components": [
     {
       "name": "Chromium upstream base",

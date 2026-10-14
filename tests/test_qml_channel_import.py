@@ -14,14 +14,14 @@ from PySide6.QtGui import QGuiApplication
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-QML_DIR = SRC / "haizflow" / "desktop" / "qml"
+QML_DIR = SRC / "hflow" / "desktop" / "qml"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.desktop.channel_import import ChannelImportCoordinator
-from haizflow.schemas.channel_import import ChannelImportRequest, ChannelVideoCandidate
-from haizflow.services.channel_import import new_session
-from haizflow.services.video_download import DownloadCancelled
+from hflow.desktop.channel_import import ChannelImportCoordinator
+from hflow.schemas.channel_import import ChannelImportRequest, ChannelVideoCandidate
+from hflow.services.channel_import import new_session
+from hflow.services.video_download import DownloadCancelled
 
 
 class ChannelImportQmlTests(unittest.TestCase):
@@ -98,7 +98,7 @@ class ChannelImportQmlTests(unittest.TestCase):
                 coordinator._project_sessions[session.project_key] = session.session_id
                 coordinator.attach_project(session.project_key, temp_dir, set())
                 url = request.url if same_channel else "https://www.douyin.com/user/another"
-                with mock.patch("haizflow.desktop.channel_import.threading.Thread.start"):
+                with mock.patch("hflow.desktop.channel_import.threading.Thread.start"):
                     coordinator.inspect(url, "douyin", "popular", 50, "all", 300)
                 active = coordinator._active_session()
                 self.assertIsNot(active, session)
@@ -212,7 +212,7 @@ class ChannelImportQmlTests(unittest.TestCase):
 
             try:
                 with mock.patch(
-                    "haizflow.desktop.channel_import.download_candidate",
+                    "hflow.desktop.channel_import.download_candidate",
                     side_effect=blocked_download,
                 ):
                     self.assertEqual(coordinator.start_downloads(), session.session_id)

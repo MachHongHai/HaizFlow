@@ -8,7 +8,7 @@ from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 
 
-QML_DIR = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml"
+QML_DIR = Path(__file__).resolve().parents[1] / "src/hflow/desktop/qml"
 
 
 class Backend(QObject):
@@ -142,7 +142,7 @@ ApplicationWindow {{
         assert backend.calls[-1][-1] == "patch"
         assert not backend.removes  # Independent of the primary keep setting.
         import os
-        if directory := os.getenv("HAIZFLOW_UI_CAPTURE_DIR"):
+        if directory := os.getenv("HFLOW_UI_CAPTURE_DIR"):
             QTest.qWait(100)
             Path(directory).mkdir(parents=True, exist_ok=True)
             assert window.grabWindow().save(str(Path(directory) / "ocr-layer-panel.png"))

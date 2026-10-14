@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from haizflow.pipeline import process_video
+from hflow.pipeline import process_video
 
 
 def test_normal_demucs_stem_is_not_treated_as_a_legacy_master():

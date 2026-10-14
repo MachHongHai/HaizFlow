@@ -1,4 +1,4 @@
-# Hướng dẫn phát triển HaizFlow
+# Hướng dẫn phát triển HFlow
 
 [Tài liệu](README.vi.md) · [Kiến trúc](architecture.vi.md) · [English](development.md)
 
@@ -17,7 +17,7 @@ Không cài dependency production tùy ý vào Python toàn cục. Repository d�
 
 ```powershell
 git clone https://github.com/MachHongHai/HaizFlow.git
-cd HaizFlow
+cd HFlow
 powershell -ExecutionPolicy Bypass -File .\scripts\install-desktop-env.ps1
 ```
 
@@ -36,15 +36,15 @@ Script chỉ xóa `.venv` thuộc repository sau khi kiểm tra absolute path.
 Chỉ sao chép `.env.example` thành `.env` khi cần override. Ví dụ đặt data root phát triển:
 
 ```dotenv
-HAIZFLOW_HOME=D:\HaizFlowData
+HFLOW_HOME=D:\HFlowData
 ```
 
-Khi có `HAIZFLOW_HOME`, model, data, cache bên thứ ba và temp đều nằm dưới root đó. Không commit `.env`, credential, model tải về, media dự án, `runtime`, `build` hoặc `dist`.
+Khi có `HFLOW_HOME`, model, data, cache bên thứ ba và temp đều nằm dưới root đó. Không commit `.env`, credential, model tải về, media dự án, `runtime`, `build` hoặc `dist`.
 
 ## 4. Chạy ứng dụng
 
 ```powershell
-.\.venv\Scripts\python.exe .\haizflow_desktop.py
+.\.venv\Scripts\python.exe .\hflow_desktop.py
 ```
 
 Launcher cấu hình đường dẫn cache/model/temp trước khi import Qt hoặc Torch. Các cờ worker nội bộ là process contract, không phải CLI cho người dùng.
@@ -52,13 +52,13 @@ Launcher cấu hình đường dẫn cache/model/temp trước khi import Qt ho�
 Smoke test UI có giới hạn thời gian:
 
 ```powershell
-.\.venv\Scripts\python.exe .\haizflow_desktop.py --ui-smoke-test
+.\.venv\Scripts\python.exe .\hflow_desktop.py --ui-smoke-test
 ```
 
 ## 5. Cấu trúc source
 
 ```text
-src/haizflow/
+src/hflow/
   core/           runtime, hardware, logging, integrity
   desktop/        Qt bootstrap, facade, controller, model, presenter
     qml/          shell, page, workspace, control, dialog
@@ -187,7 +187,7 @@ Mở issue tại [MachHongHai/HaizFlow](https://github.com/MachHongHai/HaizFlow/
 Core và engine suy luận có boundary dependency riêng. Không thêm Torch, ONNX Runtime, WhisperX, Transformers,
 Demucs hoặc checkpoint model vào lock hay profile PyInstaller của Core.
 
-Dependency mà mã HaizFlow trong mọi engine cùng import phải nằm trong `requirements-engine-common.in`.
+Dependency mà mã HFlow trong mọi engine cùng import phải nằm trong `requirements-engine-common.in`.
 Dependency suy luận riêng giữ ở `requirements-engine-cpu.in`, `requirements-engine-cuda128.in` hoặc
 `requirements-engine-vision.in`. Verifier bắt buộc cả hai nhóm có mặt trong lock engine và từ chối package Qt
 desktop lọt vào engine.
@@ -216,11 +216,11 @@ Không chuyển các tác vụ này sang thư mục tạm hệ thống vì envir
 Gói phát hành công khai phải được ký Authenticode và tải lên URL HTTPS bất biến. Chỉ pin archive sau khi upload:
 
 ```powershell
-$env:HAIZFLOW_SIGN_CERT_PASSWORD = "<mật-khẩu-certificate>"
+$env:HFLOW_SIGN_CERT_PASSWORD = "<mật-khẩu-certificate>"
 .\scripts\build-resource-engine.ps1 `
   -Profile cuda128 `
   -Version 1 `
-  -SignCertificatePath C:\secure\haizflow-signing.pfx `
+  -SignCertificatePath C:\secure\hflow-signing.pfx `
   -ReleaseUrl https://github.com/MachHongHai/HaizFlow/releases/download/v1/engine-cuda128-py313-1.zip
 .\.venv\Scripts\python.exe .\scripts\verify-resource-pack-manifest.py --strict
 ```
@@ -241,9 +241,9 @@ Build chưa ký chỉ là artifact kỹ thuật nội bộ, không phải bản 
 Bản công khai phải được tạo từ checkout đã commit sạch và ký Authenticode:
 
 ```powershell
-$env:HAIZFLOW_SIGN_CERT_PASSWORD = "<mật-khẩu-certificate>"
-.\scripts\build-exe.ps1 -SignCertificatePath C:\secure\haizflow-signing.pfx
-.\scripts\build-installer.ps1 -SignCertificatePath C:\secure\haizflow-signing.pfx
+$env:HFLOW_SIGN_CERT_PASSWORD = "<mật-khẩu-certificate>"
+.\scripts\build-exe.ps1 -SignCertificatePath C:\secure\hflow-signing.pfx
+.\scripts\build-installer.ps1 -SignCertificatePath C:\secure\hflow-signing.pfx
 ```
 
 Installer gate kiểm frozen artifact, tính dung lượng thật, build Inno Setup, verify checksum/chữ ký rồi thực hiện chu kỳ cài đặt, khởi động và gỡ cài đặt trong thư mục cô lập. Bỏ qua frozen smoke hoặc installer smoke chỉ dành cho chẩn đoán. Đọc [tiêu chuẩn sẵn sàng phát hành](release-readiness.vi.md) để biết điều kiện pháp lý, source sạch và ma trận nghiệm thu Windows.

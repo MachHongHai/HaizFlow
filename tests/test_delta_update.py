@@ -11,13 +11,13 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-from haizflow.update.filesystem import (UpdateError, atomic_json, child, file_lock,
+from hflow.update.filesystem import (UpdateError, atomic_json, child, file_lock,
                                        relative_path, remove_owned, sha256)
-from haizflow.update.launcher import CoreStillRunningError, launch
-from haizflow.update.manifest import Manifest, inventory
-from haizflow.update.packages import generate, reconstruct
-from haizflow.update.state import Layout, provision
-from haizflow.update.bootstrap import check_install, initialize, uninstall_cores
+from hflow.update.launcher import CoreStillRunningError, launch
+from hflow.update.manifest import Manifest, inventory
+from hflow.update.packages import generate, reconstruct
+from hflow.update.state import Layout, provision
+from hflow.update.bootstrap import check_install, initialize, uninstall_cores
 
 
 class Interrupted(BaseException):
@@ -26,8 +26,8 @@ class Interrupted(BaseException):
 
 FAKE_CORE = """
 import json, os, pathlib, time
-root = pathlib.Path(os.environ['HAIZFLOW_BOOTSTRAP_ROOT'])
-attempt = os.environ['HAIZFLOW_HEALTH_ATTEMPT']
+root = pathlib.Path(os.environ['HFLOW_BOOTSTRAP_ROOT'])
+attempt = os.environ['HFLOW_HEALTH_ATTEMPT']
 request = json.loads((root/'update-state'/'ipc'/(attempt+'.request.json')).read_text())
 ack = dict(token=request['token'], version=request['version'], pid=os.getpid(), ready=True)
 (root/'update-state'/'ipc'/(attempt+'.ack.json')).write_text(json.dumps(ack))
@@ -47,7 +47,7 @@ class DeltaUpdateTests(unittest.TestCase):
         self.assertGreater(len(set(preparing)), 3)
 
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="haizflow-delta-test-")
+        self.temp = tempfile.TemporaryDirectory(prefix="hflow-delta-test-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.base = self.root / "core-0.1.0"
@@ -55,7 +55,7 @@ class DeltaUpdateTests(unittest.TestCase):
         self.base.mkdir()
         self.target.mkdir()
         for directory, payload in ((self.base, b"old-core"), (self.target, b"new-core")):
-            (directory / "HaizFlowCore.exe").write_bytes(payload)
+            (directory / "HFlowCore.exe").write_bytes(payload)
             (directory / "_internal").mkdir()
             (directory / "_internal/same.dll").write_bytes(b"same-library" * 512)
         (self.base / "removed.dat").write_bytes(b"remove")
@@ -91,7 +91,7 @@ class DeltaUpdateTests(unittest.TestCase):
     def test_live_unconfirmed_core_does_not_roll_back(self):
         self.prepare()
         self.activate()
-        with patch("haizflow.update.launcher.start_core", side_effect=CoreStillRunningError("still running")):
+        with patch("hflow.update.launcher.start_core", side_effect=CoreStillRunningError("still running")):
             with self.assertRaises(CoreStillRunningError):
                 launch(self.install, wait_for_exit=False)
         self.assertEqual(self.layout.active()["active"], "0.2.0")
@@ -183,7 +183,7 @@ class DeltaUpdateTests(unittest.TestCase):
         self.assertEqual(self.layout.journal()["state"], "confirmed")
 
     def test_interrupted_staging_recovery_keeps_old_core(self):
-        with patch("haizflow.update.state.reconstruct", side_effect=Interrupted):
+        with patch("hflow.update.state.reconstruct", side_effect=Interrupted):
             with self.assertRaises(Interrupted):
                 self.prepare()
         with self.layout.lock():
@@ -252,7 +252,7 @@ class DeltaUpdateTests(unittest.TestCase):
         self.assertEqual(self.before, self.user_data())
 
     def test_disk_full_does_not_activate(self):
-        with patch("haizflow.update.packages.shutil.disk_usage", return_value=shutil._ntuple_diskusage(1, 1, 0)):
+        with patch("hflow.update.packages.shutil.disk_usage", return_value=shutil._ntuple_diskusage(1, 1, 0)):
             with self.assertRaisesRegex(UpdateError, "dung lượng"):
                 self.prepare()
         self.assertEqual(self.layout.active()["active"], "0.1.0")
@@ -281,7 +281,7 @@ class DeltaUpdateTests(unittest.TestCase):
                 relative_path(name)
 
     def test_duplicate_and_case_collision_paths_rejected(self):
-        for name in ("HaizFlowCore.exe", "haizflowcore.exe", "HaizFlowCore.exe/child"):
+        for name in ("HFlowCore.exe", "hflowcore.exe", "HFlowCore.exe/child"):
             data = copy.deepcopy(self.delta.data)
             data["target_files"].append(dict(data["target_files"][0], path=name))
             with self.subTest(name=name), self.assertRaises(UpdateError):
@@ -311,18 +311,18 @@ class DeltaUpdateTests(unittest.TestCase):
 
     def test_concurrent_launcher_never_starts_second_core(self):
         with file_lock(child(self.layout.state, "launcher.lock")), self.assertRaises(UpdateError), \
-                patch("haizflow.update.launcher.subprocess.Popen") as spawned:
+                patch("hflow.update.launcher.subprocess.Popen") as spawned:
             launch(self.install, popen=spawned)
         spawned.assert_not_called()
 
     def test_missing_core_without_previous_gives_repair_error(self):
-        (self.layout.core("0.1.0") / "HaizFlowCore.exe").unlink()
+        (self.layout.core("0.1.0") / "HFlowCore.exe").unlink()
         with self.assertRaisesRegex(UpdateError, "Không có Core hợp lệ"):
             launch(self.install, command_for=self.fake_command)
         self.assertEqual(self.before, self.user_data())
 
     def test_wrong_base_version_and_malformed_journal_do_not_change_active(self):
-        data = dict(self.delta.data, base_version="0.0.9", package_name="HaizFlow-Core-0.2.0-windows-x64-from-0.0.9.zip")
+        data = dict(self.delta.data, base_version="0.0.9", package_name="HFlow-Core-0.2.0-windows-x64-from-0.0.9.zip")
         with self.assertRaisesRegex(UpdateError, "Delta không hỗ trợ"):
             self.layout.prepare(self.output / self.delta.data["package_name"], Manifest.parse(data))
         self.layout.journal_path.write_text("[]")

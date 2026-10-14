@@ -8,14 +8,14 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from haizflow.services.douyin_browser import (
+from hflow.services.douyin_browser import (
     DouyinBrowserSession, create_anonymous_state,
 )
-from haizflow.services.douyin_classification import DouyinError, Outcome
-from haizflow.services.douyin_signing import DETAIL_PATH
-from haizflow.services.douyin_transport import BrowserProfile
-from haizflow.services.video_download import DownloadCancelled
-from haizflow.vendor.douyin_browser_sdk import FINGERPRINT_READ
+from hflow.services.douyin_classification import DouyinError, Outcome
+from hflow.services.douyin_signing import DETAIL_PATH
+from hflow.services.douyin_transport import BrowserProfile
+from hflow.services.video_download import DownloadCancelled
+from hflow.vendor.douyin_browser_sdk import FINGERPRINT_READ
 
 
 def guest(*, cookies=None, challenge=False):
@@ -48,13 +48,13 @@ def guest(*, cookies=None, challenge=False):
 
 @pytest.fixture(autouse=True)
 def component_in_test_directory(tmp_path):
-    with patch("haizflow.services.douyin_browser.component_directory", return_value=tmp_path):
+    with patch("hflow.services.douyin_browser.component_directory", return_value=tmp_path):
         yield
 
 
 def test_owned_profile_sdk_and_browser_are_reused_without_personal_profile():
     driver, context, page = guest()
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver):
+    with patch("hflow.services.douyin_browser._driver", return_value=driver):
         state = create_anonymous_state()
         backend = state["backend"]
         try:
@@ -88,7 +88,7 @@ def test_captcha_waits_for_human_and_does_not_close_immediately():
         context.close.assert_not_awaited()
         page.evaluate.assert_not_awaited()  # no signature attempts while challenged
         page.frames = [page.main_frame]  # simulate human completing verification
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver):
+    with patch("hflow.services.douyin_browser._driver", return_value=driver):
         state = create_anonymous_state(status_callback=progress)
         state["backend"].close()
     assert statuses == ["Complete verification in the Douyin window.", "Checking the Douyin session"]
@@ -96,8 +96,8 @@ def test_captcha_waits_for_human_and_does_not_close_immediately():
 
 def test_human_wait_is_bounded_and_timeout_closes_owned_context():
     driver, context, _ = guest(challenge=True)
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver), \
-         patch("haizflow.services.douyin_browser.HUMAN_WAIT_SECONDS", 0), \
+    with patch("hflow.services.douyin_browser._driver", return_value=driver), \
+         patch("hflow.services.douyin_browser.HUMAN_WAIT_SECONDS", 0), \
          pytest.raises(RuntimeError, match="timed out"):
         create_anonymous_state()
     context.close.assert_awaited_once()
@@ -106,7 +106,7 @@ def test_human_wait_is_bounded_and_timeout_closes_owned_context():
 def test_cancel_during_human_wait_closes_and_restores_environment():
     driver, context, _ = guest(challenge=True)
     cancel = threading.Event()
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver), \
+    with patch("hflow.services.douyin_browser._driver", return_value=driver), \
          patch.dict(os.environ, {"CLOAKBROWSER_LICENSE_KEY": "ambient-not-used"}):
         with pytest.raises(DownloadCancelled):
             create_anonymous_state(cancel, status_callback=lambda value: cancel.set())
@@ -121,7 +121,7 @@ def test_cancel_navigation_closes_partial_context():
         cancel.set()
         await asyncio.sleep(60)
     page.goto.side_effect = navigating
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver), \
+    with patch("hflow.services.douyin_browser._driver", return_value=driver), \
          pytest.raises(DownloadCancelled):
         create_anonymous_state(cancel)
     context.close.assert_awaited_once()
@@ -129,7 +129,7 @@ def test_cancel_navigation_closes_partial_context():
 
 def test_authenticated_context_is_rejected_not_imported():
     driver, context, _ = guest(cookies=[{"name": "sessionid", "value": "not-used"}])
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver), \
+    with patch("hflow.services.douyin_browser._driver", return_value=driver), \
          pytest.raises(RuntimeError, match="anonymous"):
         create_anonymous_state()
     context.close.assert_awaited_once()
@@ -137,7 +137,7 @@ def test_authenticated_context_is_rejected_not_imported():
 
 def test_idle_close_reopens_same_owned_profile_and_browser_options():
     driver, context, page = guest()
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver):
+    with patch("hflow.services.douyin_browser._driver", return_value=driver):
         state = create_anonymous_state()
         backend = state["backend"]
         try:
@@ -160,8 +160,8 @@ def test_unusable_sdk_url_never_leaves_browser(corrupt):
     async def evaluate(script, args=None):
         return await original(script, args) if script == FINGERPRINT_READ else corrupt
     page.evaluate.side_effect = evaluate
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver), \
-         patch("haizflow.services.douyin_browser.SDK_WAIT_SECONDS", 0), pytest.raises(DouyinError) as error:
+    with patch("hflow.services.douyin_browser._driver", return_value=driver), \
+         patch("hflow.services.douyin_browser.SDK_WAIT_SECONDS", 0), pytest.raises(DouyinError) as error:
         create_anonymous_state()
     assert error.value.outcome == Outcome.SIGNATURE
     context.close.assert_awaited_once()
@@ -169,7 +169,7 @@ def test_unusable_sdk_url_never_leaves_browser(corrupt):
 
 def test_standard_backend_does_not_import_cloak_or_change_security_environment():
     import inspect
-    from haizflow.services import douyin_browser
+    from hflow.services import douyin_browser
     source = inspect.getsource(douyin_browser)
     assert "cloakbrowser" not in source.lower()
     assert "CLOAKBROWSER_" not in source
@@ -179,7 +179,7 @@ def test_standard_backend_does_not_import_cloak_or_change_security_environment()
 def test_failed_browser_launch_stops_playwright_and_removes_temporary_profile():
     driver, context, _ = guest()
     driver.launch_persistent_context_async.side_effect = RuntimeError("launch failed")
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver), pytest.raises(RuntimeError, match="launch failed"):
+    with patch("hflow.services.douyin_browser._driver", return_value=driver), pytest.raises(RuntimeError, match="launch failed"):
         create_anonymous_state()
     context.close.assert_not_awaited()
     driver.stop.assert_awaited_once()
@@ -235,8 +235,8 @@ def test_captcha_has_priority_over_login_prompt_dismissal():
     panel, close = login_prompt()
     body = page.locator("body")
     page.locator = Mock(side_effect=lambda selector: body if selector == "body" else panel)
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver), \
-         patch("haizflow.services.douyin_browser.HUMAN_WAIT_SECONDS", 0), pytest.raises(RuntimeError, match="timed out"):
+    with patch("hflow.services.douyin_browser._driver", return_value=driver), \
+         patch("hflow.services.douyin_browser.HUMAN_WAIT_SECONDS", 0), pytest.raises(RuntimeError, match="timed out"):
         create_anonymous_state()
     close.click.assert_not_awaited()
     context.close.assert_awaited_once()
@@ -247,9 +247,9 @@ def test_recurring_invitation_has_two_attempt_cap_without_unbounded_retries():
     panel, close = login_prompt()
     body = page.locator("body")
     page.locator = Mock(side_effect=lambda selector: body if selector == "body" else panel)
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver), \
+    with patch("hflow.services.douyin_browser._driver", return_value=driver), \
          patch.object(DouyinBrowserSession, "_capture", AsyncMock(side_effect=DouyinError(Outcome.SIGNATURE))), \
-         patch("haizflow.services.douyin_browser.SDK_WAIT_SECONDS", 0.8), pytest.raises(DouyinError):
+         patch("hflow.services.douyin_browser.SDK_WAIT_SECONDS", 0.8), pytest.raises(DouyinError):
         create_anonymous_state()
     assert close.click.await_count == 4  # Two per readiness attempt; one bounded startup retry.
 
@@ -267,7 +267,7 @@ def test_loading_document_timeout_is_unknown_not_absence_of_captcha():
 
 def test_readiness_waits_for_document_before_dismissing_or_signing():
     driver, _, _ = guest()
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver), \
+    with patch("hflow.services.douyin_browser._driver", return_value=driver), \
          patch.object(DouyinBrowserSession, "_challenge", AsyncMock(side_effect=[None, False])) as challenge, \
          patch.object(DouyinBrowserSession, "_dismiss_optional_login", AsyncMock(return_value=None)) as dismiss:
         state = create_anonymous_state()
@@ -278,9 +278,9 @@ def test_readiness_waits_for_document_before_dismissing_or_signing():
 
 def test_loading_document_wait_has_a_deadline_and_cleans_up_browser():
     driver, context, page = guest()
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver), \
+    with patch("hflow.services.douyin_browser._driver", return_value=driver), \
          patch.object(DouyinBrowserSession, "_challenge", AsyncMock(return_value=None)), \
-         patch("haizflow.services.douyin_browser.SDK_WAIT_SECONDS", 0), pytest.raises(DouyinError) as failure:
+         patch("hflow.services.douyin_browser.SDK_WAIT_SECONDS", 0), pytest.raises(DouyinError) as failure:
         create_anonymous_state()
     assert failure.value.outcome == Outcome.NETWORK
     page.evaluate.assert_not_awaited()
@@ -293,7 +293,7 @@ def test_loading_document_wait_remains_cancellable_without_clicking():
     async def loading(self):
         cancel.set()
         return None
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver), \
+    with patch("hflow.services.douyin_browser._driver", return_value=driver), \
          patch.object(DouyinBrowserSession, "_challenge", loading), \
          patch.object(DouyinBrowserSession, "_dismiss_optional_login", AsyncMock()) as dismiss, pytest.raises(DownloadCancelled):
         create_anonymous_state(cancel)
@@ -303,10 +303,10 @@ def test_loading_document_wait_remains_cancellable_without_clicking():
 def test_document_reload_after_human_verification_keeps_human_deadline():
     driver, _, _ = guest()
     statuses = []
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver), \
+    with patch("hflow.services.douyin_browser._driver", return_value=driver), \
          patch.object(DouyinBrowserSession, "_challenge", AsyncMock(side_effect=[True, None, False])), \
-         patch("haizflow.services.douyin_browser.SDK_WAIT_SECONDS", 0), \
-         patch("haizflow.services.douyin_browser.HUMAN_WAIT_SECONDS", 5):
+         patch("hflow.services.douyin_browser.SDK_WAIT_SECONDS", 0), \
+         patch("hflow.services.douyin_browser.HUMAN_WAIT_SECONDS", 5):
         state = create_anonymous_state(status_callback=statuses.append)
         state["backend"].close()
     assert statuses == ["Complete verification in the Douyin window.", "Checking the Douyin session"]
@@ -322,7 +322,7 @@ def test_closed_backend_cannot_restart_a_browser():
 def test_hidden_verification_iframe_is_not_a_visible_captcha():
     driver, _, page = guest(challenge=True)
     page.frames[-1].frame_element.return_value.bounding_box.return_value = None
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver):
+    with patch("hflow.services.douyin_browser._driver", return_value=driver):
         state = create_anonymous_state()
         state["backend"].close()
 
@@ -335,7 +335,7 @@ def test_sdk_sign_can_wait_for_manual_verification_after_session_creation():
         if value == "Complete verification in the Douyin window.":
             context.close.assert_not_awaited()
             page.frames = [page.main_frame]
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver):
+    with patch("hflow.services.douyin_browser._driver", return_value=driver):
         state = create_anonymous_state(status_callback=progress)
         element = SimpleNamespace(bounding_box=AsyncMock(return_value={"width": 300, "height": 200}))
         page.frames.append(SimpleNamespace(url="https://verify.example/captcha/",
@@ -358,7 +358,7 @@ def test_shutdown_interrupts_active_human_wait_before_closing_browser():
             backend.open(status_callback=lambda value: waiting.set())
         except DownloadCancelled:
             results.append("cancelled")
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver):
+    with patch("hflow.services.douyin_browser._driver", return_value=driver):
         worker = threading.Thread(target=run)
         worker.start()
         try:
@@ -372,7 +372,7 @@ def test_shutdown_interrupts_active_human_wait_before_closing_browser():
 
 def test_transient_signing_failure_preserves_context_for_same_click_retry():
     driver, context, page = guest()
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver):
+    with patch("hflow.services.douyin_browser._driver", return_value=driver):
         state = create_anonymous_state()
         backend = state["backend"]
         try:
@@ -390,12 +390,12 @@ def test_transient_signing_failure_preserves_context_for_same_click_retry():
 
 def test_signature_timeout_does_not_destroy_reusable_browser():
     driver, context, _ = guest()
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver):
+    with patch("hflow.services.douyin_browser._driver", return_value=driver):
         state = create_anonymous_state()
         backend = state["backend"]
         try:
             with patch.object(backend, "_capture", AsyncMock(side_effect=DouyinError(Outcome.SIGNATURE))), \
-                 patch("haizflow.services.douyin_browser.SDK_WAIT_SECONDS", 0), pytest.raises(DouyinError):
+                 patch("hflow.services.douyin_browser.SDK_WAIT_SECONDS", 0), pytest.raises(DouyinError):
                 backend.sign(DETAIL_PATH, {"aweme_id": "42"}, state["cookies"])
             context.close.assert_not_awaited()
             backend.sign(DETAIL_PATH, {"aweme_id": "42"}, state["cookies"], refresh=True)
@@ -406,7 +406,7 @@ def test_signature_timeout_does_not_destroy_reusable_browser():
 
 def test_old_native_export_cannot_overwrite_live_browser_rotation():
     driver, context, page = guest()
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver):
+    with patch("hflow.services.douyin_browser._driver", return_value=driver):
         state = create_anonymous_state()
         backend = state["backend"]
         try:
@@ -421,7 +421,7 @@ def test_old_native_export_cannot_overwrite_live_browser_rotation():
 
 def test_native_rotation_is_merged_only_if_browser_has_not_changed_it():
     driver, context, page = guest()
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver):
+    with patch("hflow.services.douyin_browser._driver", return_value=driver):
         state = create_anonymous_state()
         backend = state["backend"]
         try:
@@ -435,7 +435,7 @@ def test_native_rotation_is_merged_only_if_browser_has_not_changed_it():
 
 def test_idle_reopen_restores_latest_browser_cookies_not_old_native_jar():
     driver, context, _ = guest()
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver):
+    with patch("hflow.services.douyin_browser._driver", return_value=driver):
         state = create_anonymous_state()
         backend = state["backend"]
         try:
@@ -451,7 +451,7 @@ def test_idle_reopen_restores_latest_browser_cookies_not_old_native_jar():
 def test_plain_sdk_sign_does_not_publish_ready_status():
     driver, _, _ = guest()
     statuses = []
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver):
+    with patch("hflow.services.douyin_browser._driver", return_value=driver):
         state = create_anonymous_state(status_callback=statuses.append)
         try:
             state["backend"].sign(DETAIL_PATH, {"aweme_id": "42"}, state["cookies"])
@@ -471,7 +471,7 @@ def test_first_creation_recovers_before_returning_without_second_user_click(outc
         if calls == 1:
             raise DouyinError(outcome)
         return await original(self, *args, **kwargs)
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver), \
+    with patch("hflow.services.douyin_browser._driver", return_value=driver), \
          patch.object(DouyinBrowserSession, "_ready", initial_error):
         state = create_anonymous_state()
         try:
@@ -485,7 +485,7 @@ def test_first_creation_recovers_before_returning_without_second_user_click(outc
 
 def test_park_closes_window_and_driver_but_keeps_owned_profile_for_explicit_refresh():
     driver, context, page = guest()
-    with patch("haizflow.services.douyin_browser._driver", return_value=driver):
+    with patch("hflow.services.douyin_browser._driver", return_value=driver):
         state = create_anonymous_state()
         backend = state["backend"]
         profile = backend._profile_dir.name

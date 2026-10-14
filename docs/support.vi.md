@@ -1,4 +1,4 @@
-# Trợ giúp HaizFlow
+# Trợ giúp HFlow
 
 [Trang chính](../README.vi.md) · [Cài đặt](install.vi.md) · [Sử dụng](user-guide.vi.md) · [English](support.md)
 
@@ -45,7 +45,7 @@ Bộ cài hiện không ký số. Windows có thể hiển thị nhà phát hàn
 
 Tạo yêu cầu tại [GitHub Issues](https://github.com/MachHongHai/HaizFlow/issues), kèm:
 
-1. Phiên bản HaizFlow và Windows.
+1. Phiên bản HFlow và Windows.
 2. Các bước thực hiện và tên công cụ/model.
 3. Ảnh thông báo hoặc log liên quan đã che thông tin riêng tư.
 4. Chế độ CPU/GPU và tình trạng gói tài nguyên.

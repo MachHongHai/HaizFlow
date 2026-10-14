@@ -1,4 +1,4 @@
-# Sử dụng HaizFlow
+# Sử dụng HFlow
 
 [Trang chính](../README.vi.md) · [Cài đặt](install.vi.md) · [English](user-guide.md)
 
@@ -98,7 +98,7 @@ Dùng nút kính lúp hoặc con lăn chuột để phóng to/thu nhỏ. Khi ph�
 
 Nghe và xem ít nhất vài đoạn: câu đầu, lúc chuyển người nói, chỗ có nhạc và cuối video. Kiểm tra font, vùng phụ đề, watermark và âm lượng.
 
-Chọn **Xuất**, chọn chất lượng và nơi lưu. Nếu tệp đã có, ứng dụng yêu cầu xác nhận ghi đè. Lưu bản xuất ngoài các thư mục dữ liệu dự án do HaizFlow quản lý để giữ bản sao độc lập. Xuất không tự chạy thêm các công cụ AI bạn chưa chọn.
+Chọn **Xuất**, chọn chất lượng và nơi lưu. Nếu tệp đã có, ứng dụng yêu cầu xác nhận ghi đè. Lưu bản xuất ngoài các thư mục dữ liệu dự án do HFlow quản lý để giữ bản sao độc lập. Xuất không tự chạy thêm các công cụ AI bạn chưa chọn.
 
 ## Đăng mạng xã hội
 

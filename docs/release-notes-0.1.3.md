@@ -1,6 +1,6 @@
-# HaizFlow 0.1.3
+# HFlow 0.1.3
 
-Tải **HaizFlow-0.1.3-Setup.exe** để cài ứng dụng. Các tệp Core và bộ xử lý được ứng dụng tải khi cần; không cần mở hoặc giải nén chúng.
+Tải **HFlow-0.1.3-Setup.exe** để cài ứng dụng. Các tệp Core và bộ xử lý được ứng dụng tải khi cần; không cần mở hoặc giải nén chúng.
 
 - Hỗ trợ chế độ GPU trên card NVIDIA 6 GB VRAM, với RAM hệ thống từ 16 GB.
 - Demucs trên GPU 6 GB xử lý theo đoạn ngắn để giảm bộ nhớ sử dụng. Whisper dùng batch nhỏ và không nạp model trước khi bắt đầu tác vụ.
@@ -10,7 +10,7 @@ Tải **HaizFlow-0.1.3-Setup.exe** để cài ứng dụng. Các tệp Core và 
 
 ## Cập nhật
 
-Trong HaizFlow, chọn **Phiên bản mới → Kiểm tra lại → Cập nhật**, xác nhận rồi khởi động lại khi ứng dụng yêu cầu. Dự án, API key và dữ liệu được giữ nguyên. Nếu dùng Demucs GPU hoặc Whisper GPU, kiểm tra và cập nhật bộ xử lý NVIDIA trong **Cài đặt → Gói tài nguyên** sau khi cập nhật ứng dụng.
+Trong HFlow, chọn **Phiên bản mới → Kiểm tra lại → Cập nhật**, xác nhận rồi khởi động lại khi ứng dụng yêu cầu. Dự án, API key và dữ liệu được giữ nguyên. Nếu dùng Demucs GPU hoặc Whisper GPU, kiểm tra và cập nhật bộ xử lý NVIDIA trong **Cài đặt → Gói tài nguyên** sau khi cập nhật ứng dụng.
 
 ## Cấu hình và Windows
 

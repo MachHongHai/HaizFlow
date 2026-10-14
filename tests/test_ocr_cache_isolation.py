@@ -4,11 +4,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.desktop.manual_editor_document_model import ManualEditorDocumentModel
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.schemas.editor import EditorClip, EditorDocument, EditorSequence, EditorTrack
-from haizflow.schemas.video import VideoConfig
-from haizflow.services import editor_documents, ocr_layers, project_store, video_store
+from hflow.desktop.manual_editor_document_model import ManualEditorDocumentModel
+from hflow.desktop.qml_controller import HFlowController
+from hflow.schemas.editor import EditorClip, EditorDocument, EditorSequence, EditorTrack
+from hflow.schemas.video import VideoConfig
+from hflow.services import editor_documents, ocr_layers, project_store, video_store
 
 
 REGION = dict(x_percent=20, y_percent=75, width_percent=60, height_percent=10)
@@ -49,9 +49,9 @@ def test_apply_only_changes_ocr_configuration_and_visual_cache(video, treatment)
         subtitleSettingsChanged=Mock(), selectedVideoChanged=Mock(), manualToolStateChanged=Mock(),
         _apply_setup_to_video=Mock(side_effect=AssertionError("Must not persist other panels")),
         _record_video_settings_change=Mock(), runManualTool=Mock())
-    with patch("haizflow.pipeline.manual_tools.image_region_cached", return_value=True), \
-         patch("haizflow.desktop.qml_controller.manual_artifacts.deactivate") as deactivate:
-        assert HaizFlowController.setManualSubtitleTreatment(host, treatment, REGION)
+    with patch("hflow.pipeline.manual_tools.image_region_cached", return_value=True), \
+         patch("hflow.desktop.qml_controller.manual_artifacts.deactivate") as deactivate:
+        assert HFlowController.setManualSubtitleTreatment(host, treatment, REGION)
     result = video_store.get_video(video.video_id)
     assert result.files == files
     assert result.active_artifacts == active
@@ -78,7 +78,7 @@ def test_disabled_layers_are_hidden_without_deleting_saved_data(video, monkeypat
         assert not any(track["kind"] == "ocr" for track in model.tracks)
         assert not any(clip["kind"] == "ocr" for clip in model.clips)
         assert [item["clip_id"] for item in model.ocrLayers] == [ocr_layers.PRIMARY_CLIP]
-        assert not HaizFlowController.addOcrLayer(SimpleNamespace())
+        assert not HFlowController.addOcrLayer(SimpleNamespace())
         video.remove_original_subtitles = False
         assert ocr_layers.render_region(video, REGION) is None
         assert any(clip.clip_id == "experimental" for clip in editor_documents.load(video.video_id).clips)

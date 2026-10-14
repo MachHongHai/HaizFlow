@@ -1,6 +1,6 @@
 # Tiêu chuẩn sẵn sàng phát hành
 
-Giấy phép mã thuộc sở hữu hiện hành là HaizFlow Source-Available 1.0, được chủ
+Giấy phép mã thuộc sở hữu hiện hành là HFlow Source-Available 1.0, được chủ
 sở hữu duyệt ngày 01/10/2026. Điều khoản ứng dụng/CLA/branding còn dự thảo. [Rà soát giấy phép](licensing-review.md)
 ghi hồ sơ kỹ thuật về phạm vi quyền sở hữu, OmniVoice phi thương
 mại và mẫu giọng, source tương ứng FFmpeg, nghĩa vụ LGPL của Qt. Chạy
@@ -37,7 +37,7 @@ Rà soát gần nhất: **2026-10-06**. Chủ dự án đã chọn hướng phá
 | 11 | Offline/privacy claim | Hoàn tất | UI/tài liệu phân biệt xử lý trên máy với tải model, dịch Gemini, nhập URL và đăng mạng xã hội. |
 | 12 | Chẩn đoán | Hoàn tất | Log xoay vòng, build ID, bắt lỗi Python/thread/Qt và diagnostic redact không chứa media. |
 | 13 | Shutdown/phục hồi | Hoàn tất | Confirm, pause/cancel, chờ worker hữu hạn, child-process containment và phục hồi video gián đoạn. |
-| 14 | Runtime containment | Hoàn tất | Frozen data mutable nằm dưới install root; source mode dùng `HAIZFLOW_HOME`. |
+| 14 | Runtime containment | Hoàn tất | Frozen data mutable nằm dưới install root; source mode dùng `HFLOW_HOME`. |
 | 15 | Source hygiene | **Chặn đến clean build** | Không còn output/source cũ, tài liệu khớp kiến trúc và `git status --porcelain` rỗng. |
 | 16 | Audit vulnerability | Hoàn tất với ngoại lệ | Chỉ còn ngoại lệ đã duyệt trong [dependency-security.vi.md](dependency-security.vi.md). |
 | 17 | Zernio | Cần hoàn tất trước production | E2E bằng tài khoản thật cho từng nền tảng, quota, recovery, consent và điều khoản hiện hành. |
@@ -58,7 +58,7 @@ BUILD-INFO.json
 SHA256SUMS.txt
 ```
 
-`scripts/generate-third-party-notices.py --strict` phải đạt. License source HaizFlow không thay license của model/font/codec/dependency. SDK và checkpoint OmniVoice cần phân tích riêng; chỉ kèm source archive FFmpeg upstream chưa đủ chứng minh hoàn tất mọi nghĩa vụ corresponding source của thành phần GPL liên kết tĩnh.
+`scripts/generate-third-party-notices.py --strict` phải đạt. License source HFlow không thay license của model/font/codec/dependency. SDK và checkpoint OmniVoice cần phân tích riêng; chỉ kèm source archive FFmpeg upstream chưa đủ chứng minh hoàn tất mọi nghĩa vụ corresponding source của thành phần GPL liên kết tĩnh.
 
 ## Gate source
 
@@ -94,7 +94,7 @@ Engine AI và model lớn là các gói tài nguyên tùy chọn, không thuộc
 ## Gate installer
 
 ```powershell
-.\scripts\build-installer.ps1 -ArtifactPath .\dist\HaizFlow-public -UnsignedRelease
+.\scripts\build-installer.ps1 -ArtifactPath .\dist\HFlow-public -UnsignedRelease
 ```
 
 Installer phải tính disk từ artifact, cho chọn ổ local writable, chặn network path, giữ runtime data khi upgrade và chỉ xóa data sau lựa chọn uninstall riêng. Silent uninstall luôn giữ data.
@@ -106,13 +106,13 @@ Bản công khai có thể dùng `UnsignedRelease`, không cần certificate. Ph
 Chỉ để kiểm thử kỹ thuật cục bộ, có thể tạo installer chưa ký từ artifact đủ điều kiện:
 
 ```powershell
-.\scripts\build-installer.ps1 -ArtifactPath .\dist\HaizFlow-development -AllowUnsigned -EngineeringBuild
+.\scripts\build-installer.ps1 -ArtifactPath .\dist\HFlow-development -AllowUnsigned -EngineeringBuild
 ```
 
-Tên file nội bộ có `DEVELOPMENT`. Bộ cài công khai có tên `HaizFlow-<version>-Setup.exe`; trạng thái chữ ký được ghi riêng trong tài liệu. Với ứng viên public không ký, chỉ chạy lệnh sau trong VM sạch:
+Tên file nội bộ có `DEVELOPMENT`. Bộ cài công khai có tên `HFlow-<version>-Setup.exe`; trạng thái chữ ký được ghi riêng trong tài liệu. Với ứng viên public không ký, chỉ chạy lệnh sau trong VM sạch:
 
 ```powershell
-.\scripts\test-installer.ps1 -InstallerPath .\dist\installer\HaizFlow-<version>-Setup.exe -AllowRegisteredInstall
+.\scripts\test-installer.ps1 -InstallerPath .\dist\installer\HFlow-<version>-Setup.exe -AllowRegisteredInstall
 ```
 
 ## Ma trận Windows

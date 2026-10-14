@@ -7,8 +7,8 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from haizflow.pipeline import tts
-from haizflow.pipeline.tts_quality import (
+from hflow.pipeline import tts
+from hflow.pipeline.tts_quality import (
     active_speech_rms, is_level_reference_text, peer_speech_target,
 )
 
@@ -44,7 +44,7 @@ def test_partial_edit_levels_only_requested_clip_and_keeps_speaker_cache_immutab
     os.link(quiet['output_path'],original)
     originals = {item['output_path']:Path(item['output_path']).read_bytes() for item in peers}
     with patch.object(tts,'_is_valid_mp3',return_value=True), patch.object(tts,'log_to_video'), \
-            patch('haizflow.pipeline.omnivoice_tts._encode_mp3',side_effect=fake_encode):
+            patch('hflow.pipeline.omnivoice_tts._encode_mp3',side_effect=fake_encode):
         changed = tts._level_voice_peers(peers,[quiet,other],'fixture','vi')
         assert changed == {quiet['output_path']}
         first = Path(quiet['output_path']).read_bytes()
@@ -68,7 +68,7 @@ def test_shouts_are_not_calibration_references_and_peak_cap_is_preserved(tmp_pat
     wave[1000] = .85
     sf.write(quiet['output_path'],wave,rate,format='WAV',subtype='FLOAT')
     with patch.object(tts,'_is_valid_mp3',return_value=True), patch.object(tts,'log_to_video'), \
-            patch('haizflow.pipeline.omnivoice_tts._encode_mp3',side_effect=fake_encode):
+            patch('hflow.pipeline.omnivoice_tts._encode_mp3',side_effect=fake_encode):
         tts._level_voice_peers(peers,[quiet],'fixture','vi')
     corrected,_ = sf.read(quiet['output_path'],dtype='float32')
     assert max(abs(corrected)) <= 10**(-1/20)+1e-6
@@ -78,14 +78,14 @@ def test_shouts_are_not_calibration_references_and_peak_cap_is_preserved(tmp_pat
 def test_cancellation_during_metering_is_not_swallowed(tmp_path):
     peers = [write_clip(tmp_path,i,.1) for i in range(3)]
     with patch.object(tts,'_is_valid_mp3',return_value=True), \
-            patch('haizflow.pipeline.process_registry.check_cancellation',side_effect=RuntimeError('cancelled')):
+            patch('hflow.pipeline.process_registry.check_cancellation',side_effect=RuntimeError('cancelled')):
         with pytest.raises(RuntimeError,match='cancelled'):
             tts._level_voice_peers(peers,[peers[0]],'fixture','vi')
 
 
 def test_peer_policy_changes_manual_and_auto_voice_keys_but_not_edge():
     from types import SimpleNamespace
-    from haizflow.pipeline import manual_tools,process_video,tts_quality
+    from hflow.pipeline import manual_tools,process_video,tts_quality
     video = SimpleNamespace(speaker_mode='single',tts_voice='omnivoice:male',tts_provider='omnivoice-gpu',
                             target_language='vi',files={},manual_tool_generations={})
     segments = [{'text':'Đây là một câu nói bình thường.'}]

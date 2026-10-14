@@ -13,9 +13,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from haizflow.services.resource_packs import _assets_by_component  # noqa: E402
-from haizflow.update.filesystem import atomic_json, no_links  # noqa: E402
-from haizflow.update.state import provision  # noqa: E402
+from hflow.services.resource_packs import _assets_by_component  # noqa: E402
+from hflow.update.filesystem import atomic_json, no_links  # noqa: E402
+from hflow.update.state import provision  # noqa: E402
 
 
 def main() -> None:
@@ -26,7 +26,7 @@ def main() -> None:
     parser.add_argument("--models", type=Path, required=True)
     args = parser.parse_args()
     core = args.core.resolve()
-    if not core.is_file() or core.name != "HaizFlowCore.exe":
+    if not core.is_file() or core.name != "HFlowCore.exe":
         raise ValueError("Supply the frozen Core executable.")
     catalog = json.loads((core.parent / "RESOURCE-PACKS.json").read_text(encoding="utf-8"))
     fixture = ROOT / "build/translation-dispatch-smoke" / uuid.uuid4().hex
@@ -59,10 +59,10 @@ def main() -> None:
             target.parent.mkdir(parents=True, exist_ok=True)
             os.link(source, target)
     environment = os.environ.copy()
-    for name in ("HAIZFLOW_HOME", "HAIZFLOW_INSTALL_ROOT", "HAIZFLOW_RESOURCE_ROOT", "MODELS_DIR",
-                 "RUNTIME_DATA_DIR", "APP_DATA_DIR", "HAIZFLOW_ENGINE_APP_ROOT", "HYMT2_CPU_MODEL_PATH", "HYMT2_GPU_MODEL_PATH"):
+    for name in ("HFLOW_HOME", "HFLOW_INSTALL_ROOT", "HFLOW_RESOURCE_ROOT", "MODELS_DIR",
+                 "RUNTIME_DATA_DIR", "APP_DATA_DIR", "HFLOW_ENGINE_APP_ROOT", "HYMT2_CPU_MODEL_PATH", "HYMT2_GPU_MODEL_PATH"):
         environment.pop(name, None)
-    environment.update(HAIZFLOW_SMOKE_TEST="1", HAIZFLOW_INSTALL_ROOT=str(app),
+    environment.update(HFLOW_SMOKE_TEST="1", HFLOW_INSTALL_ROOT=str(app),
                        HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1")
     results = []
     for preference in ("q4", "full"):

@@ -7,7 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from haizflow.pipeline import subtitle_ocr
+from hflow.pipeline import subtitle_ocr
 
 
 @pytest.mark.parametrize("duration,width,height,seeks", [
@@ -88,7 +88,7 @@ def test_missing_near_eof_frames_keep_successful_samples(tmp_path, monkeypatch):
 
 def test_real_seek_sampler_produces_uniform_valid_images_and_keeps_source(tmp_path, monkeypatch):
     from PIL import Image
-    from haizflow.utils.ffmpeg import _binary
+    from hflow.utils.ffmpeg import _binary
 
     source = tmp_path / "source.mp4"
     subprocess.run([_binary("ffmpeg"), "-y", "-v", "error", "-f", "lavfi", "-i",

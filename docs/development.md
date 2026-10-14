@@ -1,4 +1,4 @@
-# HaizFlow development guide
+# HFlow development guide
 
 [Documentation](README.md) · [Architecture](architecture.md) · [Tiếng Việt](development.vi.md)
 
@@ -20,7 +20,7 @@ Do not install production dependencies ad hoc into a global interpreter. The rep
 
 ```powershell
 git clone https://github.com/MachHongHai/HaizFlow.git
-cd HaizFlow
+cd HFlow
 powershell -ExecutionPolicy Bypass -File .\scripts\install-desktop-env.ps1
 ```
 
@@ -30,7 +30,7 @@ The script:
 2. creates `.venv` when absent;
 3. redirects package caches and temporary files below the configured runtime boundary;
 4. synchronizes `requirements-lock-py313-win64.txt` with `uv` or hash-checked pip;
-5. installs HaizFlow in editable mode;
+5. installs HFlow in editable mode;
 6. verifies the dependency lock and runtime imports.
 
 Use `-Recreate` only when a clean environment is required:
@@ -46,17 +46,17 @@ This deletes only the repository-owned `.venv` after an absolute-path safety che
 Copy `.env.example` to `.env` only when an override is needed. For a portable development data root:
 
 ```dotenv
-HAIZFLOW_HOME=D:\HaizFlowData
+HFLOW_HOME=D:\HFlowData
 ```
 
-When `HAIZFLOW_HOME` is set, models, application data, third-party caches, and temporary work are contained below that root. Avoid redirecting individual caches unless diagnosing a migration.
+When `HFLOW_HOME` is set, models, application data, third-party caches, and temporary work are contained below that root. Avoid redirecting individual caches unless diagnosing a migration.
 
 Never commit `.env`, credentials, downloaded models, project media, `runtime`, `build`, or `dist` artifacts.
 
 ## 4. Run the application
 
 ```powershell
-.\.venv\Scripts\python.exe .\haizflow_desktop.py
+.\.venv\Scripts\python.exe .\hflow_desktop.py
 ```
 
 The launcher configures cache/model/temp paths before importing Qt or Torch. Internal worker flags are process contracts and are not user-facing CLI commands.
@@ -64,13 +64,13 @@ The launcher configures cache/model/temp paths before importing Qt or Torch. Int
 For a bounded UI bootstrap test:
 
 ```powershell
-.\.venv\Scripts\python.exe .\haizflow_desktop.py --ui-smoke-test
+.\.venv\Scripts\python.exe .\hflow_desktop.py --ui-smoke-test
 ```
 
 ## 5. Repository structure
 
 ```text
-src/haizflow/
+src/hflow/
   core/           runtime policy, hardware selection, logging, integrity
   desktop/        Qt bootstrap, facade, controllers, models, presenters
     qml/          shell, pages, workspaces, controls, dialogs
@@ -234,7 +234,7 @@ Open an issue at [MachHongHai/HaizFlow](https://github.com/MachHongHai/HaizFlow/
 Core and inference engines have separate dependency boundaries. Do not add Torch, ONNX Runtime, WhisperX,
 Transformers, Demucs, or model checkpoints to the Core lock or PyInstaller profile.
 
-Dependencies imported by HaizFlow code in every engine belong in `requirements-engine-common.in`. Profile-only
+Dependencies imported by HFlow code in every engine belong in `requirements-engine-common.in`. Profile-only
 inference dependencies remain in `requirements-engine-cpu.in`, `requirements-engine-cuda128.in`, or
 `requirements-engine-vision.in`. The verifier requires both sets in every engine lock and rejects Qt desktop
 packages from those locks.
@@ -264,11 +264,11 @@ A public pack must be Authenticode-signed and uploaded to an immutable HTTPS rel
 only after upload:
 
 ```powershell
-$env:HAIZFLOW_SIGN_CERT_PASSWORD = "<certificate-password>"
+$env:HFLOW_SIGN_CERT_PASSWORD = "<certificate-password>"
 .\scripts\build-resource-engine.ps1 `
   -Profile cuda128 `
   -Version 1 `
-  -SignCertificatePath C:\secure\haizflow-signing.pfx `
+  -SignCertificatePath C:\secure\hflow-signing.pfx `
   -ReleaseUrl https://github.com/MachHongHai/HaizFlow/releases/download/v1/engine-cuda128-py313-1.zip
 .\.venv\Scripts\python.exe .\scripts\verify-resource-pack-manifest.py --strict
 ```
@@ -289,9 +289,9 @@ An unsigned build is an explicit engineering artifact, not a public release:
 A public build must start from a clean committed checkout and use Authenticode signing:
 
 ```powershell
-$env:HAIZFLOW_SIGN_CERT_PASSWORD = "<certificate-password>"
-.\scripts\build-exe.ps1 -SignCertificatePath C:\secure\haizflow-signing.pfx
-.\scripts\build-installer.ps1 -SignCertificatePath C:\secure\haizflow-signing.pfx
+$env:HFLOW_SIGN_CERT_PASSWORD = "<certificate-password>"
+.\scripts\build-exe.ps1 -SignCertificatePath C:\secure\hflow-signing.pfx
+.\scripts\build-installer.ps1 -SignCertificatePath C:\secure\hflow-signing.pfx
 ```
 
 The installer gate verifies the frozen artifact, calculates real disk requirements, builds the Inno Setup package, verifies its checksum and signature, then performs an isolated install/startup/uninstall smoke cycle. Skipping either frozen or installer smoke is diagnostic-only. See [release readiness](release-readiness.md) for the legal, clean-source, and Windows acceptance requirements.

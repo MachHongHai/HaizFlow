@@ -12,7 +12,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.pipeline import tts
+from hflow.pipeline import tts
 
 
 def _write_test_mp3(path: str) -> None:
@@ -21,7 +21,7 @@ def _write_test_mp3(path: str) -> None:
 
 class TtsReliabilityTests(unittest.TestCase):
     def test_short_source_fragment_uses_library_reference_not_clone(self):
-        from haizflow.pipeline import omnivoice_tts
+        from hflow.pipeline import omnivoice_tts
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -45,14 +45,14 @@ class TtsReliabilityTests(unittest.TestCase):
                 ], "test", language_id="vi", speaker_mode="multiple", device="cpu")
 
     def test_packaged_reference_matches_preview_identity_and_transcript(self):
-        from haizflow.pipeline.omnivoice_tts import _preset_reference
+        from hflow.pipeline.omnivoice_tts import _preset_reference
         path, text = _preset_reference("omnivoice:male", "en")
         self.assertTrue(Path(path).is_file())
         self.assertIn("Mạch Hồng Hải", text)
         self.assertEqual(_preset_reference("../untrusted", "en"), ("", ""))
 
     def test_completed_clips_are_committed_before_worker_pause(self):
-        from haizflow.pipeline import omnivoice_tts
+        from hflow.pipeline import omnivoice_tts
         class Paused(Exception):
             pass
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -110,7 +110,7 @@ class TtsReliabilityTests(unittest.TestCase):
         self.assertEqual(normalized, "Xin chao, tu nhien...")
 
     def test_omnivoice_loads_once_for_all_missing_segments(self):
-        from haizflow.pipeline import omnivoice_tts
+        from hflow.pipeline import omnivoice_tts
 
         calls = []
 
@@ -147,7 +147,7 @@ class TtsReliabilityTests(unittest.TestCase):
         self.assertEqual([item["text"] for item in calls[0][0]], ["Xin chào.", "Thế giới."])
 
     def test_omnivoice_server_reuses_one_runtime_across_requests(self):
-        from haizflow.pipeline import omnivoice_tts
+        from hflow.pipeline import omnivoice_tts
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -180,7 +180,7 @@ class TtsReliabilityTests(unittest.TestCase):
                 self.assertEqual(response, {"return_code": 0, "error": ""})
 
     def test_omnivoice_multiple_speakers_follow_source_timestamps_not_list_indexes(self):
-        from haizflow.pipeline import omnivoice_tts
+        from hflow.pipeline import omnivoice_tts
 
         calls = []
 
@@ -223,7 +223,7 @@ class TtsReliabilityTests(unittest.TestCase):
             )
             with (
                 mock.patch.object(tts, "get_video", return_value=video),
-                mock.patch("haizflow.pipeline.speaker_identity.prepare_speakers", side_effect=lambda audio, segments, *args: [
+                mock.patch("hflow.pipeline.speaker_identity.prepare_speakers", side_effect=lambda audio, segments, *args: [
                     {**item, "speaker_id": f"speaker-{i}", "speaker_voice": "omnivoice:male" if i else "omnivoice:female"}
                     for i, item in enumerate(segments)]),
                 mock.patch.object(omnivoice_tts, "synthesize_batch_to_mp3", side_effect=synthesize_batch),
@@ -250,7 +250,7 @@ class TtsReliabilityTests(unittest.TestCase):
         self.assertTrue(all(not item["source_audio_path"] for item in items))
 
     def test_omnivoice_cuda_engine_failure_triggers_cpu_fallback(self):
-        from haizflow.pipeline.omnivoice_tts import _is_cuda_resource_failure
+        from hflow.pipeline.omnivoice_tts import _is_cuda_resource_failure
 
         self.assertTrue(
             _is_cuda_resource_failure(
@@ -259,7 +259,7 @@ class TtsReliabilityTests(unittest.TestCase):
         )
 
     def test_omnivoice_retries_in_isolated_worker_when_warm_channel_exits(self):
-        from haizflow.pipeline import omnivoice_tts
+        from hflow.pipeline import omnivoice_tts
 
         calls = []
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -301,7 +301,7 @@ class TtsReliabilityTests(unittest.TestCase):
             self.assertTrue(any("isolated worker" in str(call) for call in log.call_args_list))
 
     def test_omnivoice_source_worker_can_import_package_without_parent_pythonpath(self):
-        from haizflow.pipeline import omnivoice_tts
+        from hflow.pipeline import omnivoice_tts
 
         with (
             mock.patch.dict(omnivoice_tts.os.environ, {}, clear=True),
@@ -317,8 +317,8 @@ class TtsReliabilityTests(unittest.TestCase):
         self.assertEqual(environment["MKL_NUM_THREADS"], "1")
 
     def test_omnivoice_presets_use_the_sdk_instruction_vocabulary(self):
-        from haizflow.desktop.catalog import OMNIVOICE_TTS_VOICES
-        from haizflow.pipeline.omnivoice_tts import OMNIVOICE_VOICE_INSTRUCTIONS
+        from hflow.desktop.catalog import OMNIVOICE_TTS_VOICES
+        from hflow.pipeline.omnivoice_tts import OMNIVOICE_VOICE_INSTRUCTIONS
 
         valid_items = {
             "male",
@@ -341,13 +341,13 @@ class TtsReliabilityTests(unittest.TestCase):
         )
 
     def test_omnivoice_maps_standard_arabic_to_the_sdk_language_id(self):
-        from haizflow.pipeline.omnivoice_tts import _omnivoice_language_id
+        from hflow.pipeline.omnivoice_tts import _omnivoice_language_id
 
         self.assertEqual(_omnivoice_language_id("ar"), "arb")
         self.assertEqual(_omnivoice_language_id("vi"), "vi")
 
     def test_omnivoice_status_update_retries_transient_windows_lock(self):
-        from haizflow.pipeline import omnivoice_tts
+        from hflow.pipeline import omnivoice_tts
 
         with tempfile.TemporaryDirectory() as temp_dir:
             status_path = Path(temp_dir) / "status.json"
@@ -375,7 +375,7 @@ class TtsReliabilityTests(unittest.TestCase):
             self.assertEqual(list(Path(temp_dir).glob("*.part")), [])
 
     def test_omnivoice_latency_diagnostics_accept_only_bounded_numeric_fields(self):
-        from haizflow.pipeline.omnivoice_tts import _timing_detail
+        from hflow.pipeline.omnivoice_tts import _timing_detail
 
         self.assertEqual(_timing_detail({}), "")
         self.assertEqual(_timing_detail({"timing_seconds": {"model_load": 12.345}}), " model_load=12.35s")
@@ -385,7 +385,7 @@ class TtsReliabilityTests(unittest.TestCase):
         }}), "")
 
     def test_source_reference_bounds_support_chinese_without_spaces(self):
-        from haizflow.pipeline.omnivoice_tts import _usable_source_reference
+        from hflow.pipeline.omnivoice_tts import _usable_source_reference
 
         self.assertTrue(_usable_source_reference(1, 5, "我们现在可以开始了。"))
         self.assertTrue(_usable_source_reference(1, 5, "Now we can begin."))
@@ -394,7 +394,7 @@ class TtsReliabilityTests(unittest.TestCase):
         self.assertFalse(_usable_source_reference(1, 20, "Now we can begin."))
 
     def test_omnivoice_status_failure_never_stops_synthesis_worker(self):
-        from haizflow.pipeline import omnivoice_tts
+        from hflow.pipeline import omnivoice_tts
 
         with tempfile.TemporaryDirectory() as temp_dir:
             status_path = Path(temp_dir) / "status.json"
@@ -408,7 +408,7 @@ class TtsReliabilityTests(unittest.TestCase):
             self.assertEqual(list(Path(temp_dir).glob("*.part")), [])
 
     def test_omnivoice_anchor_is_informative_without_using_longest_paragraph(self):
-        from haizflow.pipeline.omnivoice_tts import _select_voice_anchor
+        from hflow.pipeline.omnivoice_tts import _select_voice_anchor
 
         short = {"text": "Ồ."}
         suitable = {"text": "Một câu đủ rõ để giữ ổn định danh tính giọng đọc trong toàn bộ video."}
@@ -417,7 +417,7 @@ class TtsReliabilityTests(unittest.TestCase):
         self.assertIs(_select_voice_anchor([short, huge, suitable]), suitable)
 
     def test_omnivoice_anchor_excerpt_keeps_one_bounded_sentence(self):
-        from haizflow.pipeline.omnivoice_tts import _voice_anchor_excerpt
+        from hflow.pipeline.omnivoice_tts import _voice_anchor_excerpt
 
         paragraph = (
             "Đây là phần dẫn rất dài nhưng vẫn có dấu câu để nhận diện. "
@@ -432,13 +432,13 @@ class TtsReliabilityTests(unittest.TestCase):
         self.assertNotEqual(excerpt, paragraph)
 
     def test_omnivoice_anchor_excerpt_does_not_cut_short_text(self):
-        from haizflow.pipeline.omnivoice_tts import _voice_anchor_excerpt
+        from hflow.pipeline.omnivoice_tts import _voice_anchor_excerpt
 
         text = "Một câu ngắn phù hợp để tạo mẫu giọng."
         self.assertEqual(_voice_anchor_excerpt(text), text)
 
     def test_omnivoice_gpu_fallback_only_matches_runtime_resource_failures(self):
-        from haizflow.pipeline.omnivoice_tts import _is_cuda_resource_failure
+        from hflow.pipeline.omnivoice_tts import _is_cuda_resource_failure
 
         self.assertTrue(_is_cuda_resource_failure("CUDA out of memory"))
         self.assertTrue(_is_cuda_resource_failure("CUBLAS_STATUS_ALLOC_FAILED"))

@@ -10,9 +10,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from haizflow.pipeline.speaker_identity import MODEL_FILE, model_root, verify_model  # noqa: E402
-from haizflow.services.model_bootstrap import install_model_assets  # noqa: E402
-from haizflow.services.resource_packs import _speaker_asset  # noqa: E402
+from hflow.pipeline.speaker_identity import MODEL_FILE, model_root, verify_model  # noqa: E402
+from hflow.services.model_bootstrap import install_model_assets  # noqa: E402
+from hflow.services.resource_packs import _speaker_asset  # noqa: E402
 
 
 def stage(source: Path, destination: Path) -> Path:

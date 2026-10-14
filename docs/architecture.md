@@ -1,18 +1,18 @@
-# HaizFlow architecture
+# HFlow architecture
 
 [Documentation](README.md) · [Repository](../README.md) · [Tiếng Việt](architecture.vi.md)
 
-This document describes the current desktop application, its dependency boundaries, persisted data and execution model. It is intended for contributors who need to change HaizFlow without coupling the user interface to media-processing details.
+This document describes the current desktop application, its dependency boundaries, persisted data and execution model. It is intended for contributors who need to change HFlow without coupling the user interface to media-processing details.
 
 ## 1. System boundary
 
-HaizFlow is a Windows desktop application. The main process hosts a PySide6/Qt Quick interface and coordinates local project data, model workers and FFmpeg processes. There is no HaizFlow web backend, browser client or hosted project database.
+HFlow is a Windows desktop application. The main process hosts a PySide6/Qt Quick interface and coordinates local project data, model workers and FFmpeg processes. There is no HFlow web backend, browser client or hosted project database.
 
 The core dubbing path can run on the user's machine without a paid API:
 
 ```text
 QML desktop UI
-  -> HaizFlowController facade
+  -> HFlowController facade
   -> focused desktop controller
   -> service or pipeline operation
   -> local project artifacts
@@ -34,7 +34,7 @@ Network access is explicit and feature-specific. It is used to download verified
 ## 3. Source layout and dependency direction
 
 ```text
-src/haizflow/
+src/hflow/
   core/          runtime paths, hardware policy, diagnostics and shared events
   desktop/       Qt bootstrap, QML facade, controllers, models and presenters
     qml/         pages, workspaces, dialogs and shared controls
@@ -64,23 +64,23 @@ Dependencies point inward from presentation to application services: QML uses th
 
 ## 4. Desktop composition
 
-`haizflow_desktop.py` enters the project virtual environment when available and launches `haizflow.desktop.main`. The Qt bootstrap configures application identity, translations and runtime paths before loading `Main.qml`. It does not import an inference framework or start an engine.
+`hflow_desktop.py` enters the project virtual environment when available and launches `hflow.desktop.main`. The Qt bootstrap configures application identity, translations and runtime paths before loading `Main.qml`. It does not import an inference framework or start an engine.
 
 `Main.qml` is the persistent shell. It owns route history, the top navigation bar, global dialogs and the bottom activity strip. `RouteHost.qml` loads the current page without rebuilding the shell. Project workspaces hide the navigation rail while retaining the same Back, Forward, Home, Projects, Settings and Help controls.
 
-`HaizFlowController` is registered as the QML singleton facade. Focused desktop controllers separate catalog/project state, project commands, imports, processing lifecycle, preview rendering, audio preview, downloads, publishing, settings, resource packs, smart warm-up and diagnostics. List data is exposed through `QAbstractListModel` implementations in `desktop/models.py`.
+`HFlowController` is registered as the QML singleton facade. Focused desktop controllers separate catalog/project state, project commands, imports, processing lifecycle, preview rendering, audio preview, downloads, publishing, settings, resource packs, smart warm-up and diagnostics. List data is exposed through `QAbstractListModel` implementations in `desktop/models.py`.
 
 Background model status belongs to the persistent activity strip. Dialogs are reserved for confirmation or errors that require a decision; transient action feedback uses the toast stack.
 
 ## 5. Projects and persisted state
 
-`project_store` owns the project index and `.haizflow-project.json` manifests. `video_store` owns each video's `video.json`, log, media paths and checkpoints. Project and video IDs are immutable UUID-backed identifiers; readable folder names are labels, not identity.
+`project_store` owns the project index and `.hflow-project.json` manifests. `video_store` owns each video's `video.json`, log, media paths and checkpoints. Project and video IDs are immutable UUID-backed identifiers; readable folder names are labels, not identity.
 
 Project metadata uses schema v4; video metadata uses schema v19. Writes use an interprocess lock, temporary file, `fsync` and atomic replacement. Migration retains a schema backup; unknown newer schemas are refused. See [storage and export](project-storage-export.md) for ownership, legacy compatibility and verification limits.
 
 ```text
 <project-name>--<short-id>/
-  .haizflow-project.json
+  .hflow-project.json
   videos/
     <source-name>--<short-id>/
       video.json
@@ -220,7 +220,7 @@ runtime/
   tmp/      transient work
 ```
 
-In source mode, `HAIZFLOW_HOME` can establish the same containment boundary. Runtime configuration redirects known third-party caches and temporary directories below that root to avoid unplanned writes to the system drive.
+In source mode, `HFLOW_HOME` can establish the same containment boundary. Runtime configuration redirects known third-party caches and temporary directories below that root to avoid unplanned writes to the system drive.
 
 ## 13. Change checklist
 

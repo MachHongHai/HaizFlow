@@ -4,8 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from haizflow.desktop.editor_preview_controller import EditorPreviewController
-from haizflow.schemas.video import CropSettings
+from hflow.desktop.editor_preview_controller import EditorPreviewController
+from hflow.schemas.video import CropSettings
 
 
 def settings():

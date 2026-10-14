@@ -4,7 +4,7 @@ Status: source changes only, 2026-10-08. No build, commit, push or release.
 
 ## Previous flow and observed causes
 
-The generic HaizFlow downloader used yt-dlp, with a custom Douyin extractor and
+The generic HFlow downloader used yt-dlp, with a custom Douyin extractor and
 several request identities/fallbacks. Protected metadata requests were not tied
 to a stable browser visitor identity. Empty metadata could become a terminal
 “no playable video” error, rather than a classified session/risk response.
@@ -45,7 +45,7 @@ in [Download source checks](download-source-checks.md).
 ## Current request/session model
 
 `URL -> normalize/ID -> DouyinAdapter -> one local guest session -> signer ->
-coherent native transport -> classified metadata -> existing HaizFlow pipeline`
+coherent native transport -> classified metadata -> existing HFlow pipeline`
 
 The adapter reuses one cookie jar, UA, browser version, geometry and transport.
 Inspect and subsequent download share that session. A re-entrant lock freezes
@@ -69,7 +69,7 @@ After the explicit **Tạo phiên Douyin** action, an owned standard Chromium wi
 creates an anonymous identity. SDK request capture is installed before page
 scripts, only in that owned context. A probe traverses the site's SDK wrappers
 but is aborted below them before the matching request reaches the network.
-The exact signed URL is returned; HaizFlow does not re-encode, reorder or append
+The exact signed URL is returned; HFlow does not re-encode, reorder or append
 msToken after signing. Native transport sends it with the required signing
 headers and the same scoped cookies.
 
@@ -97,7 +97,7 @@ retry ladder remains. No broad personal profile or unrelated cookie read.
 ## Browser lifecycle and human verification
 
 The browser is lazy: nothing opens at application startup. One temporary
-HaizFlow-owned profile is reused for that browser identity; no fingerprint seed
+HFlow-owned profile is reused for that browser identity; no fingerprint seed
 or spoofing flag is configured. The latest browser snapshot is restored before
 navigation when reopening an idle context, not a stale native export.
 Visitor changes trigger a page reload so SDK cached identity is not stale.
@@ -152,7 +152,7 @@ An expired/403 CDN URL or unavailable requested format causes fresh metadata
 extraction, not infinite reuse of the inspected URL. Scoped cookies and browser
 profile are transferred to the existing yt-dlp media download. Workspace,
 progress, cancellation, FFmpeg validation, project import and cleanup remain
-the existing HaizFlow implementations. Channel scans have a bounded raw-post
+the existing HFlow implementations. Channel scans have a bounded raw-post
 budget, including photo posts, even if an upstream page exceeds requested size.
 
 Continuation throttles retain the exact cursor and verified session. After the
@@ -227,7 +227,7 @@ correctness lint, 1,653 tests (one skip), 243 subtests and complete QML lint.
 The run includes shutdown interrupting an active human verification wait.
 Four existing Qt deprecation/optional TorchCodec decoder warnings remain; no
 test failed. Focused browser/SDK tests also passed. The isolated source
-application `haizflow_desktop.py --ui-smoke-test` exited successfully; dependency
+application `hflow_desktop.py --ui-smoke-test` exited successfully; dependency
 lock manifest verification, targeted source compile/lint and `git diff --check`
 passed. These source checks are not a frozen-installer acceptance test.
 
@@ -331,7 +331,7 @@ approach: identity is coherent, protected signing is explicit, session/risk
 errors are recoverable when justified, and human verification no longer closes
 the window immediately. Evidence is still limited to this machine and a small
 live metadata sample. Network/IP/region restrictions, CAPTCHA, private content
-and future Douyin SDK/API changes remain outside HaizFlow's guarantees.
+and future Douyin SDK/API changes remain outside HFlow's guarantees.
 
 Native cold sessions can still be rejected without browser-created visitor
 state. Explicit cookie files cannot prove the original browser fingerprint.

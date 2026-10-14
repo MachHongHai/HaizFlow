@@ -1,14 +1,14 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from haizflow.desktop.localization import QMessageBox, _set_ui_language, _ui_text
+from hflow.desktop.localization import QMessageBox, _set_ui_language, _ui_text
 
 
 class UiLocalizationTests(unittest.TestCase):
     def test_save_picker_uses_real_explorer_profile_and_keeps_filename(self):
-        from haizflow.desktop.localization import QFileDialog
-        with (patch("haizflow.desktop.localization._native_explorer_profile") as profile,
-              patch("haizflow.desktop.localization.QtFileDialog.getSaveFileName", return_value=("", "")) as picker):
+        from hflow.desktop.localization import QFileDialog
+        with (patch("hflow.desktop.localization._native_explorer_profile") as profile,
+              patch("hflow.desktop.localization.QtFileDialog.getSaveFileName", return_value=("", "")) as picker):
             QFileDialog.getSaveFileName(None, "Export", "D:/Exports/project.mp4", "MP4 (*.mp4)")
         profile.return_value.__enter__.assert_called_once()
         self.assertEqual(picker.call_args.args[2], "D:/Exports/project.mp4")
@@ -52,7 +52,7 @@ class UiLocalizationTests(unittest.TestCase):
         handler = Mock()
         QMessageBox.set_alert_handler(handler)
 
-        with patch("haizflow.desktop.localization.QtMessageBox.warning") as native_warning:
+        with patch("hflow.desktop.localization.QtMessageBox.warning") as native_warning:
             result = QMessageBox.warning(None, "Settings", "Cannot save settings: denied")
 
         handler.assert_called_once_with("Settings", "Cannot save settings: denied", "warning")

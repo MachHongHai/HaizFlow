@@ -1,4 +1,4 @@
-# HaizFlow 1.0.0
+# HFlow 1.0.0
 
 [Tải bộ cài Windows](https://github.com/MachHongHai/HaizFlow/releases/download/v1.0.0/HaizFlow-1.0.0-Setup.exe)
 

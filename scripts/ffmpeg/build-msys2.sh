@@ -8,7 +8,7 @@ if [[ "${MSYSTEM:-}" != MINGW64 ]]; then
     exit 1
 fi
 repository=$(cd "$(dirname "$0")/../.." && pwd)
-work="${HAIZFLOW_FFMPEG_BUILD_DIR:-$repository/build/ffmpeg-source-build}"
+work="${HFLOW_FFMPEG_BUILD_DIR:-$repository/build/ffmpeg-source-build}"
 [[ "$work" == "$repository"/build/* ]] || { printf '%s\n' 'Build output must stay below this repository build directory.' >&2; exit 1; }
 source_archive="$repository/runtime/compliance/ffmpeg/ffmpeg-8.1.2.tar.xz"
 mkdir -p "$work"
@@ -34,7 +34,7 @@ gcc --version > "$work/compiler-version.txt"
   --enable-libfreetype --enable-libfontconfig --enable-libharfbuzz --enable-libfribidi \
   --enable-zlib --enable-bzlib --enable-lzma \
   --enable-schannel --enable-d3d11va --enable-dxva2 --enable-nvenc --enable-ffnvcodec
-make -j "${HAIZFLOW_BUILD_JOBS:-4}"
+make -j "${HFLOW_BUILD_JOBS:-4}"
 make install
 cp ffbuild/config.log config.h ffbuild/config.mak "$work/"
 printf '%s\n' 'FFmpeg build complete. Collect DLL/source closure and run regression tests before installation.'

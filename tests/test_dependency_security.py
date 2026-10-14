@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from haizflow.core.dependency_security import (
+from hflow.core.dependency_security import (
     _guard_lightning_saving_module,
     _guard_transformers_generation,
     validate_checkpoint_weight_maps,

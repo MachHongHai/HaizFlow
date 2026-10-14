@@ -14,8 +14,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.pipeline import process_video
-from haizflow.services import hymt2_worker, translation
+from hflow.pipeline import process_video
+from hflow.services import hymt2_worker, translation
 
 
 class GpuRecoveryTests(unittest.TestCase):
@@ -26,7 +26,7 @@ class GpuRecoveryTests(unittest.TestCase):
 
         with (
             mock.patch.object(translation, "runtime_profile", return_value=profile),
-            mock.patch("haizflow.services.resource_packs.installed_engine_command", side_effect=engine_command),
+            mock.patch("hflow.services.resource_packs.installed_engine_command", side_effect=engine_command),
         ):
             self.assertEqual(translation._worker_command(), ["cpu-engine.exe"])
 
@@ -57,7 +57,7 @@ class GpuRecoveryTests(unittest.TestCase):
                                   cuda_available=True, total_vram_bytes=4 * 1024**3)
         with (
             mock.patch.object(hymt2_worker, "runtime_profile", return_value=profile),
-            mock.patch("haizflow.core.hardware.cpu_runtime_profile", return_value=profile),
+            mock.patch("hflow.core.hardware.cpu_runtime_profile", return_value=profile),
             mock.patch.object(hymt2_worker, "translation_model_preference", return_value="auto"),
             mock.patch.object(hymt2_worker.importlib.util, "find_spec", return_value=None),
             mock.patch.object(hymt2_worker, "_prepare_torch_runtime", side_effect=AssertionError("Torch loaded")),
@@ -72,7 +72,7 @@ class GpuRecoveryTests(unittest.TestCase):
             mock.patch.object(translation, "runtime_profile", return_value=profile),
             mock.patch.object(translation, "translation_model_preference", return_value="auto"),
             mock.patch.object(translation, "is_frozen", return_value=True),
-            mock.patch("haizflow.services.resource_packs.installed_engine_command", side_effect=engine_command),
+            mock.patch("hflow.services.resource_packs.installed_engine_command", side_effect=engine_command),
         ):
             with self.assertRaisesRegex(RuntimeError, "HY-MT2 CPU Q4"):
                 translation._worker_command()
@@ -108,7 +108,7 @@ class GpuRecoveryTests(unittest.TestCase):
             mock.patch.object(process_video, "runtime_profile", return_value=profile),
             mock.patch.object(process_video, "update_video") as update_video,
             mock.patch.object(process_video, "log_to_video"),
-            mock.patch("haizflow.pipeline.transcribe.release_warm_whisperx_model"),
+            mock.patch("hflow.pipeline.transcribe.release_warm_whisperx_model"),
             mock.patch.object(process_video, "shutdown_hymt2_worker"),
             mock.patch.object(process_video, "configure_processing_device") as configure,
         ):
@@ -137,7 +137,7 @@ class GpuRecoveryTests(unittest.TestCase):
             process_video.configure_translation_model("q4")
             return True
         with (
-            mock.patch.dict("os.environ", {"HAIZFLOW_PROCESSING_DEVICE": "gpu", "HAIZFLOW_TRANSLATION_MODEL": "full"}),
+            mock.patch.dict("os.environ", {"HFLOW_PROCESSING_DEVICE": "gpu", "HFLOW_TRANSLATION_MODEL": "full"}),
             mock.patch.object(process_video, "start_video", side_effect=RuntimeError("CUDA error")),
             mock.patch.object(process_video, "get_video", return_value=SimpleNamespace(step="translating")),
             mock.patch.object(process_video, "is_cancelled", return_value=False),
@@ -196,7 +196,7 @@ class GpuRecoveryTests(unittest.TestCase):
             3221225477,
             "model warm-up",
             worker_output,
-            r"D:\\HaizFlowData\\logs\\hymt2-workers\\worker.log",
+            r"D:\\HFlowData\\logs\\hymt2-workers\\worker.log",
         )
 
         self.assertIn("0xC0000005", message)
@@ -251,7 +251,7 @@ class GpuRecoveryTests(unittest.TestCase):
                 # This test owns a fake worker and tests shutdown only. Live
                 # RAM pressure from the full suite must not block its dispatch;
                 # memory admission has separate deterministic tests.
-                with mock.patch("haizflow.core.memory.require_cpu_memory"):
+                with mock.patch("hflow.core.memory.require_cpu_memory"):
                     translation.warm_hymt2_worker()
             except RuntimeError as exc:
                 warmup_errors.append(str(exc))

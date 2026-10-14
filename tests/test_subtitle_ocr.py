@@ -6,8 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from haizflow.pipeline import subtitle_ocr
-from haizflow.pipeline.subtitle_ocr import (
+from hflow.pipeline import subtitle_ocr
+from hflow.pipeline.subtitle_ocr import (
     TextCandidate,
     _ocr_candidates,
     select_subtitle_region,
@@ -20,7 +20,7 @@ def candidate(frame, text, *, x=25, y=78, width=50, height=5, confidence=0.9):
 
 class SubtitleOcrSelectionTests(unittest.TestCase):
     def test_legacy_ocr_requires_current_detector_and_unchanged_source(self):
-        from haizflow.pipeline.manual_tools import DETECTOR_CACHE_VERSION, _legacy_ocr_cache_current
+        from hflow.pipeline.manual_tools import DETECTOR_CACHE_VERSION, _legacy_ocr_cache_current
 
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "source.mp4"
@@ -363,7 +363,7 @@ class SubtitleOcrSelectionTests(unittest.TestCase):
             candidate(4, "caption four", y=42, confidence=0.4),
         ], sample_count=12))
 
-    @patch("haizflow.pipeline.subtitle_ocr._ocr_engine")
+    @patch("hflow.pipeline.subtitle_ocr._ocr_engine")
     def test_ocr_coordinates_use_the_complete_frame(self, engine):
         engine.return_value.return_value = SimpleNamespace(
             boxes=[[[200, 300], [600, 300], [600, 360], [200, 360]]],

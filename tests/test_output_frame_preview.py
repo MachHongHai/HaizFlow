@@ -8,10 +8,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from haizflow.desktop.editor_preview_controller import EditorPreviewController
-from haizflow.schemas.video import VideoConfig, VideoInfo
+from hflow.desktop.editor_preview_controller import EditorPreviewController
+from hflow.schemas.video import VideoConfig, VideoInfo
 
-QML_DIR = Path(__file__).parents[1] / "src/haizflow/desktop/qml"
+QML_DIR = Path(__file__).parents[1] / "src/hflow/desktop/qml"
 
 
 def test_manual_canvas_switch_reuses_existing_ocr_request_without_worker(tmp_path):
@@ -24,13 +24,13 @@ def test_manual_canvas_switch_reuses_existing_ocr_request_without_worker(tmp_pat
                            manualPreviewAudio=object(), editorPreviewChanged=Mock())
     controller = EditorPreviewController(host)
     ocr = {"x_percent": 5, "y_percent": 80, "width_percent": 90, "height_percent": 10}
-    with (patch("haizflow.desktop.editor_preview_controller.video_store.get_video_dir", return_value=str(tmp_path)),
-          patch("haizflow.services.editor_documents.load", return_value=None),
+    with (patch("hflow.desktop.editor_preview_controller.video_store.get_video_dir", return_value=str(tmp_path)),
+          patch("hflow.services.editor_documents.load", return_value=None),
           patch.object(controller, "_ocr_region", return_value=ocr),
           patch.object(controller, "_manual_voice_artifact", return_value=None),
           patch.object(controller, "_restore_manual_disk_cache"),
           patch.object(controller, "_published_source_is_intact", return_value=True),
-          patch("haizflow.desktop.editor_preview_controller.threading.Thread") as worker):
+          patch("hflow.desktop.editor_preview_controller.threading.Thread") as worker):
         assert controller.request("[]", 0)
         fingerprint = controller._request_fingerprint
         settings = worker.call_args.kwargs["args"][3]
@@ -141,7 +141,7 @@ ApplicationWindow {{
         assert abs(frame.property("contentRect").width() / frame.property("contentRect").height() - 9 / 16) < .00001
         thumbnail = frame.findChild(QObject, "outputFrameThumbnail")
         assert thumbnail.property("visible") and len(frame.findChildren(QObject, "outputFrameVideo")) == 1
-        if os.environ.get("HAIZFLOW_FRAME_PIXEL_QA") == "1":
+        if os.environ.get("HFLOW_FRAME_PIXEL_QA") == "1":
             shot = window.grabWindow()
             rect = frame.property("contentRect")
             point = frame.mapToScene(QPointF(rect.center().x(), rect.y() + 30))
@@ -160,12 +160,12 @@ ApplicationWindow {{
         assert rect.height() == 600 and rect.width() == 337.5
         assert len(frame.findChildren(QObject, "outputFrameVideo")) == 1
         assert not window.findChildren(QObject, "manualInputPlayer")
-        capture_dir = os.environ.get("HAIZFLOW_UI_PREVIEWS")
+        capture_dir = os.environ.get("HFLOW_UI_PREVIEWS")
         if capture_dir:
             window.setWidth(1120)
             QTest.qWait(80)
             assert window.grabWindow().save(str(Path(capture_dir) / "live-output-frame.png"))
-        if os.environ.get("HAIZFLOW_FRAME_PIXEL_QA") == "1":
+        if os.environ.get("HFLOW_FRAME_PIXEL_QA") == "1":
             # Native Windows/D3D rendering: offscreen/software only tests geometry.
             shot = window.grabWindow()
             def pixel(x, y):
@@ -270,7 +270,7 @@ Window {{
         assert not capture.property('live')
         assert frame.property('videoSink') is sink  # No decoder/sink replacement.
         QTest.qWait(120)
-        if os.environ.get('HAIZFLOW_FRAME_PIXEL_QA') == '1':
+        if os.environ.get('HFLOW_FRAME_PIXEL_QA') == '1':
             shot = window.grabWindow()
             assert not shot.isNull()
             QTest.qWait(30)
@@ -307,7 +307,7 @@ Window {{
         assert not effect_loader.property('active') and effect_loader.property('item') is None
         capture = item.findChild(QObject, 'outputBackgroundCapture')
         assert capture.property('visible')
-        if os.environ.get('HAIZFLOW_FRAME_PIXEL_QA') == '1':
+        if os.environ.get('HFLOW_FRAME_PIXEL_QA') == '1':
             shot = window.grabWindow()
             color = shot.pixelColor(shot.width() // 2, round(50 * shot.height() / window.height()))
             assert color.green() > 80, color.name()  # Pending native blur must not show black.

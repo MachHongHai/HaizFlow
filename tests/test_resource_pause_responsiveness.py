@@ -7,11 +7,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.core.model_integrity import observe_verification
-from haizflow.core.resource_archive import archive_matches
-from haizflow.desktop.resource_progress import InstallProgress, progress_copy
-from haizflow.services import model_bootstrap as bootstrap
-from haizflow.services.resource_packs import ResourcePackDefinition, ResourcePackManager
+from hflow.core.model_integrity import observe_verification
+from hflow.core.resource_archive import archive_matches
+from hflow.desktop.resource_progress import InstallProgress, progress_copy
+from hflow.services import model_bootstrap as bootstrap
+from hflow.services.resource_packs import ResourcePackDefinition, ResourcePackManager
 
 
 def test_fresh_download_hashes_incoming_bytes_without_a_second_disk_read(tmp_path):
@@ -61,7 +61,7 @@ def test_hashing_and_complete_partial_promotion_can_be_paused(tmp_path):
 
 
 def test_inventory_integrity_hashes_are_scoped_and_cancellable(tmp_path):
-    from haizflow.core.model_integrity import _sha256
+    from hflow.core.model_integrity import _sha256
 
     path = tmp_path / "model"
     path.write_bytes(b"data")
@@ -109,8 +109,8 @@ def test_engine_probe_is_stopped_when_pause_is_requested(tmp_path):
         return "", ""
 
     process.communicate.side_effect = communicate
-    with patch("haizflow.services.resource_packs.subprocess.Popen", return_value=process), \
-            patch("haizflow.pipeline.process_registry._kill_process_tree",
+    with patch("hflow.services.resource_packs.subprocess.Popen", return_value=process), \
+            patch("hflow.pipeline.process_registry._kill_process_tree",
                   side_effect=lambda _process: setattr(process, "returncode", -1)) as kill:
         with pytest.raises(bootstrap.ModelBootstrapCancelled):
             manager._verify_engine_staging(definition, staging, cancel_event=cancelled)

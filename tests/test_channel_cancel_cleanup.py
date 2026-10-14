@@ -7,9 +7,9 @@ from unittest.mock import Mock
 import pytest
 from PySide6.QtGui import QGuiApplication
 
-from haizflow.desktop.channel_import import ChannelImportCoordinator
-from haizflow.schemas.channel_import import ChannelImportRequest, ChannelVideoCandidate
-from haizflow.services.channel_import import download_workspace, new_session
+from hflow.desktop.channel_import import ChannelImportCoordinator
+from hflow.schemas.channel_import import ChannelImportRequest, ChannelVideoCandidate
+from hflow.services.channel_import import download_workspace, new_session
 
 
 @pytest.mark.parametrize("outcome", ["cancelled", "failed", "import_failed", "late_cancel", "unknown_session"])

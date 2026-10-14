@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.services import gemini_translation as gemini
+from hflow.services import gemini_translation as gemini
 
 
 class Response:

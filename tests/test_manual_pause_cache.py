@@ -4,9 +4,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.pipeline import manual_tools, process_registry
-from haizflow.schemas.video import VideoConfig
+from hflow.desktop.qml_controller import HFlowController
+from hflow.pipeline import manual_tools, process_registry
+from hflow.schemas.video import VideoConfig
 
 
 def video_snapshot(status="paused"):
@@ -51,10 +51,10 @@ def test_starting_another_tool_clears_pause_flags_and_resume_target_without_eras
         with (
             patch.object(manual_tools, "tool_states", return_value=[{"toolId": "source", "canRun": True}]),
             patch.object(manual_tools, "prepare_manual_rerun") as rerun,
-            patch("haizflow.desktop.qml_controller.video_store.update_video") as update,
-            patch("haizflow.desktop.qml_controller.video_store.log_to_video"),
+            patch("hflow.desktop.qml_controller.video_store.update_video") as update,
+            patch("hflow.desktop.qml_controller.video_store.log_to_video"),
         ):
-            assert HaizFlowController.runManualTool(host, "source")
+            assert HFlowController.runManualTool(host, "source")
         assert not process_registry.is_paused(video.video_id)
         assert not process_registry.is_cancelled(video.video_id)
         assert update.call_args.kwargs["manual_target_tool"] == "source"
@@ -73,5 +73,5 @@ def test_a_pause_request_does_not_allow_switching_before_the_worker_leaves_queue
         _processing_queue=SimpleNamespace(contains=lambda _: True), appAlertRequested=Mock(),
         _enqueue_video=Mock(),
     )
-    assert not HaizFlowController.runManualTool(host, "source")
+    assert not HFlowController.runManualTool(host, "source")
     host._enqueue_video.assert_not_called()

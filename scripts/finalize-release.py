@@ -106,8 +106,8 @@ def verify_installer_eligibility(artifact_directory: Path, *, engineering: bool 
     build_info = _read_build_info(artifact)
     if str(SRC) not in sys.path:
         sys.path.insert(0, str(SRC))
-    from haizflow.update.filesystem import no_links
-    from haizflow.update.state import Layout
+    from hflow.update.filesystem import no_links
+    from hflow.update.state import Layout
     no_links(artifact)
     if build_info.get("layout") == "versioned":
         verify_manifest(artifact)
@@ -117,7 +117,7 @@ def verify_installer_eligibility(artifact_directory: Path, *, engineering: bool 
             raise RuntimeError("Mutable data must not be packaged in a versioned installer.")
         layout = Layout(artifact)
         layout.validate_core(str(build_info.get("version")))
-        executable = artifact / "HaizFlow.exe"
+        executable = artifact / "HFlow.exe"
         if not executable.is_file() or not (executable.parent / "_internal").is_dir():
             raise RuntimeError("Independent bootstrap is incomplete.")
         verify_installer_eligibility(layout.core(build_info["version"]), engineering=engineering)
@@ -129,7 +129,7 @@ def verify_installer_eligibility(artifact_directory: Path, *, engineering: bool 
 
     if str(SRC) not in sys.path:
         sys.path.insert(0, str(SRC))
-    from haizflow.core.model_integrity import (
+    from hflow.core.model_integrity import (
         DEMUCS_MODEL_SHA256,
         ALIGNMENT_MODELS,
         DEMUCS_MODEL_FILE,
@@ -161,7 +161,7 @@ def verify_installer_eligibility(artifact_directory: Path, *, engineering: bool 
         raise RuntimeError("Git worktree is dirty; refusing installer packaging.")
 
     for name, expected in (
-        ("application", "HaizFlow"),
+        ("application", "HFlow"),
         ("version", _release_version()),
         ("build_id", f"{_release_version()}+{current_commit[:12]}"),
         ("git_commit", current_commit),
@@ -191,8 +191,8 @@ def verify_installer_eligibility(artifact_directory: Path, *, engineering: bool 
     ):
         _require_build_value(build_info, name, expected)
 
-    entrypoint = build_info.get("entrypoint", "HaizFlow.exe")
-    if entrypoint not in {"HaizFlow.exe", "HaizFlowCore.exe"}:
+    entrypoint = build_info.get("entrypoint", "HFlow.exe")
+    if entrypoint not in {"HFlow.exe", "HFlowCore.exe"}:
         raise RuntimeError("Invalid frozen entrypoint.")
     required_paths = (artifact / entrypoint,)
     missing = [str(path.relative_to(artifact)) for path in required_paths if not path.is_file()]
@@ -205,7 +205,7 @@ def verify_installer_eligibility(artifact_directory: Path, *, engineering: bool 
                 "the installer creates and preserves it separately."
             )
     model_root = artifact / "_internal" / "models"
-    from haizflow.core.bundled_models import MODEL_SHA256, verify_core_models
+    from hflow.core.bundled_models import MODEL_SHA256, verify_core_models
     has_speaker = verify_core_models(model_root, required=bool(build_info.get("bundled_speaker_model")))
     if has_speaker:
         _require_build_value(build_info, "bundled_speaker_model", True)
@@ -252,15 +252,15 @@ def verify_installer_eligibility(artifact_directory: Path, *, engineering: bool 
 
 def finalize(artifact_directory: Path) -> None:
     artifact = artifact_directory.resolve()
-    executable = artifact / "HaizFlow.exe"
+    executable = artifact / "HFlow.exe"
     if not executable.is_file():
-        executable = artifact / "HaizFlowCore.exe"
+        executable = artifact / "HFlowCore.exe"
     if not executable.is_file():
         raise RuntimeError(f"Frozen executable is missing: {executable}")
 
     if str(SRC) not in sys.path:
         sys.path.insert(0, str(SRC))
-    from haizflow.core.model_integrity import (
+    from hflow.core.model_integrity import (
         ALIGNMENT_MODELS,
         DEMUCS_MODEL_SHA256,
         HYMT2_CPU_REVISION,
@@ -272,13 +272,13 @@ def finalize(artifact_directory: Path) -> None:
     )
 
     version = _release_version()
-    from haizflow.core.bundled_models import MODEL_SHA256, verify_core_models
+    from hflow.core.bundled_models import MODEL_SHA256, verify_core_models
     has_speaker = verify_core_models(artifact / "_internal" / "models", required=False)
     git_commit = _git_value("rev-parse", "HEAD")
     if git_commit == "unknown":
         raise RuntimeError("Cannot establish the current Git commit; refusing to finalize the release artifact.")
     build_info = {
-        "application": "HaizFlow",
+        "application": "HFlow",
         "version": version,
         "build_id": f"{version}+{git_commit[:12]}",
         "built_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -309,7 +309,7 @@ def finalize(artifact_directory: Path) -> None:
             language: digest for language, (_bundle_name, _filename, _size, digest) in ALIGNMENT_MODELS.items()
         },
         "packaging": "PyInstaller onedir",
-        "entrypoint": "HaizFlowCore.exe" if (artifact / "HaizFlowCore.exe").is_file() else "HaizFlow.exe",
+        "entrypoint": "HFlowCore.exe" if (artifact / "HFlowCore.exe").is_file() else "HFlow.exe",
     }
     (artifact / "BUILD-INFO.json").write_text(
         json.dumps(build_info, ensure_ascii=True, indent=2) + "\n",

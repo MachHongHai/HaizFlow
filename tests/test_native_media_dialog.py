@@ -6,8 +6,8 @@ from types import SimpleNamespace
 from unittest import mock
 from unittest.mock import patch
 
-from haizflow.desktop import localization
-from haizflow.desktop.project_import_controller import ProjectImportController
+from hflow.desktop import localization
+from hflow.desktop.project_import_controller import ProjectImportController
 
 
 class NativeMediaDialogTests(unittest.TestCase):
@@ -22,7 +22,7 @@ class NativeMediaDialogTests(unittest.TestCase):
     def test_video_import_uses_the_native_media_location(self):
         host = type("Host", (), {"videoPath": "", "_project_directory": ""})()
         with patch(
-            "haizflow.desktop.project_import_controller.native_media_dialog_directory",
+            "hflow.desktop.project_import_controller.native_media_dialog_directory",
             return_value="C:/Users/Example/Downloads",
         ):
             controller = ProjectImportController(host)
@@ -85,8 +85,8 @@ class NativeMediaDialogTests(unittest.TestCase):
         controller = ProjectImportController(host)
         try:
             with (
-                patch("haizflow.desktop.project_import_controller.validate_video_url", return_value=("https://youtu.be/demo", "YouTube")),
-                patch("haizflow.desktop.project_import_controller.video_store.get_video",
+                patch("hflow.desktop.project_import_controller.validate_video_url", return_value=("https://youtu.be/demo", "YouTube")),
+                patch("hflow.desktop.project_import_controller.video_store.get_video",
                       return_value=SimpleNamespace(video_id="video-1", manual_tool_generations={}, created_at="fixture")),
                 patch.object(controller, "_run_background_music_download") as run_download,
             ):
@@ -124,10 +124,10 @@ class NativeMediaDialogTests(unittest.TestCase):
             controller._background_music_task = {"task_id": "task-1", "video_id": "video-1"}
 
             with (
-                patch("haizflow.desktop.project_import_controller.video_store.get_video", return_value=selected),
-                patch("haizflow.desktop.project_import_controller.editor_documents.ensure", return_value="document") as ensure,
+                patch("hflow.desktop.project_import_controller.video_store.get_video", return_value=selected),
+                patch("hflow.desktop.project_import_controller.editor_documents.ensure", return_value="document") as ensure,
                 patch(
-                    "haizflow.desktop.project_import_controller.set_desktop_background_music",
+                    "hflow.desktop.project_import_controller.set_desktop_background_music",
                     return_value="D:/project/input/background_music.m4a",
                 ),
             ):
@@ -160,9 +160,9 @@ class NativeMediaDialogTests(unittest.TestCase):
             )
             controller = ProjectImportController(host)
             with (
-                patch("haizflow.desktop.project_import_controller.video_store.get_video", return_value=selected),
-                patch("haizflow.desktop.project_import_controller.set_desktop_background_music", side_effect=[str(music), str(music), ""]),
-                patch("haizflow.desktop.project_import_controller.editor_documents.ensure", side_effect=["imported", "replaced", "cleared"]),
+                patch("hflow.desktop.project_import_controller.video_store.get_video", return_value=selected),
+                patch("hflow.desktop.project_import_controller.set_desktop_background_music", side_effect=[str(music), str(music), ""]),
+                patch("hflow.desktop.project_import_controller.editor_documents.ensure", side_effect=["imported", "replaced", "cleared"]),
             ):
                 for path in (str(music), str(music), ""):
                     self.assertTrue(controller.set_background_music(path))
@@ -193,11 +193,11 @@ class NativeMediaDialogTests(unittest.TestCase):
 
             with (
                 patch(
-                    "haizflow.desktop.project_import_controller.project_store.get_project",
+                    "hflow.desktop.project_import_controller.project_store.get_project",
                     return_value={"project_type": "batch"},
                 ),
                 patch(
-                    "haizflow.desktop.project_import_controller.project_store.project_root_for_key",
+                    "hflow.desktop.project_import_controller.project_store.project_root_for_key",
                     return_value=str(project_root),
                 ),
             ):

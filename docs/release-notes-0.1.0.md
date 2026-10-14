@@ -1,6 +1,6 @@
 <!-- Prepared release copy. Publication status and approvals are tracked in release-readiness.vi.md and legal/license-state.json. -->
 
-# HaizFlow 0.1.0
+# HFlow 0.1.0
 
 Ứng dụng miễn phí để tải, dịch, tạo phụ đề và lồng tiếng video trên Windows.
 
@@ -20,15 +20,15 @@ Máy không có GPU NVIDIA vẫn dùng được các công cụ CPU. Whisper và
 
 ## Cài đặt
 
-1. Trong **Assets**, tải bộ cài Windows `HaizFlow-0.1.0-Setup.exe` và tệp SHA-256 đi kèm.
+1. Trong **Assets**, tải bộ cài Windows `HFlow-0.1.0-Setup.exe` và tệp SHA-256 đi kèm.
 2. Mở bộ cài, chọn ngôn ngữ và thư mục cài trên ổ còn đủ dung lượng.
-3. Mở HaizFlow; giao diện mặc định là tiếng Việt. Chọn CPU/GPU trong **Cài đặt → Chung**.
+3. Mở HFlow; giao diện mặc định là tiếng Việt. Chọn CPU/GPU trong **Cài đặt → Chung**.
 4. Cài các gói cần dùng trong **Gói tài nguyên**. Thêm Gemini/Zernio key khi dùng các dịch vụ này.
 5. Tạo dự án, thêm video, chọn công cụ và xem trước kết quả trước khi xuất.
 
 Để cài ứng dụng, bạn chỉ cần bộ cài `Setup.exe`. Các tệp Core và engine trong
 Assets dành cho cơ chế cập nhật/tải gói của ứng dụng; không cần tải hoặc mở
-chúng riêng. Gói tài nguyên được cài từ trang **Gói tài nguyên** trong HaizFlow.
+chúng riêng. Gói tài nguyên được cài từ trang **Gói tài nguyên** trong HFlow.
 
 Windows 10 phiên bản 1809 trở lên hoặc Windows 11 x64; RAM từ 16 GiB. Không cần cài Python hoặc CUDA Toolkit riêng. Dung lượng của gói tài nguyên, video và tệp xuất được tính riêng với ứng dụng.
 
@@ -38,29 +38,29 @@ Bộ cài không ký số. Windows có thể hiện nhà phát hành không xác
 
 ## Giấy phép
 
-HaizFlow miễn phí sử dụng theo HaizFlow Source-Available 1.0. **Model OmniVoice hiện tại chỉ được cấp phép cho mục đích phi thương mại.** Giấy phép ứng dụng không thay thế điều kiện của model, video hoặc mẫu giọng.
+HFlow miễn phí sử dụng theo HFlow Source-Available 1.0. **Model OmniVoice hiện tại chỉ được cấp phép cho mục đích phi thương mại.** Giấy phép ứng dụng không thay thế điều kiện của model, video hoặc mẫu giọng.
 
-Qt/PySide dùng LGPL; FFmpeg dùng GPL/LGPL tùy thành phần. Nguồn thư viện đi kèm nằm trong `HaizFlow-0.1.0-ThirdPartySources.zip` ở **Assets**. [Thông báo và giấy phép thư viện](https://github.com/MachHongHai/HaizFlow/blob/test/THIRD_PARTY_NOTICES.md).
+Qt/PySide dùng LGPL; FFmpeg dùng GPL/LGPL tùy thành phần. Nguồn thư viện đi kèm nằm trong `HFlow-0.1.0-ThirdPartySources.zip` ở **Assets**. [Thông báo và giấy phép thư viện](https://github.com/MachHongHai/HaizFlow/blob/test/THIRD_PARTY_NOTICES.md).
 
 ---
 
 ## English
 
-HaizFlow is a free Windows app for batch video downloads, translation, subtitle creation and dubbing. It includes automatic and batch processing, OCR-based original-caption coverage, multiple-speaker detection and social publishing through Zernio.
+HFlow is a free Windows app for batch video downloads, translation, subtitle creation and dubbing. It includes automatic and batch processing, OCR-based original-caption coverage, multiple-speaker detection and social publishing through Zernio.
 
 Whisper and HY-MT2 run locally without API keys or per-call translation charges. CPU options work without an NVIDIA GPU. Gemini and Zernio are optional external services with their own terms and charges.
 
 ### Installation
 
-1. Download `HaizFlow-0.1.0-Setup.exe` and its SHA-256 file from **Assets**.
+1. Download `HFlow-0.1.0-Setup.exe` and its SHA-256 file from **Assets**.
 2. Run Setup and choose a language and installation folder with sufficient free space.
-3. Open HaizFlow and select CPU/GPU in **Settings → General**. Vietnamese is the default; English is available in Settings.
+3. Open HFlow and select CPU/GPU in **Settings → General**. Vietnamese is the default; English is available in Settings.
 4. Install the resources you need and add Gemini/Zernio keys when using those services.
 5. Create a project, add videos, process and preview before export.
 
-Only `Setup.exe` is needed to install HaizFlow. Core and engine assets are used
+Only `Setup.exe` is needed to install HFlow. Core and engine assets are used
 by the application's update/resource manager; do not open them separately.
-Install optional resources from **Resource packs** in HaizFlow.
+Install optional resources from **Resource packs** in HFlow.
 
 Requires Windows 10 version 1809 or later, or Windows 11 x64, and at least 16 GiB RAM. No separate Python or CUDA Toolkit installation is needed. Resource packs and media require additional storage.
 
@@ -68,4 +68,4 @@ The installer is unsigned. Windows may show an unknown publisher or block execut
 
 [Installation](https://github.com/MachHongHai/HaizFlow/blob/v0.1.0/docs/install.md) · [User guide](https://github.com/MachHongHai/HaizFlow/blob/v0.1.0/docs/user-guide.md) · [Help](https://github.com/MachHongHai/HaizFlow/blob/v0.1.0/docs/support.md)
 
-HaizFlow is free to use under HaizFlow Source-Available 1.0. **The current OmniVoice model is for noncommercial use only.** Application terms do not replace model or imported-content licenses.
+HFlow is free to use under HFlow Source-Available 1.0. **The current OmniVoice model is for noncommercial use only.** Application terms do not replace model or imported-content licenses.

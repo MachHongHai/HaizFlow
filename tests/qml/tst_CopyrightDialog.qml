@@ -1,7 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtTest
-import "../../src/haizflow/desktop/qml"
+import "../../src/hflow/desktop/qml"
 
 Item {
     id: root
@@ -29,7 +29,7 @@ Item {
             tryCompare(dialog, "visible", false);
             dialog.open();
             tryCompare(dialog, "opened", true);
-            compare(dialog.subtitle, qsTr("HaizFlow"));
+            compare(dialog.subtitle, qsTr("HFlow"));
         }
     }
 }

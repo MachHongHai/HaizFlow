@@ -9,7 +9,7 @@ if (!(Test-Path $Python)) {
 $env:PYTHONUTF8 = "1"
 Push-Location $Root
 try {
-  & $Python (Join-Path $Root "haizflow_desktop.py")
+  & $Python (Join-Path $Root "hflow_desktop.py")
 } finally {
   Pop-Location
 }

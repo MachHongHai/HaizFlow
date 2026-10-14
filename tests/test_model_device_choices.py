@@ -7,16 +7,16 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.core.model_choices import gpu_choice_blocked, models_for_device, project_model_defaults, project_recognition_choice, project_translation_choice, recognition_context
-from haizflow.core.hardware import HardwareCapabilities
-from haizflow.desktop.project_import_controller import ProjectImportController
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.desktop.settings_controller import SettingsController
-from haizflow.desktop.runtime_device_controller import RuntimeDeviceController
-from haizflow.desktop.project_commands_controller import ProjectCommandsController, _batch_values_for_device
-from haizflow.desktop.project_workspace_controller import ProjectWorkspaceController
-from haizflow.desktop.smart_warmup_controller import SmartWarmupController
-from haizflow.schemas.video import VideoConfig
+from hflow.core.model_choices import gpu_choice_blocked, models_for_device, project_model_defaults, project_recognition_choice, project_translation_choice, recognition_context
+from hflow.core.hardware import HardwareCapabilities
+from hflow.desktop.project_import_controller import ProjectImportController
+from hflow.desktop.qml_controller import HFlowController
+from hflow.desktop.settings_controller import SettingsController
+from hflow.desktop.runtime_device_controller import RuntimeDeviceController
+from hflow.desktop.project_commands_controller import ProjectCommandsController, _batch_values_for_device
+from hflow.desktop.project_workspace_controller import ProjectWorkspaceController
+from hflow.desktop.smart_warmup_controller import SmartWarmupController
+from hflow.schemas.video import VideoConfig
 
 
 @pytest.mark.parametrize("device", ["cpu", "gpu"])
@@ -40,11 +40,11 @@ def test_voice_defaults_follow_supported_output_language_and_device(device, lang
 @pytest.mark.parametrize("device", ["cpu", "gpu"])
 def test_vieneu_gpu_is_first_picker_entry_but_cpu_mode_cannot_select_it(device):
     host = SimpleNamespace(_settings_processing_device=device, _hardware_capabilities=None)
-    options = HaizFlowController._tts_provider_options_for_language(host, "vi")
+    options = HFlowController._tts_provider_options_for_language(host, "vi")
     assert options[0]["provider"] == "vieneu-gpu"
     assert options[0]["available"] is (device == "gpu")
     assert options[1]["provider"] == "vieneu" and options[1]["available"]
-    for item in HaizFlowController._tts_provider_options_for_language(host, "en"):
+    for item in HFlowController._tts_provider_options_for_language(host, "en"):
         if item["provider"].startswith("vieneu"):
             assert item["available"] is (not item["provider"].endswith("-gpu") or device == "gpu")
 
@@ -85,11 +85,11 @@ def test_translation_picker_rejects_full_on_four_gb_even_without_resource_delega
                            _hardware_capabilities=gpu_caps(vram), _startup_hardware_resolved=True,
                            _ensure_hardware_ready_for_action=Mock(return_value=True),
                            _show_app_alert=Mock(), translationModelChanged=Mock())
-    HaizFlowController.translationModel.fset(host, "full")
+    HFlowController.translationModel.fset(host, "full")
     assert host._translation_model == ("full" if accepted else "q4")
     assert host._show_app_alert.called is (not accepted)
     assert host.translationModelChanged.emit.called is accepted
-    HaizFlowController.translationModel.fset(host, "auto")
+    HFlowController.translationModel.fset(host, "auto")
     assert host._translation_model == ("full" if accepted else "q4")
 
 
@@ -103,7 +103,7 @@ def test_four_gb_preflight_blocks_heavy_models_for_saved_and_new_projects(projec
     video = SimpleNamespace(video_id="fixture", status="pending", project_type=project_type,
                             speech_recognition_model=recognition, translation_model=translation,
                             tts_provider="omnivoice-gpu") if project_type else None
-    with patch("haizflow.desktop.project_commands_controller.video_store.update_video") as save:
+    with patch("hflow.desktop.project_commands_controller.video_store.update_video") as save:
         assert not ProjectCommandsController._resources_ready(host, video)
     host.appAlertRequested.emit.assert_called_once()
     save.assert_not_called()
@@ -115,8 +115,8 @@ def test_batch_apply_blocks_full_before_assets_or_project_mutations():
                            _processing_queue=SimpleNamespace(contains=lambda _: False), _show_app_alert=Mock())
     controller = ProjectCommandsController(host)
     controller.batch_settings_values = Mock(return_value={"translationModel": "q4"})
-    with patch("haizflow.services.batch_settings.stage_asset") as stage, \
-         patch("haizflow.desktop.project_commands_controller.project_store.save_batch_settings") as save:
+    with patch("hflow.services.batch_settings.stage_asset") as stage, \
+         patch("hflow.desktop.project_commands_controller.project_store.save_batch_settings") as save:
         assert not controller.apply_batch_settings_values("batch", {"translationModel": "full"})
     host._show_app_alert.assert_called_once()
     stage.assert_not_called()
@@ -126,7 +126,7 @@ def test_batch_apply_blocks_full_before_assets_or_project_mutations():
 def test_legacy_batch_apply_blocks_full_before_saving_videos():
     host = SimpleNamespace(_settings_processing_device="gpu", _hardware_capabilities=gpu_caps(4),
                            _show_app_alert=Mock(), _speech_recognition_model="small-gpu")
-    with patch("haizflow.desktop.project_commands_controller.video_store.update_video") as save:
+    with patch("hflow.desktop.project_commands_controller.video_store.update_video") as save:
         assert not ProjectCommandsController(host).apply_batch_settings(
             "A", "vi", "omnivoice-gpu", "omnivoice:male", False, 60, translation_model="full")
     host._show_app_alert.assert_called_once()
@@ -136,7 +136,7 @@ def test_legacy_batch_apply_blocks_full_before_saving_videos():
 def test_opened_legacy_project_warms_same_turbo_choice_as_gpu_ui():
     video = SimpleNamespace(speech_recognition_model="small", manual_target_tool="translation")
     host = SimpleNamespace(_keep_models_warm=True, _settings_processing_device="gpu", _selected_video=lambda: video)
-    with patch("haizflow.desktop.smart_warmup_controller.shared_external_engine_pool"):
+    with patch("hflow.desktop.smart_warmup_controller.shared_external_engine_pool"):
         warm = SmartWarmupController(host, Mock())
     warm.request_project_prediction()
     assert warm._requests[0].context == {"model": "large-v3-turbo", "device": "gpu"}
@@ -158,7 +158,7 @@ def test_cpu_mode_rejects_gpu_recognition(choice):
 def test_startup_warm_uses_app_mode_not_previous_project_cpu_override():
     host = SimpleNamespace(_keep_models_warm=True, _settings_processing_device="gpu",
                            _speech_recognition_model="small-cpu", _project_type="publish")
-    with patch("haizflow.desktop.smart_warmup_controller.shared_external_engine_pool"):
+    with patch("hflow.desktop.smart_warmup_controller.shared_external_engine_pool"):
         warm = SmartWarmupController(host, Mock())
     warm.request_startup_prediction()
     assert warm._requests[0].context == {"model": "large-v3-turbo", "device": "gpu"}
@@ -179,23 +179,23 @@ def test_device_switch_keeps_a_compatible_native_vieneu_preset():
     host = model_host()
     host._tts_voice = "vieneu:Trúc Ly"
     host.ttsVoiceChanged = Mock()
-    HaizFlowController._sync_project_model_defaults(host)
+    HFlowController._sync_project_model_defaults(host)
     assert host._tts_provider == "vieneu-gpu" and host._tts_voice == "vieneu:Trúc Ly"
     host.ttsVoiceChanged.emit.assert_not_called()
 
 
 @pytest.mark.parametrize("language", ["en", "zh"])
 def test_auto_language_choice_rejects_chinese_and_keeps_english_vieneu(language):
-    from haizflow.desktop.presenters import voice_options_for_language
+    from hflow.desktop.presenters import voice_options_for_language
 
     host = SimpleNamespace(_target_language="vi", _tts_provider="vieneu-gpu", _tts_voice="vieneu:Hải Đăng",
         appAlertRequested=Mock(),
         _audio_preview=Mock(), targetLanguageChanged=Mock(), languageOptionsChanged=Mock(),
         ttsVoiceChanged=Mock(), ttsProviderChanged=Mock(), ttsProviderOptionsChanged=Mock(), ttsVoiceOptionsChanged=Mock(),
         _voice_options_for_language=lambda code, provider: voice_options_for_language(code, "vi", provider))
-    host._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(host)
+    host._normalized_voice_for_language = HFlowController._normalized_voice_for_language.__get__(host)
     for _ in range(2):
-        HaizFlowController.targetLanguage.fset(host, language)
+        HFlowController.targetLanguage.fset(host, language)
     assert host._target_language == ("vi" if language == "zh" else "en")
     assert host._tts_provider == "vieneu-gpu" and host._tts_voice == "vieneu:Hải Đăng"
     assert host.appAlertRequested.emit.call_count == (2 if language == "zh" else 0)
@@ -204,11 +204,11 @@ def test_auto_language_choice_rejects_chinese_and_keeps_english_vieneu(language)
 
 def test_device_change_updates_empty_defaults_and_selected_gpu_models():
     host = model_host()
-    HaizFlowController._sync_project_model_defaults(host)
+    HFlowController._sync_project_model_defaults(host)
     assert host._tts_provider == "vieneu-gpu"
     host._selected_video_id = "saved-video"
     host._settings_processing_device = "cpu"
-    HaizFlowController._sync_project_model_defaults(host)
+    HFlowController._sync_project_model_defaults(host)
     assert host._tts_provider == "vieneu"
     assert host._speech_recognition_model == "small-cpu"
     assert host._translation_model == "q4"
@@ -217,12 +217,12 @@ def test_device_change_updates_empty_defaults_and_selected_gpu_models():
 def test_switch_does_not_change_models_until_runtime_is_confirmed():
     host = model_host()
     host._device_switching = True
-    HaizFlowController._sync_project_model_defaults(host)
+    HFlowController._sync_project_model_defaults(host)
     assert host._draft_processing_device == "cpu"
     assert host._tts_provider == "vieneu"
     host._device_switching = False
     host._active_processing_device = "cpu"  # Failed GPU probe restores CPU.
-    HaizFlowController._sync_project_model_defaults(host)
+    HFlowController._sync_project_model_defaults(host)
     assert host._tts_provider == "vieneu"
 
 
@@ -237,8 +237,8 @@ def test_confirmed_cpu_switch_persists_only_model_fields_for_current_owner():
     host._manual_settings_drafts = {"video": VideoConfig(speech_recognition_model="large-v3-turbo",
         translation_model="full", tts_provider="omnivoice-gpu", watermark_text="Unsaved watermark",
         background_music_volume=15)}
-    with patch("haizflow.desktop.qml_controller.video_store.update_video") as save:
-        HaizFlowController._sync_project_model_defaults(host)
+    with patch("hflow.desktop.qml_controller.video_store.update_video") as save:
+        HFlowController._sync_project_model_defaults(host)
     save.assert_called_once_with("video", speech_recognition_model="small-cpu",
                                  translation_model="q4", tts_provider="omnivoice")
     host._audio_preview.invalidate.assert_called_once()
@@ -260,10 +260,10 @@ def test_cloud_models_and_cpu_overrides_survive_device_sync(device):
 
 def test_switch_flag_is_separate_from_video_processing():
     host = SimpleNamespace(_device_switching=True, _processing_queue=SimpleNamespace(has_work=False))
-    assert HaizFlowController.isProcessing.fget(host)
-    assert HaizFlowController.isSwitchingProcessingDevice.fget(host)
+    assert HFlowController.isProcessing.fget(host)
+    assert HFlowController.isSwitchingProcessingDevice.fget(host)
     host._device_switching = False
-    assert not HaizFlowController.isSwitchingProcessingDevice.fget(host)
+    assert not HFlowController.isSwitchingProcessingDevice.fget(host)
 
 
 @pytest.mark.parametrize("probe_ok", [True, False])
@@ -283,12 +283,12 @@ def test_runtime_switch_commits_cpu_models_only_after_success(probe_ok):
     host.runtimeStateChanged = host.statusMessageChanged = host.processingChanged = host.hardwareChanged = Mock()
     host._warm_models_unlocked = lambda: setattr(host, "_runtime_state", "ready")
     host.settingsChanged = Mock()
-    host.settingsChanged.emit.side_effect = lambda: HaizFlowController._sync_project_model_defaults(host)
-    with (patch("haizflow.desktop.runtime_device_controller.threading.Thread") as worker,
-          patch("haizflow.desktop.runtime_device_controller.probe_runtime", return_value=SimpleNamespace(ok=probe_ok, message="test")),
-          patch("haizflow.desktop.runtime_device_controller.desktop_settings.save_settings"),
-          patch("haizflow.desktop.runtime_device_controller.configure_processing_device") as configure,
-          patch("haizflow.desktop.qml_controller.video_store.update_video", return_value=None) as save):
+    host.settingsChanged.emit.side_effect = lambda: HFlowController._sync_project_model_defaults(host)
+    with (patch("hflow.desktop.runtime_device_controller.threading.Thread") as worker,
+          patch("hflow.desktop.runtime_device_controller.probe_runtime", return_value=SimpleNamespace(ok=probe_ok, message="test")),
+          patch("hflow.desktop.runtime_device_controller.desktop_settings.save_settings"),
+          patch("hflow.desktop.runtime_device_controller.configure_processing_device") as configure,
+          patch("hflow.desktop.qml_controller.video_store.update_video", return_value=None) as save):
         RuntimeDeviceController(host)._switch_processing_device("cpu")
         host.settingsChanged.emit()
         assert host._tts_provider == "vieneu-gpu"
@@ -315,7 +315,7 @@ def test_cpu_batch_preflight_persists_cpu_models_before_checking_resources():
     converted = SimpleNamespace(**{**vars(video), **models_for_device("cpu", recognition="large-v3-turbo",
                                                                     translation="full", voice="omnivoice-gpu")})
     host = SimpleNamespace(_settings_processing_device="cpu", _processing_queue=SimpleNamespace(contains=lambda _: False))
-    with patch("haizflow.desktop.project_commands_controller.video_store.update_video", return_value=converted) as save:
+    with patch("hflow.desktop.project_commands_controller.video_store.update_video", return_value=converted) as save:
         assert ProjectCommandsController._resources_ready_for_videos(host, [video])
     save.assert_called_once_with("video", speech_recognition_model="small-cpu", translation_model="q4", tts_provider="omnivoice")
 
@@ -339,8 +339,8 @@ def test_reopening_gpu_project_on_cpu_updates_ui_and_saved_models_without_touchi
     def update(_id, **fields):
         video.__dict__.update(fields)
         return video
-    with (patch("haizflow.desktop.project_workspace_controller.project_store.get_project", return_value=None),
-          patch("haizflow.desktop.project_workspace_controller.video_store.update_video", side_effect=update) as save):
+    with (patch("hflow.desktop.project_workspace_controller.project_store.get_project", return_value=None),
+          patch("hflow.desktop.project_workspace_controller.video_store.update_video", side_effect=update) as save):
         ProjectWorkspaceController(host).select_video(video)
     assert host._speech_recognition_model == ("large-v3-turbo" if queued else "small-cpu")
     assert host._translation_model == ("full" if queued else "q4")
@@ -354,7 +354,7 @@ def test_reopening_gpu_project_on_cpu_updates_ui_and_saved_models_without_touchi
 
 def test_processing_device_change_is_blocked_while_busy():
     host = SimpleNamespace(_processing_queue=SimpleNamespace(has_work=True), appAlertRequested=Mock())
-    with patch("haizflow.desktop.settings_controller.desktop_settings.save_settings") as save:
+    with patch("hflow.desktop.settings_controller.desktop_settings.save_settings") as save:
         assert not SettingsController(host).set_processing_device("gpu")
         save.assert_not_called()
     host.appAlertRequested.emit.assert_called_once()
@@ -364,8 +364,8 @@ def test_manual_device_choice_is_saved_and_warmed_when_already_active():
     host = SimpleNamespace(_processing_queue=SimpleNamespace(has_work=False), _hardware_capabilities=Mock(),
         _active_processing_device="gpu", _settings_processing_device="gpu", settingsChanged=Mock(),
         _smart_warmup=Mock(), _switch_processing_device=Mock())
-    with patch("haizflow.desktop.settings_controller.validate_processing_device", return_value=(True, "")), \
-         patch("haizflow.desktop.settings_controller.desktop_settings.save_settings") as save:
+    with patch("hflow.desktop.settings_controller.validate_processing_device", return_value=(True, "")), \
+         patch("hflow.desktop.settings_controller.desktop_settings.save_settings") as save:
         assert SettingsController(host).set_processing_device("gpu")
     save.assert_called_once_with({"processing_device": "gpu", "processing_device_origin": "manual"})
     host._smart_warmup.request_setup_prediction.assert_called_once()
@@ -385,8 +385,8 @@ def test_no_model_load_is_queued_before_runtime_switch_starts():
         _active_processing_device="cpu", _settings_processing_device="cpu", settingsChanged=Mock(),
         _switch_processing_device=Mock(side_effect=lambda _: events.append("switch")))
     host.settingsChanged.emit.side_effect = lambda: events.append("settings")
-    with patch("haizflow.desktop.settings_controller.validate_processing_device", return_value=(True, "")), \
-         patch("haizflow.desktop.settings_controller.desktop_settings.save_settings"):
+    with patch("hflow.desktop.settings_controller.validate_processing_device", return_value=(True, "")), \
+         patch("hflow.desktop.settings_controller.desktop_settings.save_settings"):
         assert SettingsController(host).set_processing_device("gpu")
     assert events == ["switch", "settings"]
 
@@ -407,8 +407,8 @@ def test_gpu_options_use_resolved_hardware_not_only_saved_preference(device, cud
     )
     host = SimpleNamespace(_settings_processing_device=device, _settings_language="vi",
                            _startup_hardware_resolved=not pending, _hardware_capabilities=capabilities)
-    assert HaizFlowController._project_gpu_available(host) is expected
-    choices = HaizFlowController.speechRecognitionModelOptions.fget(host)
+    assert HFlowController._project_gpu_available(host) is expected
+    choices = HFlowController.speechRecognitionModelOptions.fget(host)
     assert choices[0]["available"]
     assert choices[1]["available"] is expected
     assert choices[2]["available"] is (expected and (pending or vram >= 5))
@@ -420,9 +420,9 @@ def test_api_guide_navigates_to_single_owner_before_opening():
         apiKeySettingsRequested=SimpleNamespace(emit=lambda provider: events.append(("navigate", provider))),
         apiKeyGuideRequested=SimpleNamespace(emit=lambda provider: events.append(("guide", provider))),
     )
-    HaizFlowController.requestApiKeyGuide(host, "zernio")
+    HFlowController.requestApiKeyGuide(host, "zernio")
     assert events == [("navigate", "zernio"), ("guide", "zernio")]
-    HaizFlowController.requestApiKeyGuide(host, "unknown")
+    HFlowController.requestApiKeyGuide(host, "unknown")
     assert len(events) == 2
 
 
@@ -434,8 +434,8 @@ def test_vieneu_language_guard_blocks_manual_before_saving_or_running(provider, 
         _processing_queue=SimpleNamespace(contains=lambda _: False),
         _normalized_tts_provider=lambda _language, value: value, appAlertRequested=Mock(),
         runManualTool=Mock(), _settings_language="vi")
-    with patch("haizflow.desktop.qml_controller.video_store.update_video") as save:
-        assert not HaizFlowController.configureAndRunManualVoice(
+    with patch("hflow.desktop.qml_controller.video_store.update_video") as save:
+        assert not HFlowController.configureAndRunManualVoice(
             host, provider, "vieneu:Hải Đăng", "all", "", "single")
     save.assert_not_called()
     host.runManualTool.assert_not_called()
@@ -444,7 +444,7 @@ def test_vieneu_language_guard_blocks_manual_before_saving_or_running(provider, 
 
 @pytest.mark.parametrize("provider", ["vieneu", "vieneu-gpu"])
 def test_vieneu_chinese_batch_config_is_rejected_before_staging_assets(provider):
-    from haizflow.services.batch_settings import config_for
+    from hflow.services.batch_settings import config_for
     with pytest.raises(ValueError, match="tiếng Trung"):
         config_for({"targetLanguage": "zh", "ttsProvider": provider,
                     "ttsVoice": "vieneu:Hải Đăng"})
@@ -457,7 +457,7 @@ def test_stored_unsupported_vieneu_config_blocks_preflight_without_mutation(prov
     host = SimpleNamespace(_settings_processing_device="cpu", _settings_language="vi",
         appAlertRequested=Mock(), _processing_queue=SimpleNamespace(contains=lambda _: False))
     video = SimpleNamespace(video_id="video", status="pending", target_language="zh", tts_provider=provider)
-    with patch("haizflow.desktop.project_commands_controller.video_store.update_video") as save:
+    with patch("hflow.desktop.project_commands_controller.video_store.update_video") as save:
         assert not ProjectCommandsController._resources_ready_for_videos(host, [video])
     save.assert_not_called()
     host.appAlertRequested.emit.assert_called_once()

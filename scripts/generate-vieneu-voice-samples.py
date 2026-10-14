@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def sample_details(path: Path) -> dict:
     import numpy as np
 
-    from haizflow.utils.ffmpeg import _binary, get_video_duration
+    from hflow.utils.ffmpeg import _binary, get_video_duration
 
     duration = get_video_duration(str(path)) if path.is_file() else 0
     if not 8 <= duration <= 120:
@@ -54,18 +54,18 @@ def main() -> int:
     sys.path.insert(0, str(ROOT / "src"))
     (ROOT / "build").mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="vieneu-samples-", dir=ROOT / "build") as temporary:
-        os.environ.update(HAIZFLOW_SMOKE_TEST="1", HAIZFLOW_HOME=temporary,
+        os.environ.update(HFLOW_SMOKE_TEST="1", HFLOW_HOME=temporary,
                           RUNTIME_DATA_DIR=str(Path(temporary) / "data"), MODELS_DIR=str(args.models_root.resolve()),
                           HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1")
-        from haizflow import config
+        from hflow import config
 
         # Development-only shared read-only models; keep all mutable runtime
         # data under the temporary home instead of relaxing production paths.
         config.MODELS_DIR = str(args.models_root.resolve())
-        from haizflow.core.vieneu_voices import VIENEU_VOICES, sample_voice_id
-        from haizflow.pipeline.vieneu_tts import synthesize_batch_to_mp3
+        from hflow.core.vieneu_voices import VIENEU_VOICES, sample_voice_id
+        from hflow.pipeline.vieneu_tts import synthesize_batch_to_mp3
 
-        samples = ROOT / "src/haizflow/desktop/assets/voice_samples"
+        samples = ROOT / "src/hflow/desktop/assets/voice_samples"
         manifest = json.loads((samples / "samples.json").read_text(encoding="utf-8"))
         requests = []
         entries = []

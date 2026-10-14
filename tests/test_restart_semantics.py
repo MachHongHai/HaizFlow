@@ -13,13 +13,13 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.pipeline import process_video
-from haizflow.pipeline.process_video import _checkpoint_valid
-from haizflow.pipeline.tts_quality import SHORT_PHRASE_VERSION,VOICE_AUDIO_VERSION
-from haizflow.desktop.localization import QMessageBox
-from haizflow.desktop.project_commands_controller import ProjectCommandsController
-from haizflow.schemas.video import VideoConfig
-from haizflow.services import video_store, project_store
+from hflow.pipeline import process_video
+from hflow.pipeline.process_video import _checkpoint_valid
+from hflow.pipeline.tts_quality import SHORT_PHRASE_VERSION,VOICE_AUDIO_VERSION
+from hflow.desktop.localization import QMessageBox
+from hflow.desktop.project_commands_controller import ProjectCommandsController
+from hflow.schemas.video import VideoConfig
+from hflow.services import video_store, project_store
 
 
 class RestartCheckpointTests(unittest.TestCase):
@@ -70,11 +70,11 @@ class RestartCheckpointTests(unittest.TestCase):
                     return_value=video,
                 ),
                 mock.patch(
-                    "haizflow.desktop.project_commands_controller.video_store.get_video",
+                    "hflow.desktop.project_commands_controller.video_store.get_video",
                     return_value=video,
                 ),
-                mock.patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update_video,
-                mock.patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
+                mock.patch("hflow.desktop.project_commands_controller.video_store.update_video") as update_video,
+                mock.patch("hflow.desktop.project_commands_controller.video_store.log_to_video"),
             ):
                 approved = controller.approve_translation_review(payload)
 
@@ -111,11 +111,11 @@ class RestartCheckpointTests(unittest.TestCase):
 
             with (
                 mock.patch(
-                    "haizflow.desktop.project_commands_controller.video_store.get_video",
+                    "hflow.desktop.project_commands_controller.video_store.get_video",
                     return_value=video,
                 ),
-                mock.patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update_video,
-                mock.patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
+                mock.patch("hflow.desktop.project_commands_controller.video_store.update_video") as update_video,
+                mock.patch("hflow.desktop.project_commands_controller.video_store.log_to_video"),
             ):
                 approved = controller.approve_translation_review(
                     '[{"start": 0, "end": 1, "text": "edited after auto"}]'
@@ -164,11 +164,11 @@ class RestartCheckpointTests(unittest.TestCase):
 
             with (
                 mock.patch(
-                    "haizflow.desktop.project_commands_controller.video_store.get_video",
+                    "hflow.desktop.project_commands_controller.video_store.get_video",
                     return_value=video,
                 ),
-                mock.patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update_video,
-                mock.patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
+                mock.patch("hflow.desktop.project_commands_controller.video_store.update_video") as update_video,
+                mock.patch("hflow.desktop.project_commands_controller.video_store.log_to_video"),
             ):
                 approved = controller.approve_translation_review(
                     '[{"start": 0, "end": 1.8, "text": "same voice", '
@@ -208,11 +208,11 @@ class RestartCheckpointTests(unittest.TestCase):
 
             with (
                 mock.patch(
-                    "haizflow.desktop.project_commands_controller.video_store.get_video",
+                    "hflow.desktop.project_commands_controller.video_store.get_video",
                     return_value=video,
                 ),
-                mock.patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update_video,
-                mock.patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
+                mock.patch("hflow.desktop.project_commands_controller.video_store.update_video") as update_video,
+                mock.patch("hflow.desktop.project_commands_controller.video_store.log_to_video"),
             ):
                 approved = controller.approve_translation_review(
                     '[{"start": 0, "end": 1, "text": "new voice"}]'
@@ -408,7 +408,7 @@ class RestartCheckpointTests(unittest.TestCase):
 class ProjectCommandStateTests(unittest.TestCase):
     def test_resume_keeps_paused_status_until_enqueue_clears_registry_flags(self):
         video = SimpleNamespace(video_id="video-paused", status="paused")
-        from haizflow.services.processing_resume import configuration_snapshot
+        from hflow.services.processing_resume import configuration_snapshot
 
         video.processing_configuration = configuration_snapshot(video, "cpu")
         queue = SimpleNamespace(contains=mock.Mock(return_value=False))
@@ -422,11 +422,11 @@ class ProjectCommandStateTests(unittest.TestCase):
 
         with (
             mock.patch(
-                "haizflow.desktop.project_commands_controller.video_store.get_video",
+                "hflow.desktop.project_commands_controller.video_store.get_video",
                 return_value=video,
             ),
-            mock.patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update_video,
-            mock.patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
+            mock.patch("hflow.desktop.project_commands_controller.video_store.update_video") as update_video,
+            mock.patch("hflow.desktop.project_commands_controller.video_store.log_to_video"),
         ):
             controller.resume_selected_video()
 
@@ -450,19 +450,19 @@ class ProjectCommandStateTests(unittest.TestCase):
 
         with (
             mock.patch(
-                "haizflow.desktop.project_commands_controller.video_store.get_video",
+                "hflow.desktop.project_commands_controller.video_store.get_video",
                 return_value=video,
             ),
             mock.patch(
-                "haizflow.desktop.project_commands_controller.QMessageBox.question",
+                "hflow.desktop.project_commands_controller.QMessageBox.question",
                 return_value=QMessageBox.StandardButton.Yes,
             ),
             mock.patch(
-                "haizflow.desktop.project_commands_controller.video_store.prepare_video_restart",
+                "hflow.desktop.project_commands_controller.video_store.prepare_video_restart",
                 return_value=restarted,
             ) as prepare_restart,
-            mock.patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
-            mock.patch("haizflow.desktop.project_commands_controller.runtime_profile") as profile,
+            mock.patch("hflow.desktop.project_commands_controller.video_store.log_to_video"),
+            mock.patch("hflow.desktop.project_commands_controller.runtime_profile") as profile,
         ):
             profile.return_value.summary = "test runtime"
             controller.restart_selected_video()
@@ -480,7 +480,7 @@ class ProjectCommandStateTests(unittest.TestCase):
         )
         controller = ProjectCommandsController(host)
 
-        with mock.patch("haizflow.desktop.project_commands_controller.video_store.get_video") as get_video:
+        with mock.patch("hflow.desktop.project_commands_controller.video_store.get_video") as get_video:
             saved = controller.persist_selected_video_settings("video-a")
 
         self.assertFalse(saved)

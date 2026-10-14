@@ -9,8 +9,8 @@ def check_confirmation():
     from PySide6.QtGui import QGuiApplication
     from PySide6.QtQml import QQmlComponent, QQmlEngine
     from PySide6.QtTest import QTest
-    from haizflow.desktop.qml_controller import HaizFlowController
-    from haizflow.desktop.localization import QMessageBox
+    from hflow.desktop.qml_controller import HFlowController
+    from hflow.desktop.localization import QMessageBox
 
     app = QGuiApplication.instance() or QGuiApplication([])
     class Backend(QObject):
@@ -24,15 +24,15 @@ def check_confirmation():
         @Slot(bool)
         def respondToAppConfirmation(self, accepted):
             self.responses.append(accepted)
-            HaizFlowController.respondToAppConfirmation(self, accepted)
+            HFlowController.respondToAppConfirmation(self, accepted)
         @Slot()
         def request(self):
-            self.results.append(HaizFlowController._show_app_question(self, "Translate again", "Remove current voice?"))
+            self.results.append(HFlowController._show_app_question(self, "Translate again", "Remove current voice?"))
 
     backend = Backend()
     engine = QQmlEngine()
     engine.rootContext().setContextProperty("TestController", backend)
-    directory = Path(__file__).parents[1] / "src/haizflow/desktop/qml"
+    directory = Path(__file__).parents[1] / "src/hflow/desktop/qml"
     source = (directory / "Main.qml").read_text(encoding="utf-8")
     confirmation = source[source.index("    ConfirmDialog {\n        id: appConfirmationDialog"):].split("\n    Connections {", 1)[0]
     component = QQmlComponent(engine)
@@ -87,13 +87,13 @@ ApplicationWindow {{ width: 800; height: 600; visible: true
         # A response emitted synchronously before exec() is also a completed answer.
         backend.appConfirmationRequested.disconnect(open_dialog)
         backend.appConfirmationRequested.connect(lambda *_: backend.respondToAppConfirmation(False))
-        assert HaizFlowController._show_app_question(backend, "Early", "Cancel") == QMessageBox.StandardButton.Cancel
+        assert HFlowController._show_app_question(backend, "Early", "Cancel") == QMessageBox.StandardButton.Cancel
         app.processEvents()
         QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
         assert not backend.findChildren(QEventLoop)
         backend.appConfirmationRequested.disconnect()
         backend.appConfirmationRequested.connect(lambda *_: QTimer.singleShot(20, app.aboutToQuit.emit))
-        assert HaizFlowController._show_app_question(backend, "Shutdown", "Cancel") == QMessageBox.StandardButton.Cancel
+        assert HFlowController._show_app_question(backend, "Shutdown", "Cancel") == QMessageBox.StandardButton.Cancel
         assert backend._confirmation_loop is None
     finally:
         window.close()

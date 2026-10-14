@@ -12,12 +12,12 @@ import json
 import re
 from pathlib import Path
 
-from haizflow.desktop.catalog import OMNIVOICE_TTS_VOICES
-from haizflow.pipeline.omnivoice_tts import clear_runtime, synthesize_to_mp3
+from hflow.desktop.catalog import OMNIVOICE_TTS_VOICES
+from hflow.pipeline.omnivoice_tts import clear_runtime, synthesize_to_mp3
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SAMPLE_ROOT = ROOT / "src" / "haizflow" / "desktop" / "assets" / "voice_samples"
+SAMPLE_ROOT = ROOT / "src" / "hflow" / "desktop" / "assets" / "voice_samples"
 MANIFEST_PATH = SAMPLE_ROOT / "samples.json"
 
 

@@ -4,8 +4,8 @@ from unittest.mock import patch
 
 import srt
 
-from haizflow.pipeline import render
-from haizflow.schemas.video import SubtitleStyle
+from hflow.pipeline import render
+from hflow.schemas.video import SubtitleStyle
 
 
 def test_width_and_height_change_phrases_but_preserve_the_word_clock(tmp_path):
@@ -42,7 +42,7 @@ def test_width_and_height_change_phrases_but_preserve_the_word_clock(tmp_path):
 
 
 def test_overlay_keeps_visible_frame_while_reconfiguring():
-    from haizflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
+    from hflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
 
     renderer = SubtitleOverlayRenderer()
     try:
@@ -85,7 +85,7 @@ def test_caption_capacity_measures_glyph_width_not_character_count():
 
 
 def test_caption_width_measurement_matches_libass_font_metrics(tmp_path):
-    from haizflow.desktop.subtitle_overlay_renderer import export_events, rasterize
+    from hflow.desktop.subtitle_overlay_renderer import export_events, rasterize
 
     text = "NHUNG NGUOI BAN DANG NOI CHUYEN"
     path, _exact = render._font_path_details("Bangers", False, False)

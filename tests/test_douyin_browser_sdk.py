@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-from haizflow.vendor.douyin_browser_sdk import CAPTURE_INIT_SCRIPT, SIGN_SCRIPT
+from hflow.vendor.douyin_browser_sdk import CAPTURE_INIT_SCRIPT, SIGN_SCRIPT
 
 
 def test_capture_preserves_sdk_bytes_and_never_sends_probe_to_network():
@@ -32,9 +32,9 @@ def test_capture_preserves_sdk_bytes_and_never_sends_probe_to_network():
       const signed = await sign(input);
       assert.equal(signed, input.url + '&msToken=sealed%2B%2F&a_bogus=a%2Bb&uifid=visitor&timestamp=1&x-secsdk-web-signature=sig');
       assert.deepEqual(sent, ['https://www.douyin.com/background']);
-      assert.equal(window.__haizflowDouyinSign.active, false);
+      assert.equal(window.__hflowDouyinSign.active, false);
       // Both fetch and XHR are captured only for the selected endpoint and ID.
-      const state = window.__haizflowDouyinSign;
+      const state = window.__hflowDouyinSign;
       state.active = true;
       await belowSDK('https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=43');
       const xhr = new XMLHttpRequest();

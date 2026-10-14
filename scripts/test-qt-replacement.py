@@ -22,8 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test(core: Path) -> dict:
     core = core.resolve()
-    if not (core / "HaizFlowCore.exe").is_file():
-        raise ValueError("A frozen HaizFlowCore artifact is required.")
+    if not (core / "HFlowCore.exe").is_file():
+        raise ValueError("A frozen HFlowCore artifact is required.")
     parent = ROOT / "build/qt-replacement-tests"
     parent.mkdir(parents=True, exist_ok=True)
     # Windows startup-probe children can briefly keep the fixture cwd open
@@ -43,13 +43,13 @@ def test(core: Path) -> dict:
         if changed_hash == original_hash:
             raise ValueError("Test did not change the DLL checksum.")
         environment = os.environ.copy()
-        environment.update(HAIZFLOW_SMOKE_TEST="1", QT_QPA_PLATFORM="offscreen",
-                           HAIZFLOW_HOME=str(fixture / "runtime"),
+        environment.update(HFLOW_SMOKE_TEST="1", QT_QPA_PLATFORM="offscreen",
+                           HFLOW_HOME=str(fixture / "runtime"),
                            RUNTIME_DATA_DIR=str(fixture / "runtime/data"),
-                           HAIZFLOW_RESOURCE_ROOT=str(fixture / "resources"))
-        for name in ("HAIZFLOW_BOOTSTRAP_ROOT", "HAIZFLOW_HEALTH_TOKEN", "HAIZFLOW_HEALTH_ATTEMPT"):
+                           HFLOW_RESOURCE_ROOT=str(fixture / "resources"))
+        for name in ("HFLOW_BOOTSTRAP_ROOT", "HFLOW_HEALTH_TOKEN", "HFLOW_HEALTH_ATTEMPT"):
             environment.pop(name, None)
-        process = subprocess.run([str(copy / "HaizFlowCore.exe"), "--ui-smoke-test"],
+        process = subprocess.run([str(copy / "HFlowCore.exe"), "--ui-smoke-test"],
                                  cwd=copy, env=environment, capture_output=True, timeout=90,
                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), check=False)
         if process.returncode:

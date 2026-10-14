@@ -13,10 +13,10 @@ from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
 
-from haizflow.desktop.input_method_commit_filter import InputMethodCommitFilter
+from hflow.desktop.input_method_commit_filter import InputMethodCommitFilter
 
 
-QML_DIR = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml"
+QML_DIR = Path(__file__).resolve().parents[1] / "src/hflow/desktop/qml"
 
 
 class AlertsFocusUiTests(unittest.TestCase):

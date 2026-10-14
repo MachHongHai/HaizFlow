@@ -13,12 +13,12 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from haizflow.services.resource_packs import ResourcePackDefinition, ResourcePackError, ResourcePackManager
+from hflow.services.resource_packs import ResourcePackDefinition, ResourcePackError, ResourcePackManager
 
 
 class ConsoleTests(unittest.TestCase):
     def test_background_process_calls_request_no_console(self):
-        for path in (ROOT / "src/haizflow").rglob("*.py"):
+        for path in (ROOT / "src/hflow").rglob("*.py"):
             tree = ast.parse(path.read_text(encoding="utf-8-sig"))
             for node in ast.walk(tree):
                 if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
@@ -34,11 +34,11 @@ class ConsoleTests(unittest.TestCase):
                     self.assertIn("creationflags", [keyword.arg for keyword in node.keywords])
 
     def test_pydub_adapter_is_scoped_and_preserves_existing_flags(self):
-        from haizflow.utils import audio
+        from hflow.utils import audio
         from pydub import audio_segment, utils
 
         original = subprocess.Popen
-        with patch("haizflow.utils.media_subprocess.subprocess.Popen") as popen, \
+        with patch("hflow.utils.media_subprocess.subprocess.Popen") as popen, \
                 patch.object(subprocess, "CREATE_NO_WINDOW", 0x08000000, create=True):
             audio_segment.subprocess.Popen(["ffmpeg"], creationflags=8)
             self.assertEqual(popen.call_args.kwargs["creationflags"], 0x08000008)
@@ -48,7 +48,7 @@ class ConsoleTests(unittest.TestCase):
         self.assertIs(subprocess.Popen, original)
 
     def test_library_probe_and_decode_calls_are_also_hidden(self):
-        from haizflow.utils.audio import _MediaSubprocess
+        from hflow.utils.audio import _MediaSubprocess
 
         with patch.object(subprocess, "CREATE_NO_WINDOW", 0x08000000, create=True):
             for name in ("run", "check_output", "call", "check_call"):
@@ -58,7 +58,7 @@ class ConsoleTests(unittest.TestCase):
 
     @unittest.skipUnless(sys.platform == "win32", "Windows child-console regression")
     def test_actual_child_has_no_console(self):
-        from haizflow.utils.audio import _hidden_popen
+        from hflow.utils.audio import _hidden_popen
 
         process = _hidden_popen([sys.executable, "-c",
                                 "import ctypes; print(ctypes.windll.kernel32.GetConsoleWindow())"],
@@ -70,46 +70,46 @@ class ConsoleTests(unittest.TestCase):
 
 class OfflinePackTests(unittest.TestCase):
     def test_production_engine_uses_validated_core_root_and_moved_models(self):
-        from haizflow.core import paths
-        from haizflow.update.state import provision
+        from hflow.core import paths
+        from hflow.update.state import provision
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             app = root / "app"
             resources = root / "another-drive-resources"
-            engine = resources / "engines/cpu/3/HaizFlowEngine.exe"
+            engine = resources / "engines/cpu/3/HFlowEngine.exe"
             engine.parent.mkdir(parents=True)
             engine.touch()
             provision(app)
             (app / "runtime/data").mkdir(parents=True)
             (app / "runtime/data/resource-storage.json").write_text(json.dumps({"version": 1, "path": str(resources)}))
-            environment = {"HAIZFLOW_ENGINE_APP_ROOT": str(app), "HAIZFLOW_HOME": "C:/wrong/home",
+            environment = {"HFLOW_ENGINE_APP_ROOT": str(app), "HFLOW_HOME": "C:/wrong/home",
                            "MODELS_DIR": "C:/wrong/models", "RUNTIME_DATA_DIR": "C:/wrong/data"}
             with patch.dict(os.environ, environment, clear=True), patch.object(sys, "frozen", True, create=True), \
                     patch.object(sys, "executable", str(engine)):
                 self.assertEqual(paths.install_root(), app.resolve())
                 self.assertEqual(paths.models_dir(), resources.resolve() / "models")
                 self.assertEqual(paths.runtime_data_dir(), app.resolve() / "runtime/data")
-                os.environ.pop("HAIZFLOW_ENGINE_APP_ROOT")
-                with self.assertRaisesRegex(ValueError, "HaizFlow"):
+                os.environ.pop("HFLOW_ENGINE_APP_ROOT")
+                with self.assertRaisesRegex(ValueError, "HFlow"):
                     paths.install_root()
 
     def test_core_cleans_inherited_overrides_before_starting_engine(self):
-        from haizflow.core import paths
+        from hflow.core import paths
 
-        environment = {"HAIZFLOW_HOME": "C:/wrong/home", "MODELS_DIR": "C:/wrong/models",
-                       "HAIZFLOW_ENGINE_APP_ROOT": "C:/wrong/app", "UNRELATED_SETTING": "keep"}
+        environment = {"HFLOW_HOME": "C:/wrong/home", "MODELS_DIR": "C:/wrong/models",
+                       "HFLOW_ENGINE_APP_ROOT": "C:/wrong/app", "UNRELATED_SETTING": "keep"}
         with patch.dict(os.environ, environment, clear=True), patch.object(paths, "is_frozen", return_value=True), \
-                patch.object(paths, "install_root", return_value=Path("D:/SelectedHaizFlow")):
+                patch.object(paths, "install_root", return_value=Path("D:/SelectedHFlow")):
             worker = paths.engine_environment()
-            self.assertEqual(worker["HAIZFLOW_ENGINE_APP_ROOT"], str(Path("D:/SelectedHaizFlow")))
+            self.assertEqual(worker["HFLOW_ENGINE_APP_ROOT"], str(Path("D:/SelectedHFlow")))
             self.assertNotIn("MODELS_DIR", worker)
-            self.assertNotIn("HAIZFLOW_HOME", worker)
+            self.assertNotIn("HFLOW_HOME", worker)
             self.assertEqual(worker["UNRELATED_SETTING"], "keep")
-            self.assertEqual(os.environ["HAIZFLOW_HOME"], environment["HAIZFLOW_HOME"])
+            self.assertEqual(os.environ["HFLOW_HOME"], environment["HFLOW_HOME"])
 
     def test_frozen_core_reads_catalog_beside_executable_not_only_internal(self):
-        from haizflow.services.resource_packs import _load_release_pack_metadata, built_in_pack_definitions
+        from hflow.services.resource_packs import _load_release_pack_metadata, built_in_pack_definitions
 
         with tempfile.TemporaryDirectory() as temporary:
             core = Path(temporary)
@@ -120,8 +120,8 @@ class OfflinePackTests(unittest.TestCase):
                 download_size=100, installed_size=200)})
             (core / "RESOURCE-PACKS.json").write_text(json.dumps(payload), encoding="utf-8")
             (internal / "resource-pack-manifest.json").write_text("[]", encoding="utf-8")
-            with patch("haizflow.core.paths.project_root", return_value=core), \
-                    patch("haizflow.core.paths.bundle_root", return_value=internal):
+            with patch("hflow.core.paths.project_root", return_value=core), \
+                    patch("hflow.core.paths.bundle_root", return_value=internal):
                 self.assertEqual(_load_release_pack_metadata(), payload["packs"])
                 definitions = {item.pack_id: item for item in built_in_pack_definitions()}
                 self.assertEqual(definitions["engine-cpu-py313"].offline_archive, "engine-cpu-py313-2.zip")
@@ -132,7 +132,7 @@ class OfflinePackTests(unittest.TestCase):
             root = Path(temporary)
             companion = root / "tài nguyên"
             companion.mkdir()
-            with patch("haizflow.services.resource_packs.install_root", return_value=root):
+            with patch("hflow.services.resource_packs.install_root", return_value=root):
                 for encoding in ("utf-8-sig", "utf-16"):
                     (root / "offline-resources.ini").write_text(
                         f"[resources]\npath={companion}\n", encoding=encoding)
@@ -147,7 +147,7 @@ class OfflinePackTests(unittest.TestCase):
         archive = companion / "engine-cpu-py313-2.zip"
         engine = dict(pack_id="engine-cpu-py313", profile="cpu", version="2", protocol_version=1,
                       smoke_command=["engine.exe", "--smoke"])
-        from haizflow.services.resource_packs import ENGINE_REQUIRED_COMMANDS
+        from hflow.services.resource_packs import ENGINE_REQUIRED_COMMANDS
         for command in ENGINE_REQUIRED_COMMANDS["engine-cpu-py313"]:
             engine.setdefault(command, ["engine.exe", "--" + command])
         with zipfile.ZipFile(archive, "w") as package:
@@ -166,9 +166,9 @@ class OfflinePackTests(unittest.TestCase):
             manager = ResourcePackManager((definition,))
             from contextlib import ExitStack
             with ExitStack() as stack:
-                stack.enter_context(patch("haizflow.services.resource_packs.install_root", return_value=root))
-                stack.enter_context(patch("haizflow.services.resource_packs.engines_dir", return_value=root / "engines"))
-                stack.enter_context(patch("haizflow.services.resource_packs.resource_packages_dir", return_value=root / "packages"))
+                stack.enter_context(patch("hflow.services.resource_packs.install_root", return_value=root))
+                stack.enter_context(patch("hflow.services.resource_packs.engines_dir", return_value=root / "engines"))
+                stack.enter_context(patch("hflow.services.resource_packs.resource_packages_dir", return_value=root / "packages"))
                 stack.enter_context(patch.object(manager, "_verify_engine_staging", return_value=engine))
                 stack.enter_context(patch.object(manager, "requirement_summary", return_value={"freeBytes": 10**12, "requiredBytes": 1}))
                 network = stack.enter_context(patch("urllib.request.urlopen", side_effect=AssertionError("Network forbidden")))

@@ -35,7 +35,7 @@ class ReleaseToolingTests(unittest.TestCase):
             artifact = root / "engine"
             artifact.mkdir()
             (artifact / "engine.json").write_text("{}", encoding="utf-8")
-            (artifact / "HaizFlowEngine.exe").write_bytes(b"engine")
+            (artifact / "HFlowEngine.exe").write_bytes(b"engine")
             (artifact / "_internal").mkdir()
             (artifact / "_internal/data.bin").write_bytes(b"payload" * 100000)
             output = root / "engine.zip"
@@ -59,9 +59,9 @@ class ReleaseToolingTests(unittest.TestCase):
 
     def test_upgrade_space_only_counts_core_copies_and_safety_headroom(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            artifact = Path(temp_dir) / "HaizFlow"
+            artifact = Path(temp_dir) / "HFlow"
             artifact.mkdir()
-            (artifact / "HaizFlow.exe").write_bytes(b"a" * 1024)
+            (artifact / "HFlow.exe").write_bytes(b"a" * 1024)
             (artifact / "payload.bin").write_bytes(b"b" * 2048)
             requirements = release_preflight.requirements(artifact, upgrade=True)
 
@@ -82,9 +82,9 @@ class ReleaseToolingTests(unittest.TestCase):
 
     def test_embedded_storage_manifest_counts_its_own_final_size(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            artifact = Path(temp_dir) / "HaizFlow"
+            artifact = Path(temp_dir) / "HFlow"
             artifact.mkdir()
-            (artifact / "HaizFlow.exe").write_bytes(b"release")
+            (artifact / "HFlow.exe").write_bytes(b"release")
             manifest = artifact / "INSTALL-REQUIREMENTS.json"
             payload, serialized = release_preflight.requirements_with_embedded_manifest(
                 artifact,
@@ -102,12 +102,12 @@ class ReleaseToolingTests(unittest.TestCase):
             version = root / "version.txt"
             self.assertEqual(generate_version.main(["--output", str(version)]), 0)
 
-            icon = ROOT / "src" / "haizflow" / "desktop" / "assets" / "branding" / "haizflow.ico"
+            icon = ROOT / "src" / "hflow" / "desktop" / "assets" / "branding" / "hflow.ico"
             self.assertEqual(icon.read_bytes()[:4], b"\x00\x00\x01\x00")
             self.assertIn("VSVersionInfo(", version.read_text(encoding="utf-8"))
 
     def test_desktop_brand_asset_uses_the_supplied_warm_mark(self):
-        mark_path = ROOT / "src" / "haizflow" / "desktop" / "assets" / "branding" / "haizflow-mark.png"
+        mark_path = ROOT / "src" / "hflow" / "desktop" / "assets" / "branding" / "hflow-mark.png"
         with Image.open(mark_path) as mark:
             self.assertEqual(mark.size, (1254, 1254))
             pixels = list(mark.convert("RGBA").get_flattened_data())
@@ -115,7 +115,7 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertTrue(any(20 < r < 100 and g < 55 and b < 55 and a > 0 for r, g, b, a in pixels))
 
     def test_desktop_branding_assets_are_packaged_from_the_runtime_location(self):
-        main_source = (ROOT / "src" / "haizflow" / "desktop" / "main.py").read_text(encoding="utf-8")
+        main_source = (ROOT / "src" / "hflow" / "desktop" / "main.py").read_text(encoding="utf-8")
         build_script = (ROOT / "scripts" / "build-exe.ps1").read_text(encoding="utf-8")
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
@@ -124,26 +124,26 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn("$BrandingAssetsPath", build_script)
         self.assertNotIn("generate-brand-assets.py", build_script)
         self.assertNotIn("generate-app-icon.py", build_script)
-        self.assertIn('"haizflow-mark.png", "haizflow.ico"', build_script)
-        self.assertIn('"assets/branding/haizflow.ico"', pyproject)
+        self.assertIn('"hflow-mark.png", "hflow.ico"', build_script)
+        self.assertIn('"assets/branding/hflow.ico"', pyproject)
 
     def test_qml_icons_and_translation_catalog_are_packaged(self):
         build_script = (ROOT / "scripts" / "build-exe.ps1").read_text(encoding="utf-8")
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-        catalog = ROOT / "src" / "haizflow" / "desktop" / "translations" / "haizflow_en.qm"
+        catalog = ROOT / "src" / "hflow" / "desktop" / "translations" / "hflow_en.qm"
 
         self.assertTrue(catalog.is_file())
-        self.assertIn("$QmlPath;haizflow\\desktop\\qml", build_script)
-        self.assertIn("$TranslationsPath;haizflow\\desktop\\translations", build_script)
+        self.assertIn("$QmlPath;hflow\\desktop\\qml", build_script)
+        self.assertIn("$TranslationsPath;hflow\\desktop\\translations", build_script)
         self.assertIn('"qml/*.qml"', pyproject)
         self.assertIn('"qml/icons/*.svg"', pyproject)
         self.assertIn('"translations/*.qm"', pyproject)
 
     def test_manifest_verification_detects_the_final_artifact_set(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            artifact = Path(temp_dir) / "HaizFlow"
+            artifact = Path(temp_dir) / "HFlow"
             artifact.mkdir()
-            (artifact / "HaizFlow.exe").write_bytes(b"release")
+            (artifact / "HFlow.exe").write_bytes(b"release")
             (artifact / "INSTALL-REQUIREMENTS.json").write_text(
                 json.dumps({"required_free_bytes": 1}), encoding="utf-8"
             )
@@ -154,7 +154,7 @@ class ReleaseToolingTests(unittest.TestCase):
                 finalize_release.verify_manifest(artifact)
 
     def test_installer_preserves_runtime_and_requires_writable_target(self):
-        installer = (ROOT / "installer" / "HaizFlow.iss").read_text(encoding="utf-8")
+        installer = (ROOT / "installer" / "HFlow.iss").read_text(encoding="utf-8")
         self.assertNotIn('Excludes: "runtime\\*"', installer)
         self.assertIn(
             'Source: "{#SourceDir}\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs',
@@ -191,7 +191,7 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn("DelTree(ExpandConstant('{app}\\runtime')", installer)
 
     def test_installer_targets_supported_windows_and_uses_generated_icon(self):
-        installer = (ROOT / "installer" / "HaizFlow.iss").read_text(encoding="utf-8")
+        installer = (ROOT / "installer" / "HFlow.iss").read_text(encoding="utf-8")
         build_script = (ROOT / "scripts" / "build-installer.ps1").read_text(encoding="utf-8")
 
         self.assertIn("ArchitecturesAllowed=x64compatible", installer)
@@ -205,7 +205,7 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn("WizardSmallImageFile={#HeaderArtworkPath}", installer)
         self.assertIn("System requirements", installer)
         self.assertIn("CPU mode works without an NVIDIA GPU", installer)
-        self.assertIn("CloseApplicationsFilter=HaizFlow.exe", installer)
+        self.assertIn("CloseApplicationsFilter=HFlow.exe", installer)
         self.assertIn("SetupLogging=yes", installer)
         # Inno treats a line beginning with '[' as a section header, even
         # inside Pascal Code. Format argument arrays must stay on that line.
@@ -221,7 +221,7 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertNotIn("/DCpuModelBytes", build_script)
         self.assertNotIn("/DGpuModelBytes", build_script)
         self.assertIn("function PrepareToInstall(var NeedsRestart: Boolean): String;", installer)
-        self.assertIn("FileExists(AddBackslash(Path) + 'HaizFlow.exe') and", installer)
+        self.assertIn("FileExists(AddBackslash(Path) + 'HFlow.exe') and", installer)
         self.assertIn("FileExists(AddBackslash(Path) + 'BUILD-INFO.json') and", installer)
         self.assertIn("DirExists(AddBackslash(Path) + '_internal');", installer)
         self.assertNotIn("DirExists(AddBackslash(Path) + 'runtime')", installer)
@@ -246,9 +246,9 @@ class ReleaseToolingTests(unittest.TestCase):
             self.assertIn("clean Git checkout", script)
             self.assertIn("--public-release", script)
         self.assertIn('"RESOURCE-PACKS.json") --strict', installer_build)
-        self.assertIn('else { "HaizFlow-$Version-Setup" }', installer_build)
+        self.assertIn('else { "HFlow-$Version-Setup" }', installer_build)
         self.assertNotIn("-UNSIGNED-Setup", installer_build)
-        self.assertIn('"HaizFlow-$Version-DEVELOPMENT-Setup"', installer_build)
+        self.assertIn('"HFlow-$Version-DEVELOPMENT-Setup"', installer_build)
         self.assertIn('Join-Path $PSScriptRoot "test-installer.ps1"', installer_build)
         self.assertIn('if (!$SkipInstallerSmokeTest) {', installer_build)
         self.assertNotIn('if ($EngineeringBuild -and !$SkipInstallerSmokeTest)', installer_build)
@@ -260,7 +260,7 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn('"/NOICONS"', installer_smoke)
         self.assertIn("AllowRegisteredInstall", installer_smoke)
         signing = (ROOT / "scripts/sign-windows.ps1").read_text(encoding="utf-8")
-        installer = (ROOT / "installer/HaizFlow.iss").read_text(encoding="utf-8")
+        installer = (ROOT / "installer/HFlow.iss").read_text(encoding="utf-8")
         self.assertIn("CertificateThumbprint", signing)
         self.assertIn('"/fd", "SHA256"', signing)
         self.assertIn("TimeStamperCertificate", signing)
@@ -308,7 +308,7 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn(llama_hash, engine_build)
         self.assertIn(llama_hash, cpu_lock)
         self.assertIn("Get-FileHash -LiteralPath $LlamaWheel -Algorithm SHA256", engine_build)
-        self.assertIn('$env:HAIZFLOW_HOME = $SmokeRoot', engine_build)
+        self.assertIn('$env:HFLOW_HOME = $SmokeRoot', engine_build)
         hook = (ROOT / "scripts/hooks/hook-rapidocr.py").read_text(encoding="utf-8")
         self.assertIn('includes=["**/*.yaml", "**/*.yml", "**/*.txt"]', hook)
         self.assertNotIn("*.onnx", hook)
@@ -344,7 +344,7 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertNotIn("--demucs-model", build_script)
         self.assertNotIn("--alignment-models", build_script)
         self.assertIn("PreFinalize = $true", build_script)
-        self.assertIn("$env:HAIZFLOW_HOME = $SmokeRoot", smoke_script)
+        self.assertIn("$env:HFLOW_HOME = $SmokeRoot", smoke_script)
         self.assertIn("$env:MODELS_DIR = $SmokeModels", smoke_script)
         self.assertIn("Wait-Process -Id $Process.Id -Timeout $TimeoutSeconds", smoke_script)
         self.assertIn("-RedirectStandardOutput $StandardOutput", smoke_script)
@@ -352,7 +352,7 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertNotIn('"--runtime-probe"', smoke_script)
         self.assertNotIn('"--demucs-separate"', smoke_script)
         self.assertLess(
-            smoke_script.index('$env:HAIZFLOW_SMOKE_TEST = "1"'),
+            smoke_script.index('$env:HFLOW_SMOKE_TEST = "1"'),
             smoke_script.index("Invoke-FrozenCheck -Arguments $ReleaseArguments"),
         )
         self.assertIn("qmllint.exe", test_script)
@@ -366,12 +366,12 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn('"CVE-2026-9856"', audit_script)
         self.assertNotIn("--ignore-vuln *", audit_script)
 
-        entrypoint = (ROOT / "haizflow_desktop.py").read_text(encoding="utf-8")
+        entrypoint = (ROOT / "hflow_desktop.py").read_text(encoding="utf-8")
         self.assertIn('"--demucs-separate"', entrypoint)
         self.assertIn("from demucs.separate import main as run_demucs", entrypoint)
 
     def test_transformer_model_loading_disables_remote_code_and_requires_safetensors(self):
-        worker = (ROOT / "src" / "haizflow" / "services" / "hymt2_worker.py").read_text(encoding="utf-8")
+        worker = (ROOT / "src" / "hflow" / "services" / "hymt2_worker.py").read_text(encoding="utf-8")
 
         self.assertGreaterEqual(worker.count("trust_remote_code=False"), 1)
         self.assertIn('"trust_remote_code": False', worker)
@@ -381,10 +381,10 @@ class ReleaseToolingTests(unittest.TestCase):
 
     def test_installer_eligibility_rejects_dirty_or_partial_artifacts(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            artifact = Path(temp_dir) / "HaizFlow"
+            artifact = Path(temp_dir) / "HFlow"
             model_root = artifact / "_internal" / "models"
             artifact.mkdir(parents=True)
-            (artifact / "HaizFlow.exe").write_bytes(b"release")
+            (artifact / "HFlow.exe").write_bytes(b"release")
 
             def clean_git(*arguments):
                 if arguments == ("rev-parse", "HEAD"):

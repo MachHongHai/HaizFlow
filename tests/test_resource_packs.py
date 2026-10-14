@@ -18,8 +18,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.services.model_bootstrap import ModelAsset
-from haizflow.services.resource_packs import ResourcePackDefinition, ResourcePackError, ResourcePackManager
+from hflow.services.model_bootstrap import ModelAsset
+from hflow.services.resource_packs import ResourcePackDefinition, ResourcePackError, ResourcePackManager
 
 
 def load_script(name: str):
@@ -37,7 +37,7 @@ finalize_pack = load_script("finalize-resource-pack.py")
 
 class ResourcePackManifestTests(unittest.TestCase):
     def test_windows_policy_block_is_reported_without_an_install_success_or_traceback(self):
-        from haizflow.services.resource_packs import ENGINE_REQUIRED_COMMANDS
+        from hflow.services.resource_packs import ENGINE_REQUIRED_COMMANDS
 
         manager = ResourcePackManager()
         definition = manager.definitions["engine-cpu-py313"]
@@ -56,7 +56,7 @@ class ResourcePackManifestTests(unittest.TestCase):
             process.returncode = 1
             process.communicate.return_value = ("", "Traceback: DLL load failed: An Application Control policy has blocked this file.")
             process.poll.return_value = 1
-            with patch("haizflow.services.resource_packs.subprocess.Popen", return_value=process):
+            with patch("hflow.services.resource_packs.subprocess.Popen", return_value=process):
                 with self.assertRaises(ResourcePackError) as caught:
                     manager._verify_engine_staging(definition, staging)
             self.assertIn("Windows Application Control", str(caught.exception))
@@ -64,8 +64,8 @@ class ResourcePackManifestTests(unittest.TestCase):
             self.assertFalse((staging / "installed.json").exists())
 
     def test_six_gib_demucs_gpu_keeps_cpu_ram_requirement(self):
-        from haizflow.core.hardware import HardwareCapabilities
-        from haizflow.desktop.resource_pack_controller import ResourcePackController
+        from hflow.core.hardware import HardwareCapabilities
+        from hflow.desktop.resource_pack_controller import ResourcePackController
 
         for ram, allowed in ((16, True), (8, False)):
             capabilities = HardwareCapabilities(
@@ -187,14 +187,14 @@ class ResourcePackManagerTests(unittest.TestCase):
             root = Path(temporary)
             missing = root / "removed/resources"
             manager = ResourcePackManager(())
-            with patch("haizflow.services.resource_packs.resource_storage_dir", return_value=missing):
+            with patch("hflow.services.resource_packs.resource_storage_dir", return_value=missing):
                 summary = manager.requirement_summary(())
             self.assertGreater(summary["freeBytes"], 0)
             self.assertFalse(missing.exists(), "A read-only preflight must not recreate storage")
 
     def test_engine_repair_reserves_staging_space_even_when_status_is_installed(self):
         from dataclasses import replace
-        from haizflow.services.resource_packs import MINIMUM_OPERATIONAL_FREE_BYTES
+        from hflow.services.resource_packs import MINIMUM_OPERATIONAL_FREE_BYTES
 
         manager = ResourcePackManager()
         pack_id = "engine-cpu-py313"
@@ -222,8 +222,8 @@ class ResourcePackManagerTests(unittest.TestCase):
             manager = ResourcePackManager((ResourcePackDefinition(
                 "model-test", "Test", "tools", "1", "voice", assets=(asset,)),))
             events = []
-            with patch("haizflow.services.resource_packs.models_dir", return_value=root), \
-                    patch("haizflow.services.resource_packs.install_model_assets") as install, \
+            with patch("hflow.services.resource_packs.models_dir", return_value=root), \
+                    patch("hflow.services.resource_packs.install_model_assets") as install, \
                     patch.object(manager, "requirement_summary") as summary:
                 manager.install("model-test", lambda _pack, event: events.append(event))
                 manager.install("model-test", lambda _pack, event: events.append(event))
@@ -250,9 +250,9 @@ class ResourcePackManagerTests(unittest.TestCase):
             definition = ResourcePackDefinition("model-test", "Test", "tools", "1", "voice", assets=(asset,))
             manager = ResourcePackManager((definition,))
             target = root / asset.relative_path
-            with patch("haizflow.services.resource_packs.models_dir", return_value=root), \
-                    patch("haizflow.services.resource_packs.resource_storage_dir", return_value=root), \
-                    patch("haizflow.services.model_bootstrap._open_download",
+            with patch("hflow.services.resource_packs.models_dir", return_value=root), \
+                    patch("hflow.services.resource_packs.resource_storage_dir", return_value=root), \
+                    patch("hflow.services.model_bootstrap._open_download",
                           side_effect=lambda *_: Response(b"data")) as download:
                 manager.install("model-test", lambda *_: None)
                 stamp = target.stat().st_mtime_ns
@@ -316,11 +316,11 @@ class ResourcePackManagerTests(unittest.TestCase):
         self.assertEqual(manager.external_engine_pack("recognition"), "")
         self.assertEqual(manager.warm_engine_pack("recognition"), "engine-test")
         command = manager.engine_command("engine-test", "rpc_command")
-        self.assertEqual(command[:3], [sys.executable, "-m", "haizflow.engine.main"])
+        self.assertEqual(command[:3], [sys.executable, "-m", "hflow.engine.main"])
         self.assertEqual(command[-1], "--rpc")
 
     def test_controller_presents_cpu_and_gpu_profiles_as_real_install_units(self):
-        from haizflow.desktop.resource_pack_controller import ResourcePackController
+        from hflow.desktop.resource_pack_controller import ResourcePackController
 
         class Host(QObject):
             appAlertRequested = Signal(str, str, str)
@@ -360,8 +360,8 @@ class ResourcePackManagerTests(unittest.TestCase):
         self.assertTrue(all(isinstance(row["totalInstalledBytes"], int) for row in rows))
 
     def test_eight_gib_nvidia_gpu_can_select_full_translation_pack(self):
-        from haizflow.core.hardware import HardwareCapabilities
-        from haizflow.desktop.resource_pack_controller import ResourcePackController
+        from hflow.core.hardware import HardwareCapabilities
+        from hflow.desktop.resource_pack_controller import ResourcePackController
 
         capabilities = HardwareCapabilities(
             cuda_available=True, cuda_name="RTX 4060 Laptop GPU",
@@ -390,9 +390,9 @@ class ResourcePackManagerTests(unittest.TestCase):
             (models / "shared" / "vad.bin").write_bytes(b"1234")
             (packages / "cached.zip").write_bytes(b"12")
             with (
-                patch("haizflow.services.resource_packs.models_dir", return_value=models),
-                patch("haizflow.services.resource_packs.engines_dir", return_value=engines),
-                patch("haizflow.services.resource_packs.resource_packages_dir", return_value=packages),
+                patch("hflow.services.resource_packs.models_dir", return_value=models),
+                patch("hflow.services.resource_packs.engines_dir", return_value=engines),
+                patch("hflow.services.resource_packs.resource_packages_dir", return_value=packages),
             ):
                 self.assertEqual(ResourcePackManager._resource_storage_bytes(), 6)
 
@@ -429,20 +429,20 @@ class ResourcePackManagerTests(unittest.TestCase):
             "processor",
             "engine",
             "cpu",
-            engine_modules=("module_that_does_not_exist_haizflow",),
+            engine_modules=("module_that_does_not_exist_hflow",),
         )
         manager = ResourcePackManager((definition,))
         with self.assertRaisesRegex(ResourcePackError, "manifest"):
             manager.install("engine-test", lambda *_args: None)
 
     def test_full_translation_parent_dispatch_keeps_gpu_selection_on_eight_gib_card(self):
-        from haizflow.services import translation
+        from hflow.services import translation
 
         manager = ResourcePackManager()
         profile = SimpleNamespace(key="cuda_low_memory", total_vram_gib=8)
         with (
-            patch("haizflow.services.resource_packs.ResourcePackManager", return_value=manager),
-            patch("haizflow.core.hardware.runtime_profile", return_value=profile),
+            patch("hflow.services.resource_packs.ResourcePackManager", return_value=manager),
+            patch("hflow.core.hardware.runtime_profile", return_value=profile),
             patch.object(manager, "_engine_is_valid", side_effect=lambda definition: definition.pack_id == "engine-cuda128-py313"),
             patch.object(manager, "engine_command", return_value=["gpu-engine", "--hymt2-worker", "--server"]) as command,
             patch.object(translation, "translation_model_preference", return_value="full"),
@@ -452,21 +452,21 @@ class ResourcePackManagerTests(unittest.TestCase):
             command.assert_called_once_with("engine-cuda128-py313", "hymt2_server")
 
     def test_frozen_translation_never_falls_back_to_core_without_matching_engine(self):
-        from haizflow.services import translation
+        from hflow.services import translation
 
         for preference in ("q4", "full", "auto"):
             with (
                 self.subTest(preference=preference),
                 patch.object(translation, "translation_model_preference", return_value=preference),
                 patch.object(translation, "runtime_profile", return_value=SimpleNamespace(key="cuda_low_memory")),
-                patch("haizflow.services.resource_packs.installed_engine_command", return_value=[]),
+                patch("hflow.services.resource_packs.installed_engine_command", return_value=[]),
                 patch.object(translation, "is_frozen", return_value=True),
             ):
                 with self.assertRaisesRegex(ResourcePackError, "HY-MT2"):
                     translation._worker_command()
 
     def test_model_download_runtime_respects_project_cpu_override_and_gpu_voice(self):
-        from haizflow.desktop.resource_pack_controller import ResourcePackController
+        from hflow.desktop.resource_pack_controller import ResourcePackController
 
         manager = ResourcePackManager()
         host = SimpleNamespace(_settings_processing_device="gpu", _speech_recognition_model="small-cpu",
@@ -492,7 +492,7 @@ class ResourcePackManagerTests(unittest.TestCase):
         manager = ResourcePackManager((definition,))
         with (
             patch.object(manager, "status", return_value="missing"),
-            patch("haizflow.services.resource_packs.shutil.disk_usage") as disk_usage,
+            patch("hflow.services.resource_packs.shutil.disk_usage") as disk_usage,
         ):
             disk_usage.return_value = type("Usage", (), {"free": 10_000})()
             summary = manager.requirement_summary(["model-test"])
@@ -519,7 +519,7 @@ class ResourcePackManagerTests(unittest.TestCase):
             (root / "a.bin").write_bytes(b"done")
             (root / "b.bin.part").write_bytes(b"123")
             manager = ResourcePackManager((definition,))
-            with patch("haizflow.services.resource_packs.models_dir", return_value=root):
+            with patch("hflow.services.resource_packs.models_dir", return_value=root):
                 self.assertEqual(manager.download_bytes("model-speech-test"), 5)
                 row = manager.snapshot()[0]
             self.assertEqual(row["downloadSize"], 5)
@@ -560,7 +560,7 @@ class ResourcePackManagerTests(unittest.TestCase):
         self.assertIn("Test processor", rows["model-test"]["blockedReason"])
 
     def test_controller_exposes_active_package_progress_for_status_strip(self):
-        from haizflow.desktop.resource_pack_controller import ResourcePackController
+        from hflow.desktop.resource_pack_controller import ResourcePackController
 
         definition = ResourcePackDefinition(
             pack_id="model-test",
@@ -587,7 +587,7 @@ class ResourcePackManagerTests(unittest.TestCase):
             controller.shutdown()
 
     def test_progress_updates_do_not_rescan_installed_engine_directories(self):
-        from haizflow.desktop.resource_pack_controller import ResourcePackListModel
+        from hflow.desktop.resource_pack_controller import ResourcePackListModel
 
         definition = ResourcePackDefinition(
             pack_id="model-test",
@@ -607,7 +607,7 @@ class ResourcePackManagerTests(unittest.TestCase):
         self.assertEqual(model._rows[0]["progress"], 80)
 
     def test_install_and_remove_are_dispatched_without_blocking_the_ui_thread(self):
-        from haizflow.desktop.resource_pack_controller import ResourcePackController
+        from hflow.desktop.resource_pack_controller import ResourcePackController
 
         class Host(QObject):
             appAlertRequested = Signal(str, str, str)
@@ -699,7 +699,7 @@ class ResourcePackManagerTests(unittest.TestCase):
             complete.write_bytes(b"data")
             partial = complete.with_name(complete.name + ".part")
             partial.write_bytes(b"partial")
-            with patch("haizflow.services.resource_packs.models_dir", return_value=root):
+            with patch("hflow.services.resource_packs.models_dir", return_value=root):
                 self.assertEqual(manager.status("model-test"), "installed")
                 removed = manager.remove("model-test")
                 self.assertEqual(removed, 11)
@@ -717,7 +717,7 @@ class ResourcePackManagerTests(unittest.TestCase):
                 manager = ResourcePackManager((ResourcePackDefinition(
                     pack_id, "Test", "tools", "1", capability, assets=(asset,)),))
                 manager.required_packs = lambda *_args: [pack_id]
-                with patch("haizflow.services.resource_packs.models_dir", return_value=root):
+                with patch("hflow.services.resource_packs.models_dir", return_value=root):
                     self.assertEqual(manager.missing_packs(capability), [pack_id])
                     (root / "model.bin").write_bytes(b"oops")
                     self.assertEqual(manager.status(pack_id), "missing")

@@ -1,0 +1,222 @@
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+from hflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS, MODELS_DIR
+from hflow.core.hardware import runtime_profile
+from hflow.core.model_integrity import (
+    DEMUCS_MODEL_SIGNATURE,
+    ModelIntegrityError,
+    verify_demucs_model,
+)
+from hflow.core.paths import is_frozen
+from hflow.services.video_store import log_to_video
+from hflow.pipeline.process_registry import check_cancellation, communicate_process
+from hflow.services.external_tasks import run_external_task
+
+
+def _replace_separation_directory(source: str, destination: str, video_id: str | None = None) -> None:
+    """Publish/restore sibling staging folders despite short Windows file locks."""
+    source = os.path.abspath(source)
+    destination = os.path.abspath(destination)
+    parent = os.path.dirname(source)
+    if (os.path.normcase(parent) != os.path.normcase(os.path.dirname(destination))
+            or source == parent or destination == parent
+            or os.path.normcase(os.path.realpath(parent)) != os.path.normcase(os.path.realpath(os.path.dirname(destination)))):
+        raise ValueError("Separation staging must stay within its output parent.")
+    for attempt in range(6):
+        if video_id:
+            check_cancellation(video_id)
+        try:
+            os.replace(source, destination)
+            return
+        except PermissionError:
+            if attempt == 5:
+                raise
+            time.sleep(0.05 * 2**attempt)
+
+
+def _demucs_model_directory(video_id: str) -> Path:
+    """Return the bootstrap-installed repository without hidden downloads."""
+    model_directory = Path(MODELS_DIR) / "demucs"
+    try:
+        return verify_demucs_model(model_directory)
+    except ModelIntegrityError as exc:
+        log_to_video(video_id, "The verified Demucs model is not ready.")
+        raise RuntimeError(
+            "Demucs is missing or corrupted. Return to the model setup screen and retry the download."
+        ) from exc
+
+
+def _demucs_command() -> list[str]:
+    from hflow.services.resource_packs import installed_engine_command
+
+    profile = runtime_profile()
+    external = installed_engine_command(
+        "separation",
+        "demucs",
+        {"device": "gpu" if profile.cuda_available else "cpu"},
+    )
+    if external:
+        return external
+    if is_frozen():
+        return [sys.executable, "--demucs-separate"]
+    return [sys.executable, "-m", "hflow.engine.main", "--demucs-separate"]
+
+
+def separate_audio(audio_path: str, output_dir: str, video_id: str) -> tuple[str, str]:
+    """
+    Separates vocals and accompaniment from the given audio file using Demucs.
+    Returns a tuple: (vocals_path, no_vocals_path)
+    """
+    log_to_video(video_id, f"Starting audio source separation using Demucs on: {audio_path}")
+    
+    # Auto-detect device
+    profile = runtime_profile()
+    device = "cuda" if profile.cuda_available else "cpu"
+    if device == "cpu":
+        from hflow.core.memory import require_cpu_memory
+        from hflow.services.external_engine import shared_external_engine_pool
+        from hflow.services.translation import shutdown_hymt2_worker
+        from hflow.pipeline.omnivoice_tts import clear_runtime
+
+        check_cancellation(video_id)
+        shutdown_hymt2_worker()
+        clear_runtime()
+        shared_external_engine_pool().release({"recognition", "ocr"})
+        require_cpu_memory("separation")
+    log_to_video(video_id, f"Demucs device selected: {device}")
+    model_directory = _demucs_model_directory(video_id)
+    
+    # We use --two-stems=vocals to output vocals and accompaniment (no_vocals)
+    output_parent = os.path.dirname(os.path.abspath(output_dir))
+    os.makedirs(output_parent, exist_ok=True)
+    staging_dir = tempfile.mkdtemp(prefix=".audio-separation-", dir=output_parent)
+    cmd = [
+        *_demucs_command(),
+        "--two-stems", "vocals",
+        "-o", staging_dir,
+        "-d", device,
+        "-n", DEMUCS_MODEL_SIGNATURE,
+        "--repo", str(model_directory),
+        audio_path
+    ]
+    if device == "cpu":
+        videos = 1  # No multiprocessing copies of the CPU model/audio buffers.
+        cmd[-1:-1] = ["--shifts", "0", "--overlap", "0.1", "--segment", "7", "-j", str(videos)]
+        log_to_video(
+            video_id,
+            f"CPU Demucs profile enabled with {videos} worker(s). Source separation will be slower without CUDA.",
+        )
+    elif 0 < getattr(profile, "total_vram_bytes", 0) < 5 * 1024**3:
+        cmd[-1:-1] = ["--segment", "2", "--shifts", "1", "--overlap", "0.25", "-j", "1"]
+        log_to_video(video_id, "GPU Demucs 4 GB profile: 2-second segments, one worker.")
+    elif getattr(profile, "total_vram_bytes", 0) < 7 * 1024**3:
+        # Keep one four-second segment on a 6 GB card, rather than the default
+        # 7.8-second transformer segment. Overlap retains continuous output.
+        cmd[-1:-1] = ["--segment", "4", "--shifts", "1", "--overlap", "0.25", "-j", "1"]
+        log_to_video(video_id, "GPU Demucs low-memory profile: 4-second segments, one worker.")
+    
+    log_to_video(video_id, f"Running Demucs command: {' '.join(cmd)}")
+    
+    check_cancellation(video_id)
+    demucs_environment = os.environ.copy()
+    # Demucs 4.0.1 does not pass weights_only=False explicitly. PyTorch 2.6+
+    # changed torch.load's default to True, which rejects the official Demucs
+    # package (it contains the model class as well as tensors). This override is
+    # deliberately scoped to the child process and is safe only because the
+    # exact local file was full-SHA256 verified immediately above.
+    demucs_environment["TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"] = "1"
+    
+    # Installed resource engines execute Demucs inside the same process that
+    # Smart Warm-up initialized. Development builds retain the legacy child
+    # process path so existing source environments remain usable.
+    try:
+        external_result = run_external_task(
+            "separation",
+            "demucs_task",
+            {"arguments": cmd[len(_demucs_command()) :]},
+            video_id,
+            context={"device": "gpu" if profile.cuda_available else "cpu"},
+        )
+        if external_result is not None:
+            process = None
+            stderr = ""
+        else:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=demucs_environment,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            _stdout, stderr = communicate_process(
+                video_id,
+                process,
+                label="Demucs audio separation",
+                timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS,
+            )
+
+        check_cancellation(video_id)
+
+        if process is not None and process.returncode != 0:
+            log_to_video(video_id, f"Demucs separation failed with exit code {process.returncode}")
+            log_to_video(video_id, f"Error details:\n{stderr}")
+            raise RuntimeError(f"Demucs audio separation failed with exit code {process.returncode}: {stderr}")
+
+        track_name = os.path.splitext(os.path.basename(audio_path))[0]
+        vocals_path = None
+        no_vocals_path = None
+        for root, _dirs, files in os.walk(staging_dir):
+            for file in files:
+                if file == "vocals.wav":
+                    vocals_path = os.path.join(root, file)
+                elif file == "no_vocals.wav":
+                    no_vocals_path = os.path.join(root, file)
+
+        if not vocals_path or not no_vocals_path:
+            model_name = "htdemucs"
+            vocals_path = os.path.join(staging_dir, model_name, track_name, "vocals.wav")
+            no_vocals_path = os.path.join(staging_dir, model_name, track_name, "no_vocals.wav")
+
+        if any(
+            not os.path.isfile(path) or os.path.getsize(path) <= 44
+            for path in (vocals_path, no_vocals_path)
+        ):
+            raise FileNotFoundError(
+                f"Could not locate non-empty separated audio files in {staging_dir}."
+            )
+
+        vocals_relative = os.path.relpath(vocals_path, staging_dir)
+        no_vocals_relative = os.path.relpath(no_vocals_path, staging_dir)
+        backup_dir = ""
+        if os.path.isdir(output_dir):
+            backup_dir = tempfile.mkdtemp(prefix=".audio-separation-backup-", dir=output_parent)
+            os.rmdir(backup_dir)
+            _replace_separation_directory(output_dir, backup_dir, video_id)
+        try:
+            _replace_separation_directory(staging_dir, output_dir, video_id)
+        except Exception:
+            if backup_dir and os.path.isdir(backup_dir):
+                # Restoration must work even after a pause/cancel request.
+                _replace_separation_directory(backup_dir, output_dir)
+            raise
+        staging_dir = ""
+        if backup_dir:
+            shutil.rmtree(backup_dir, ignore_errors=True)
+        vocals_path = os.path.join(output_dir, vocals_relative)
+        no_vocals_path = os.path.join(output_dir, no_vocals_relative)
+    finally:
+        if staging_dir:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+        
+    log_to_video(video_id, "Audio source separation completed successfully.")
+    log_to_video(video_id, f"Vocals path: {vocals_path}")
+    log_to_video(video_id, f"No-vocals path: {no_vocals_path}")
+    
+    return vocals_path, no_vocals_path

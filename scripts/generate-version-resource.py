@@ -37,12 +37,12 @@ VSVersionInfo(
   kids=[
     StringFileInfo([
       StringTable('040904B0', [
-        StringStruct('CompanyName', 'HaizFlow'),
-        StringStruct('FileDescription', 'HaizFlow desktop video dubbing'),
+        StringStruct('CompanyName', 'HFlow'),
+        StringStruct('FileDescription', 'HFlow desktop video dubbing'),
         StringStruct('FileVersion', '{version}'),
-        StringStruct('InternalName', 'HaizFlow'),
-        StringStruct('OriginalFilename', 'HaizFlow.exe'),
-        StringStruct('ProductName', 'HaizFlow'),
+        StringStruct('InternalName', 'HFlow'),
+        StringStruct('OriginalFilename', 'HFlow.exe'),
+        StringStruct('ProductName', 'HFlow'),
         StringStruct('ProductVersion', '{version}')
       ])
     ]),

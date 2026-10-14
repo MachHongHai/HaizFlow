@@ -11,7 +11,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.services import video_download  # noqa: E402
+from hflow.services import video_download  # noqa: E402
 
 
 class VideoDownloadTests(unittest.TestCase):
@@ -79,7 +79,7 @@ class VideoDownloadTests(unittest.TestCase):
 
         with (
             mock.patch("yt_dlp.YoutubeDL", side_effect=[first_downloader, second_downloader]) as youtube_dl,
-            mock.patch("haizflow.services.video_download._wait_for_retry") as wait_for_retry,
+            mock.patch("hflow.services.video_download._wait_for_retry") as wait_for_retry,
         ):
             metadata = video_download.inspect_video_url("https://www.tiktok.com/@creator/video/123")
 

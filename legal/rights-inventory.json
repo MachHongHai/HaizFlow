@@ -7,28 +7,28 @@
   "exclusive_ownership_verified": false,
   "separate_or_unverified_material": [
     {
-      "path": "src/haizflow/vendor/douyin_xbogus.py",
+      "path": "src/hflow/vendor/douyin_xbogus.py",
       "owner": "Evil0ctal",
       "license": "Apache-2.0"
     },
     {
-      "path": "src/haizflow/desktop/qml/icons",
+      "path": "src/hflow/desktop/qml/icons",
       "owner": "Microsoft and respective authors",
       "license": "MIT, per curated notice"
     },
     {
-      "path": "src/haizflow/assets/fonts",
+      "path": "src/hflow/assets/fonts",
       "owner": "The Bangers Project Authors",
       "license": "SIL OFL-1.1"
     },
     {
-      "path": "src/haizflow/desktop/assets/branding",
+      "path": "src/hflow/desktop/assets/branding",
       "owner": "Redistribution rights attested by the project owner; not independently verified",
       "license": "Owner-authorized redistribution in HaizFlow",
       "permission_evidence": "legal/reviews/owner-assets-and-omnivoice-2026-10-04.md"
     },
     {
-      "path": "src/haizflow/desktop/assets/voice_samples",
+      "path": "src/hflow/desktop/assets/voice_samples",
       "owner": "Redistribution rights attested by the project owner; not independently verified",
       "license": "Owner-authorized preview redistribution; no blanket commercial model-use permission",
       "permission_evidence": "legal/reviews/owner-assets-and-omnivoice-2026-10-04.md"
@@ -48,7 +48,7 @@
   "scope_approved_by": "Mạch Hồng Hải",
   "scope_approved_at": "2026-10-01",
   "approved_scope": [
-    "src/haizflow",
+    "src/hflow",
     "scripts",
     "installer",
     "docs",

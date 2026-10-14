@@ -6,9 +6,9 @@ from unittest.mock import Mock, patch
 import pytest
 import srt
 
-from haizflow.desktop.project_commands_controller import ProjectCommandsController
-from haizflow.schemas.editor import EditorClip, EditorDocument, EditorTrack
-from haizflow.services import subtitle_export
+from hflow.desktop.project_commands_controller import ProjectCommandsController
+from hflow.schemas.editor import EditorClip, EditorDocument, EditorTrack
+from hflow.services import subtitle_export
 
 
 def document():
@@ -105,7 +105,7 @@ def host_for(doc):
 
 def test_empty_workspace_is_blocked_with_warning_before_save_picker():
     host = host_for(None)
-    with patch("haizflow.desktop.project_commands_controller.QFileDialog.getSaveFileName") as picker:
+    with patch("hflow.desktop.project_commands_controller.QFileDialog.getSaveFileName") as picker:
         assert not ProjectCommandsController(host).export_selected_srt()
         picker.assert_not_called()
     assert host.appAlertRequested.emit.call_args.args[0] == "Chưa có phụ đề để xuất"
@@ -120,7 +120,7 @@ def test_busy_export_is_blocked_before_reading_document_or_opening_picker(busy_f
     else:
         setattr(host, busy_field, True)
     host._selected_video = Mock(side_effect=AssertionError("Do not read a busy editor"))
-    with patch("haizflow.desktop.project_commands_controller.QFileDialog.getSaveFileName") as picker:
+    with patch("hflow.desktop.project_commands_controller.QFileDialog.getSaveFileName") as picker:
         assert not ProjectCommandsController(host).export_selected_srt()
     picker.assert_not_called()
     assert host.appAlertRequested.emit.call_args.args[0] == "Đang xử lý"
@@ -133,9 +133,9 @@ def test_export_uses_pending_text_and_current_timing_without_project_mutation(tm
     host._manual_subtitles.segments = [{"segment_id": "s1", "text": "Edited now"}]
     host._manual_subtitles._states = {"s1": "saving"}
     target = tmp_path / "result.srt"
-    with (patch("haizflow.desktop.project_commands_controller.QFileDialog.getSaveFileName",
+    with (patch("hflow.desktop.project_commands_controller.QFileDialog.getSaveFileName",
                 return_value=(str(target), "")),
-          patch("haizflow.services.desktop_settings.load_settings", return_value={})):
+          patch("hflow.services.desktop_settings.load_settings", return_value={})):
         assert ProjectCommandsController(host).export_selected_srt()
     cue = next(srt.parse(target.read_text(encoding="utf-8")))
     assert cue.content == "Edited now"
@@ -146,9 +146,9 @@ def test_export_uses_pending_text_and_current_timing_without_project_mutation(tm
 
 def test_picker_cancel_does_not_write_or_show_success():
     host = host_for(document())
-    with (patch("haizflow.desktop.project_commands_controller.QFileDialog.getSaveFileName", return_value=("", "")),
+    with (patch("hflow.desktop.project_commands_controller.QFileDialog.getSaveFileName", return_value=("", "")),
           patch.object(subtitle_export, "save_srt") as save,
-          patch("haizflow.services.desktop_settings.load_settings", return_value={})):
+          patch("hflow.services.desktop_settings.load_settings", return_value={})):
         assert not ProjectCommandsController(host).export_selected_srt()
         save.assert_not_called()
     host.appAlertRequested.emit.assert_not_called()
@@ -158,9 +158,9 @@ def test_rejecting_overwrite_preserves_destination(tmp_path, external_storage):
     host = host_for(document())
     target = tmp_path / "result.srt"
     target.write_bytes(b"previous result")
-    with (patch("haizflow.desktop.project_commands_controller.QFileDialog.getSaveFileName", return_value=(str(target), "")),
-          patch("haizflow.desktop.project_commands_controller.QMessageBox.question", return_value=65536),
-          patch("haizflow.services.desktop_settings.load_settings", return_value={})):
+    with (patch("hflow.desktop.project_commands_controller.QFileDialog.getSaveFileName", return_value=(str(target), "")),
+          patch("hflow.desktop.project_commands_controller.QMessageBox.question", return_value=65536),
+          patch("hflow.services.desktop_settings.load_settings", return_value={})):
         assert not ProjectCommandsController(host).export_selected_srt()
     assert target.read_bytes() == b"previous result"
 
@@ -205,7 +205,7 @@ def test_pair_second_publication_failure_rolls_back_first_and_leaves_no_temps(tm
 
 def test_original_export_no_captions_blocks_before_picker():
     host = host_for(document())
-    with patch("haizflow.desktop.project_commands_controller.QFileDialog.getSaveFileName") as picker:
+    with patch("hflow.desktop.project_commands_controller.QFileDialog.getSaveFileName") as picker:
         assert not ProjectCommandsController(host).export_selected_srt("source")
         picker.assert_not_called()
 
@@ -215,10 +215,10 @@ def test_export_pair_checks_overwrite_on_both_output_names(tmp_path, external_st
     target = tmp_path / "movie.srt"
     source = tmp_path / "movie.source.srt"
     source.write_bytes(b"keep source")
-    with (patch("haizflow.desktop.project_commands_controller.QFileDialog.getSaveFileName", return_value=(str(target), "")),
+    with (patch("hflow.desktop.project_commands_controller.QFileDialog.getSaveFileName", return_value=(str(target), "")),
           patch.object(subtitle_export, "compose_source_srt", return_value="Original"),
-          patch("haizflow.desktop.project_commands_controller.QMessageBox.question", return_value=65536),
-          patch("haizflow.services.desktop_settings.load_settings", return_value={})):
+          patch("hflow.desktop.project_commands_controller.QMessageBox.question", return_value=65536),
+          patch("hflow.services.desktop_settings.load_settings", return_value={})):
         assert not ProjectCommandsController(host).export_selected_srt("both")
     assert source.read_bytes() == b"keep source"
     assert not (tmp_path / "movie.result.srt").exists()
@@ -231,13 +231,13 @@ def test_export_rechecks_busy_after_native_picker(tmp_path, external_storage):
         host.isProcessing = True
         return str(tmp_path / "movie.srt"), ""
 
-    with (patch("haizflow.desktop.project_commands_controller.QFileDialog.getSaveFileName", side_effect=pick),
-          patch("haizflow.services.desktop_settings.load_settings", return_value={})):
+    with (patch("hflow.desktop.project_commands_controller.QFileDialog.getSaveFileName", side_effect=pick),
+          patch("hflow.services.desktop_settings.load_settings", return_value={})):
         assert not ProjectCommandsController(host).export_selected_srt()
     assert not list(tmp_path.iterdir())
 
 
 def test_workspace_action_is_directly_below_audio_and_does_not_start_a_pipeline_stage():
-    workspace = (Path(__file__).parents[1] / "src/haizflow/desktop/qml/ManualWorkspace.qml").read_text(encoding="utf-8")
+    workspace = (Path(__file__).parents[1] / "src/hflow/desktop/qml/ManualWorkspace.qml").read_text(encoding="utf-8")
     assert workspace.index('root.toolModel[5], {stageIndex: 5}') < workspace.index('qsTr("Nhập SRT")') < workspace.index('qsTr("Xuất SRT")')
     assert 'srtExportLoader.invoke("openForSelection");\n                return;' in workspace

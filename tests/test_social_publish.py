@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from haizflow.services import social_publish as tiktok_publish
+from hflow.services import social_publish as tiktok_publish
 
 
 class SocialPublishStateTests(unittest.TestCase):

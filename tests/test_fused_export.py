@@ -7,10 +7,10 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from haizflow.pipeline import render, sequence_compiler
-from haizflow.schemas.editor import EditorAsset, EditorClip, EditorDocument, EditorSequence, EditorTrack
-from haizflow.schemas.video import CropSettings, SubtitleStyle
-from haizflow.utils.ffmpeg import _binary, get_video_dimensions, get_video_duration
+from hflow.pipeline import render, sequence_compiler
+from hflow.schemas.editor import EditorAsset, EditorClip, EditorDocument, EditorSequence, EditorTrack
+from hflow.schemas.video import CropSettings, SubtitleStyle
+from hflow.utils.ffmpeg import _binary, get_video_dimensions, get_video_duration
 
 
 def ffmpeg(*args):
@@ -165,7 +165,7 @@ def test_overlay_pass_fuses_speed_and_keeps_audio(media, tmp_path, monkeypatch, 
 def test_manual_and_auto_do_not_call_extra_finishing_encoder():
     # Guard the production entry points, not just the isolated renderer API.
     import inspect
-    from haizflow.pipeline import manual_tools, process_video, segment_export
+    from hflow.pipeline import manual_tools, process_video, segment_export
 
     for function in (manual_tools._run_export, segment_export.render_segment):
         assert "finish_export_resolution(" not in inspect.getsource(function)

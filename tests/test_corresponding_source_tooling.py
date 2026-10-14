@@ -59,6 +59,6 @@ def test_msys_package_metadata_sections_keep_exact_identity(tmp_path):
 
 def test_internal_and_public_installer_names_are_distinct():
     text = (ROOT / "scripts/build-installer.ps1").read_text(encoding="utf-8")
-    assert 'if ($EngineeringBuild) { "HaizFlow-$Version-DEVELOPMENT-Setup" } else { "HaizFlow-$Version-Setup" }' in text
+    assert 'if ($EngineeringBuild) { "HFlow-$Version-DEVELOPMENT-Setup" } else { "HFlow-$Version-Setup" }' in text
     assert "-UNSIGNED-Setup" not in text
     assert "Public unsigned installer" in text

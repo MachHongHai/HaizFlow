@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-from haizflow.utils import atomic_file
-from haizflow.services import video_store
+from hflow.utils import atomic_file
+from hflow.services import video_store
 
 
 def test_metadata_publish_retries_reader_lock_without_exposing_partial_json(tmp_path):

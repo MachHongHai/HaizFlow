@@ -6,12 +6,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from haizflow.desktop.presenters import build_project_summaries
-from haizflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.pipeline import process_video
-from haizflow.pipeline.process_video import _complete_manual_stage
-from haizflow.schemas.video import VideoConfig
+from hflow.desktop.presenters import build_project_summaries
+from hflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
+from hflow.desktop.qml_controller import HFlowController
+from hflow.pipeline import process_video
+from hflow.pipeline.process_video import _complete_manual_stage
+from hflow.schemas.video import VideoConfig
 
 
 class ManualWorkflowTests(unittest.TestCase):
@@ -29,10 +29,10 @@ class ManualWorkflowTests(unittest.TestCase):
         requested = current.model_copy(update={"target_language": "en"})
 
         with (
-            patch("haizflow.desktop.qml_controller.video_store.update_video"),
-            patch("haizflow.desktop.qml_controller.manual_artifacts.deactivate") as deactivate,
+            patch("hflow.desktop.qml_controller.video_store.update_video"),
+            patch("hflow.desktop.qml_controller.manual_artifacts.deactivate") as deactivate,
         ):
-            HaizFlowController._apply_config_to_video(SimpleNamespace(), video, requested)
+            HFlowController._apply_config_to_video(SimpleNamespace(), video, requested)
 
         deactivate.assert_called_once_with(
             video.video_id,
@@ -64,12 +64,12 @@ class ManualWorkflowTests(unittest.TestCase):
         )
         with (
             patch(
-                "haizflow.desktop.processing_lifecycle_controller.video_store.get_video",
+                "hflow.desktop.processing_lifecycle_controller.video_store.get_video",
                 return_value=video,
             ),
-            patch("haizflow.desktop.processing_lifecycle_controller.video_store.update_video") as update,
-            patch("haizflow.desktop.processing_lifecycle_controller.video_store.log_to_video"),
-            patch("haizflow.desktop.processing_lifecycle_controller.project_store.touch_project_by_key"),
+            patch("hflow.desktop.processing_lifecycle_controller.video_store.update_video") as update,
+            patch("hflow.desktop.processing_lifecycle_controller.video_store.log_to_video"),
+            patch("hflow.desktop.processing_lifecycle_controller.project_store.touch_project_by_key"),
         ):
             started = ProcessingLifecycleController(host).enqueue_video(video.video_id)
 
@@ -100,10 +100,10 @@ class ManualWorkflowTests(unittest.TestCase):
             refreshVideos=Mock(),
         )
         with (
-            patch("haizflow.desktop.qml_controller.video_store.update_video") as update,
-            patch("haizflow.desktop.qml_controller.video_store.log_to_video"),
+            patch("hflow.desktop.qml_controller.video_store.update_video") as update,
+            patch("hflow.desktop.qml_controller.video_store.log_to_video"),
         ):
-            cancelled = HaizFlowController.cancelManualTool(host, "voice")
+            cancelled = HFlowController.cancelManualTool(host, "voice")
 
         self.assertTrue(cancelled)
         queue_state.discard.assert_called_once_with(video.video_id)
@@ -136,7 +136,7 @@ class ManualWorkflowTests(unittest.TestCase):
             host._log_queue.put(f"__QUEUE_FINISHED__:{video.video_id}")
 
             with patch(
-                "haizflow.desktop.processing_lifecycle_controller.video_store.get_video",
+                "hflow.desktop.processing_lifecycle_controller.video_store.get_video",
                 return_value=video,
             ):
                 ProcessingLifecycleController(host).drain_log_queue()
@@ -160,8 +160,8 @@ class ManualWorkflowTests(unittest.TestCase):
         )
         host._log_queue.put(f"__QUEUE_FINISHED__:{video.video_id}")
         with (
-            patch("haizflow.desktop.processing_lifecycle_controller.video_store.get_video", return_value=video),
-            patch("haizflow.services.editor_documents.ensure", return_value="repaired-document") as ensure,
+            patch("hflow.desktop.processing_lifecycle_controller.video_store.get_video", return_value=video),
+            patch("hflow.services.editor_documents.ensure", return_value="repaired-document") as ensure,
         ):
             ProcessingLifecycleController(host).drain_log_queue()
         ensure.assert_called_once_with(video)
@@ -186,8 +186,8 @@ class ManualWorkflowTests(unittest.TestCase):
         )
         host._log_queue.put(f"__QUEUE_FINISHED__:{video.video_id}")
         with (
-            patch("haizflow.desktop.processing_lifecycle_controller.video_store.get_video", return_value=video),
-            patch("haizflow.services.editor_documents.sync_subtitle_clips", return_value="updated") as sync,
+            patch("hflow.desktop.processing_lifecycle_controller.video_store.get_video", return_value=video),
+            patch("hflow.services.editor_documents.sync_subtitle_clips", return_value="updated") as sync,
         ):
             ProcessingLifecycleController(host).drain_log_queue()
         host._refresh_selected_video_snapshot.assert_called_once()
@@ -211,8 +211,8 @@ class ManualWorkflowTests(unittest.TestCase):
                     _build_config=lambda: SimpleNamespace(tts_provider=provider, translation_model=model),
                     _resource_packs=SimpleNamespace(manager=manager,
                         _hardware_compatibility=lambda _pack: (True, "")))
-                with patch("haizflow.desktop.qml_controller.video_store.update_video") as update:
-                    self.assertFalse(HaizFlowController.runManualTool(host, tool))
+                with patch("hflow.desktop.qml_controller.video_store.update_video") as update:
+                    self.assertFalse(HFlowController.runManualTool(host, tool))
                 self.assertEqual(manager.required_packs.call_args.args[1]["provider"], provider)
                 self.assertEqual(manager.required_packs.call_args.args[1]["translation_model"], model)
                 host.appAlertRequested.emit.assert_called_once()
@@ -235,13 +235,13 @@ class ManualWorkflowTests(unittest.TestCase):
 
         with (
             patch(
-                "haizflow.pipeline.manual_tools.tool_readiness",
+                "hflow.pipeline.manual_tools.tool_readiness",
                 return_value={"toolId": "translation", "canRun": True, "blockedReason": ""},
             ),
-            patch("haizflow.desktop.qml_controller.manual_artifacts.peek_active", return_value={"artifact_id": "voice"}),
-            patch("haizflow.desktop.qml_controller.QMessageBox.question", return_value=0) as question,
+            patch("hflow.desktop.qml_controller.manual_artifacts.peek_active", return_value={"artifact_id": "voice"}),
+            patch("hflow.desktop.qml_controller.QMessageBox.question", return_value=0) as question,
         ):
-            started = HaizFlowController.runManualTool(host, "translation")
+            started = HFlowController.runManualTool(host, "translation")
 
         self.assertFalse(started)
         question.assert_called_once_with(
@@ -296,10 +296,10 @@ class ManualWorkflowTests(unittest.TestCase):
         lifecycle = ProcessingLifecycleController(host)
 
         with (
-            patch("haizflow.desktop.processing_lifecycle_controller.video_store.get_video", return_value=video),
-            patch("haizflow.desktop.processing_lifecycle_controller.video_store.update_video"),
-            patch("haizflow.desktop.processing_lifecycle_controller.video_store.log_to_video"),
-            patch("haizflow.pipeline.process_video.process_video_sync") as process,
+            patch("hflow.desktop.processing_lifecycle_controller.video_store.get_video", return_value=video),
+            patch("hflow.desktop.processing_lifecycle_controller.video_store.update_video"),
+            patch("hflow.desktop.processing_lifecycle_controller.video_store.log_to_video"),
+            patch("hflow.pipeline.process_video.process_video_sync") as process,
         ):
             lifecycle.execute_pipeline(video.video_id)
 
@@ -307,9 +307,9 @@ class ManualWorkflowTests(unittest.TestCase):
 
     def test_manual_stage_completion_is_idle_and_durable(self):
         with (
-            patch("haizflow.pipeline.process_video.get_video", return_value=None),
-            patch("haizflow.pipeline.process_video.update_video") as update,
-            patch("haizflow.pipeline.process_video.log_to_video"),
+            patch("hflow.pipeline.process_video.get_video", return_value=None),
+            patch("hflow.pipeline.process_video.update_video") as update,
+            patch("hflow.pipeline.process_video.log_to_video"),
         ):
             _complete_manual_stage("manual-video", "subtitles", 64)
 
@@ -334,9 +334,9 @@ class ManualWorkflowTests(unittest.TestCase):
             progress=87,
         )
         with (
-            patch("haizflow.pipeline.process_video.get_video", return_value=video),
-            patch("haizflow.pipeline.process_video.update_video") as update,
-            patch("haizflow.pipeline.process_video.log_to_video"),
+            patch("hflow.pipeline.process_video.get_video", return_value=video),
+            patch("hflow.pipeline.process_video.update_video") as update,
+            patch("hflow.pipeline.process_video.log_to_video"),
         ):
             _complete_manual_stage("manual-video", "translation", 62)
 
@@ -361,8 +361,8 @@ class ManualWorkflowTests(unittest.TestCase):
         video.crop = saved.crop
         host = SimpleNamespace(_build_config=lambda: edited)
 
-        with patch("haizflow.desktop.qml_controller.video_store.update_video") as update:
-            HaizFlowController._apply_setup_to_video(host, video)
+        with patch("hflow.desktop.qml_controller.video_store.update_video") as update:
+            HFlowController._apply_setup_to_video(host, video)
 
         changes = update.call_args.kwargs
         self.assertEqual(changes["manual_completed_stage"], "subtitles")
@@ -382,8 +382,8 @@ class ManualWorkflowTests(unittest.TestCase):
         video.crop = saved.crop
         host = SimpleNamespace(_build_config=lambda: edited)
 
-        with patch("haizflow.desktop.qml_controller.video_store.update_video") as update:
-            HaizFlowController._apply_setup_to_video(host, video)
+        with patch("hflow.desktop.qml_controller.video_store.update_video") as update:
+            HFlowController._apply_setup_to_video(host, video)
 
         changes = update.call_args.kwargs
         self.assertNotIn("manual_completed_stages", changes)
@@ -402,8 +402,8 @@ class ManualWorkflowTests(unittest.TestCase):
         video.crop = saved.crop
         host = SimpleNamespace(_build_config=lambda: edited)
 
-        with patch("haizflow.desktop.qml_controller.video_store.update_video") as update:
-            HaizFlowController._apply_setup_to_video(host, video)
+        with patch("hflow.desktop.qml_controller.video_store.update_video") as update:
+            HFlowController._apply_setup_to_video(host, video)
 
         changes = update.call_args.kwargs
         self.assertEqual(
@@ -425,8 +425,8 @@ class ManualWorkflowTests(unittest.TestCase):
         video.crop = saved.crop
         host = SimpleNamespace(_build_config=lambda: edited)
 
-        with patch("haizflow.desktop.qml_controller.video_store.update_video") as update:
-            HaizFlowController._apply_setup_to_video(host, video)
+        with patch("hflow.desktop.qml_controller.video_store.update_video") as update:
+            HFlowController._apply_setup_to_video(host, video)
 
         changes = update.call_args.kwargs
         self.assertEqual(changes["manual_completed_stages"], [])
@@ -604,16 +604,16 @@ class ManualWorkflowTests(unittest.TestCase):
             ),
             voiceCloneReferencePath="",
             appAlertRequested=SimpleNamespace(emit=Mock()),
-            _manual_voice_configuration_snapshot=HaizFlowController._manual_voice_configuration_snapshot,
+            _manual_voice_configuration_snapshot=HFlowController._manual_voice_configuration_snapshot,
             _record_manual_voice_configuration_change=Mock(),
             runManualTool=Mock(return_value=True),
         )
 
         with (
-            patch("haizflow.desktop.qml_controller.video_store.update_video", side_effect=update_video),
-            patch("haizflow.desktop.qml_controller.video_store.log_to_video"),
+            patch("hflow.desktop.qml_controller.video_store.update_video", side_effect=update_video),
+            patch("hflow.desktop.qml_controller.video_store.log_to_video"),
         ):
-            result = HaizFlowController.configureAndRunManualVoice(
+            result = HFlowController.configureAndRunManualVoice(
                 host,
                 "omnivoice",
                 "omnivoice:female",

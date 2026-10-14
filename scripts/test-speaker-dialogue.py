@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from haizflow.update.filesystem import atomic_json, remove_owned  # noqa: E402
+from hflow.update.filesystem import atomic_json, remove_owned  # noqa: E402
 
 
 def main():
@@ -24,14 +24,14 @@ def main():
     root = parent / uuid.uuid4().hex
     root.mkdir(parents=True)
     env = os.environ.copy()
-    env.update(HAIZFLOW_HOME=str(root / "ứng dụng"), HAIZFLOW_SMOKE_TEST="1",
-               HAIZFLOW_TMP_DIR=str(root / "tmp"), PYTHONPATH=str(ROOT / "src"), OPENBLAS_NUM_THREADS="1")
+    env.update(HFLOW_HOME=str(root / "ứng dụng"), HFLOW_SMOKE_TEST="1",
+               HFLOW_TMP_DIR=str(root / "tmp"), PYTHONPATH=str(ROOT / "src"), OPENBLAS_NUM_THREADS="1")
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    command = ([str(args.core.resolve() / "HaizFlowCore.exe"), "--engine-worker"] if args.core
-               else [sys.executable, "-m", "haizflow.engine.main"])
+    command = ([str(args.core.resolve() / "HFlowCore.exe"), "--engine-worker"] if args.core
+               else [sys.executable, "-m", "hflow.engine.main"])
     models = (args.core.resolve() / "_internal/models/speaker-identification" if args.core
               else ROOT / "build/bundled-models/speaker-identification")
-    samples = ROOT / "src/haizflow/desktop/assets/voice_samples/omnivoice"
+    samples = ROOT / "src/hflow/desktop/assets/voice_samples/omnivoice"
     decoded = []
     for name in ("omnivoice_male", "omnivoice_female"):
         result = subprocess.run([str(ROOT / "runtime/bin/ffmpeg.exe"), "-v", "error", "-i",

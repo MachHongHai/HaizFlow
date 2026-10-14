@@ -1,6 +1,6 @@
 # Bangers font
 
-HaizFlow bundles **Bangers Regular**, designed by Vernon Adams, for rendered
+HFlow bundles **Bangers Regular**, designed by Vernon Adams, for rendered
 karaoke subtitles.
 
 - Upstream: https://github.com/googlefonts/bangers

@@ -1,0 +1,13 @@
+module HFlow
+LazyDialogLoader 1.0 LazyDialogLoader.qml
+DeferredActionButton 1.0 DeferredActionButton.qml
+SrtExportDialog 1.0 SrtExportDialog.qml
+SrtImportDialog 1.0 SrtImportDialog.qml
+typeinfo hflow.qmltypes
+singleton Theme 1.0 Theme.qml
+singleton I18n 1.0 I18n.qml
+singleton TypeScale 1.0 TypeScale.qml
+singleton Motion 1.0 Motion.qml
+singleton UiMetrics 1.0 UiMetrics.qml
+singleton UiState 1.0 UiState.qml
+singleton IconCatalog 1.0 IconCatalog.qml

@@ -1,11 +1,11 @@
-# Tài liệu HaizFlow
+# Tài liệu HFlow
 
 [Trang chính](../README.vi.md) · [Hướng dẫn sử dụng](user-guide.vi.md) · [English](README.md)
 
 ## Dành cho người dùng
 
-- [Cài đặt HaizFlow](install.vi.md): bộ cài, CPU/GPU, gói tài nguyên, API key và dữ liệu.
-- [Sử dụng HaizFlow](user-guide.vi.md): từ dự án đầu tiên đến phụ đề, giọng đọc và xuất video.
+- [Cài đặt HFlow](install.vi.md): bộ cài, CPU/GPU, gói tài nguyên, API key và dữ liệu.
+- [Sử dụng HFlow](user-guide.vi.md): từ dự án đầu tiên đến phụ đề, giọng đọc và xuất video.
 - [Trợ giúp](support.vi.md): quản lý gói, API key, dữ liệu và liên hệ hỗ trợ.
 
 ## Dành cho người phát triển và bảo trì

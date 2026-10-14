@@ -8,7 +8,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.desktop.url_import import VideoUrlImportCoordinator
+from hflow.desktop.url_import import VideoUrlImportCoordinator
 
 
 class UrlImportCoordinatorTests(unittest.TestCase):

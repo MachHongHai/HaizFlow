@@ -7,11 +7,11 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from haizflow.desktop.manual_editor_document_model import ManualEditorDocumentModel
-from haizflow.desktop.manual_preview_audio_controller import RATE, apply_source_decisions, mix_frames
-from haizflow.desktop.manual_preview_composition_controller import ManualPreviewCompositionController
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.pipeline.sequence_compiler import (
+from hflow.desktop.manual_editor_document_model import ManualEditorDocumentModel
+from hflow.desktop.manual_preview_audio_controller import RATE, apply_source_decisions, mix_frames
+from hflow.desktop.manual_preview_composition_controller import ManualPreviewCompositionController
+from hflow.desktop.qml_controller import HFlowController
+from hflow.pipeline.sequence_compiler import (
     apply_overlays,
     export_preflight,
     map_source_intervals,
@@ -20,7 +20,7 @@ from haizflow.pipeline.sequence_compiler import (
     subtitle_style_overrides,
     write_subtitles,
 )
-from haizflow.schemas.editor import (
+from hflow.schemas.editor import (
     EditorAsset,
     EditorClip,
     EditorDocument,
@@ -30,9 +30,9 @@ from haizflow.schemas.editor import (
     EditorTrack,
     SourceEditDecision,
 )
-from haizflow.schemas.video import SubtitleStyle
-from haizflow.services import editor_documents
-from haizflow.utils.ffmpeg import _binary, get_video_duration
+from hflow.schemas.video import SubtitleStyle
+from hflow.services import editor_documents
+from hflow.utils.ffmpeg import _binary, get_video_duration
 
 
 def test_moving_audio_beyond_source_extends_sequence_and_export_tail(tmp_path):
@@ -61,23 +61,23 @@ def test_moving_audio_beyond_source_extends_sequence_and_export_tail(tmp_path):
         return True
 
     host._apply_editor_mutation = mutate
-    assert HaizFlowController.moveClip(host, "music-1", 7000, "music")
+    assert HFlowController.moveClip(host, "music-1", 7000, "music")
     assert document.clips[0].start_ms == 7000
     assert document.sequence.duration_ms == 9000
 
-    with patch("haizflow.pipeline.sequence_compiler._run") as run:
+    with patch("hflow.pipeline.sequence_compiler._run") as run:
         materialize_source_video("source.mp4", document, tmp_path, "manual-tail")
         command = run.call_args.args[0]
         assert "tpad=stop_mode=clone:stop_duration=3.000000" in command[command.index("-filter_complex") + 1]
 
-    with patch("haizflow.pipeline.sequence_compiler._run") as run:
+    with patch("hflow.pipeline.sequence_compiler._run") as run:
         materialize_source_sequence("source.mp4", "source.wav", document, tmp_path, "manual-tail")
         command = run.call_args.args[0]
         filters = command[command.index("-filter_complex") + 1]
         assert "tpad=stop_mode=clone:stop_duration=3.000000" in filters
         assert "apad=whole_dur=9.000000" in filters
 
-    assert HaizFlowController.moveClip(host, "music-1", 1000, "music")
+    assert HFlowController.moveClip(host, "music-1", 1000, "music")
     assert document.sequence.duration_ms == 6000
 
 
@@ -145,7 +145,7 @@ def test_source_boundary_trim_shifts_layers_without_changing_text_or_voice_state
     labels = []
     host = SimpleNamespace()
     host._editor_track_locked = lambda _document, _track: False
-    host._refresh_source_sequence = lambda changed: HaizFlowController._refresh_source_sequence(changed)
+    host._refresh_source_sequence = lambda changed: HFlowController._refresh_source_sequence(changed)
 
     def mutate(label, callback):
         labels.append(label)
@@ -153,7 +153,7 @@ def test_source_boundary_trim_shifts_layers_without_changing_text_or_voice_state
         return True
 
     host._apply_editor_mutation = mutate
-    assert HaizFlowController.trimSourceBoundary(host, "left", 1000)
+    assert HFlowController.trimSourceBoundary(host, "left", 1000)
     assert labels == ["trim_source_boundary"]
     assert document.sequence.duration_ms == 5000
     assert document.sequence.edit_decisions[0].source_start_ms == 1000
@@ -162,7 +162,7 @@ def test_source_boundary_trim_shifts_layers_without_changing_text_or_voice_state
     assert (clips["voice-a"].start_ms, clips["voice-a"].source_in_ms) == (0, 500)
     assert clips["voice-a"].metadata == {"state": "ready", "text_revision": 2}
     assert clips["music"].start_ms == 2500
-    assert HaizFlowController.trimSourceBoundary(host, "right", 4000)
+    assert HFlowController.trimSourceBoundary(host, "right", 4000)
     assert document.sequence.duration_ms == 4000
     assert (clips["music"].start_ms, clips["music"].duration_ms) == (2500, 1500)
 
@@ -189,7 +189,7 @@ def test_legacy_split_source_is_read_only_for_boundary_trim():
     before = document.model_dump()
     host = SimpleNamespace(
         _editor_track_locked=lambda _document, _track: False,
-        _refresh_source_sequence=lambda changed: HaizFlowController._refresh_source_sequence(changed),
+        _refresh_source_sequence=lambda changed: HFlowController._refresh_source_sequence(changed),
     )
 
     def mutate(_label, callback):
@@ -197,7 +197,7 @@ def test_legacy_split_source_is_read_only_for_boundary_trim():
         return before != document.model_dump()
 
     host._apply_editor_mutation = mutate
-    assert not HaizFlowController.trimSourceBoundary(host, "left", 500)
+    assert not HFlowController.trimSourceBoundary(host, "left", 500)
     assert document.model_dump() == before
 
 
@@ -209,7 +209,7 @@ def test_legacy_split_source_is_read_only_for_boundary_trim():
 ])
 def test_retired_authoring_commands_are_rejected_before_document_access(label):
     host = SimpleNamespace()
-    assert not HaizFlowController._apply_editor_mutation(
+    assert not HFlowController._apply_editor_mutation(
         host, label, lambda _document: pytest.fail("retired command executed")
     )
 
@@ -282,11 +282,11 @@ def test_split_subtitle_creates_two_stale_voice_clips_without_running_tts():
     )
     host = SimpleNamespace(
         _editor_track_locked=lambda _document, _track: False,
-        _split_subtitle_text=HaizFlowController._split_subtitle_text,
+        _split_subtitle_text=HFlowController._split_subtitle_text,
     )
     host._apply_editor_mutation = lambda _label, callback: (callback(document) or True)
 
-    created = HaizFlowController.splitSubtitleSegment(host, "a", 1500)
+    created = HFlowController.splitSubtitleSegment(host, "a", 1500)
 
     subtitles = sorted(
         (clip for clip in document.clips if clip.track_id == "subtitles"),
@@ -339,7 +339,7 @@ def test_replace_subtitle_text_is_one_mutation_and_invalidates_only_matching_voi
 
     host = SimpleNamespace(_apply_editor_mutation=mutate)
 
-    changed = HaizFlowController.replaceSubtitleText(
+    changed = HFlowController.replaceSubtitleText(
         host, "xin chào", "Chào", False, True, ""
     )
 
@@ -355,7 +355,7 @@ def test_replace_subtitle_text_is_one_mutation_and_invalidates_only_matching_voi
 
 
 def test_marker_move_and_delete_are_undoable_editor_mutations():
-    from haizflow.schemas.editor import EditorMarker
+    from hflow.schemas.editor import EditorMarker
 
     document = EditorDocument(
         video_id="manual-1",
@@ -371,9 +371,9 @@ def test_marker_move_and_delete_are_undoable_editor_mutations():
 
     host = SimpleNamespace(_apply_editor_mutation=mutate)
 
-    assert HaizFlowController.updateEditorMarker(host, "marker-a", 2500, "", "")
+    assert HFlowController.updateEditorMarker(host, "marker-a", 2500, "", "")
     assert document.markers[0].time_ms == 2500
-    assert HaizFlowController.removeEditorMarker(host, "marker-a")
+    assert HFlowController.removeEditorMarker(host, "marker-a")
     assert document.markers == []
     assert labels == ["move_marker", "remove_marker"]
 
@@ -496,11 +496,11 @@ def test_music_loop_mutation_updates_only_music_and_supports_undo():
         return True
 
     host = SimpleNamespace(_apply_editor_mutation=mutate)
-    assert HaizFlowController.setMusicLoop(host, True)
+    assert HFlowController.setMusicLoop(host, True)
     assert document.clips[0].loop and not document.clips[1].loop
     assert history[0][:2] == ("music_loop", "music-loop")
     assert not history[0][2].clips[0].loop
-    assert HaizFlowController.setMusicLoop(host, False)
+    assert HFlowController.setMusicLoop(host, False)
     assert not document.clips[0].loop
 
 
@@ -748,8 +748,8 @@ def test_legacy_split_source_cannot_be_ripple_deleted_in_new_editor():
     ]
     before = document.model_dump()
     host = SimpleNamespace(_manual_editor_document=SimpleNamespace(document_object=document))
-    assert not HaizFlowController.removeClips(host, ["source-b"], True)
-    assert not HaizFlowController.removeClips(host, ["overlay-a"], False)
+    assert not HFlowController.removeClips(host, ["source-b"], True)
+    assert not HFlowController.removeClips(host, ["overlay-a"], False)
     assert document.model_dump() == before
 
 
@@ -768,8 +768,8 @@ def test_retired_solo_and_lock_track_controls_cannot_be_reenabled():
         return True
 
     host = SimpleNamespace(_apply_editor_mutation=mutate)
-    assert not HaizFlowController.setTrackState(host, "music", "solo", True)
-    assert not HaizFlowController.setTrackState(host, "music", "locked", True)
+    assert not HFlowController.setTrackState(host, "music", "solo", True)
+    assert not HFlowController.setTrackState(host, "music", "locked", True)
     states = {item.track_id: item.solo for item in document.tracks}
     assert states == {"voice": True, "music": False, "overlays": False}
 
@@ -932,7 +932,7 @@ def test_retired_solo_flag_does_not_suppress_voice_aligned_subtitles(tmp_path):
         ],
     )
     output = tmp_path / "subtitles.srt"
-    with patch("haizflow.pipeline.speech_timing.voiced_subtitle_segments") as align:
+    with patch("hflow.pipeline.speech_timing.voiced_subtitle_segments") as align:
         align.side_effect = lambda segments, paths: segments
         assert write_subtitles(document, output)
     assert align.call_args.args[1] == ["voice-a.wav"]
@@ -982,7 +982,7 @@ def test_legacy_keyframes_remain_readable_but_copy_authoring_is_disabled():
     )
 
     before = document.model_dump()
-    assert not HaizFlowController.copyClipKeyframes(host, "overlay-a", 1000)
+    assert not HFlowController.copyClipKeyframes(host, "overlay-a", 1000)
     assert host._editor_keyframe_clipboard == []
     assert document.model_dump() == before
 
@@ -1040,18 +1040,18 @@ def test_inline_subtitle_style_updates_only_selected_cue_and_preview():
             {"segment_id": "b", "text": "Hai", "start": 1.2, "end": 2.2},
         ]),
     )
-    assert HaizFlowController.applyTextStyle(
+    assert HFlowController.applyTextStyle(
         host, ["b"], {"text_color": "#00FF00", "outline_width": 4}, "segment"
     )
     export_styles = subtitle_style_overrides(document)
-    preview_segments = HaizFlowController._subtitle_segments_for_editor_document(host, document)
+    preview_segments = HFlowController._subtitle_segments_for_editor_document(host, document)
     assert export_styles[1]["text_color"] == "#FFFFFF"
     assert export_styles[2]["text_color"] == "#00FF00"
     assert "_style" not in preview_segments[0]
     assert preview_segments[1]["_style"]["text_color"] == "#00FF00"
     assert preview_segments[1]["_style"]["outline_width"] == 4
 
-    assert HaizFlowController.applyTextStyle(
+    assert HFlowController.applyTextStyle(
         host, [], {"font_weight": 700}, "project"
     )
     assert subtitle_style_overrides(document)[1]["font_weight"] == 700
@@ -1059,7 +1059,7 @@ def test_inline_subtitle_style_updates_only_selected_cue_and_preview():
 
     # A project-wide edit must replace an older per-cue value for the same
     # property without discarding unrelated per-cue settings.
-    assert HaizFlowController.applyTextStyle(
+    assert HFlowController.applyTextStyle(
         host, [], {"text_color": "#FFCC00"}, "project"
     )
     export_styles = subtitle_style_overrides(document)
@@ -1070,7 +1070,7 @@ def test_inline_subtitle_style_updates_only_selected_cue_and_preview():
 
 def test_watermark_style_changes_are_written_to_editor_document(tmp_path):
     video = _video(tmp_path)
-    video.watermark_text = "HAIZFLOW"
+    video.watermark_text = "HFLOW"
     video.watermark_font_family = "Impact"
     video.watermark_text_color = "#FFEF00"
     video.watermark_bold = False
@@ -1081,7 +1081,7 @@ def test_watermark_style_changes_are_written_to_editor_document(tmp_path):
         sequence=EditorSequence(duration_ms=3000),
         styles=[EditorTextStyle(style_id="watermark-default", target_type="watermark")],
         clips=[EditorClip(clip_id="watermark-1", track_id="overlays", kind="text",
-            name="HAIZFLOW", duration_ms=3000, style_id="watermark-default")],
+            name="HFLOW", duration_ms=3000, style_id="watermark-default")],
     )
     saved = []
     host = SimpleNamespace(_manual_editor_document=None, _selected_video_id=video.video_id)
@@ -1089,7 +1089,7 @@ def test_watermark_style_changes_are_written_to_editor_document(tmp_path):
         patch.object(editor_documents, "load", return_value=document),
         patch.object(editor_documents, "save", side_effect=lambda _video, changed: saved.append(changed) or changed),
     ):
-        HaizFlowController._sync_legacy_editor_visual_settings(host, video, {"watermark"})
+        HFlowController._sync_legacy_editor_visual_settings(host, video, {"watermark"})
 
     assert len(saved) == 1
     style = saved[0].styles[0]
@@ -1122,7 +1122,7 @@ def test_text_overlay_compiler_uses_shared_sprite_and_keyframed_transform(tmp_pa
         )],
     )
 
-    with patch("haizflow.pipeline.sequence_compiler._run") as run:
+    with patch("hflow.pipeline.sequence_compiler._run") as run:
         apply_overlays(str(source), str(destination), document, "test")
 
     command = run.call_args.args[0]
@@ -1337,7 +1337,7 @@ def test_video_overlay_export_matches_preview_scale_and_source_offset(tmp_path):
         )],
     )
 
-    with patch("haizflow.pipeline.sequence_compiler._run") as run:
+    with patch("hflow.pipeline.sequence_compiler._run") as run:
         apply_overlays(str(source), str(destination), document, "test")
 
     command = run.call_args.args[0]
@@ -1376,7 +1376,7 @@ def test_media_overlay_crop_is_compiled_before_scale(tmp_path):
         )],
     )
 
-    with patch("haizflow.pipeline.sequence_compiler._run") as run:
+    with patch("hflow.pipeline.sequence_compiler._run") as run:
         apply_overlays(str(source), str(destination), document, "test")
 
     command = run.call_args.args[0]
@@ -1413,7 +1413,7 @@ def test_unlocked_overlay_aspect_ratio_uses_independent_export_scales(tmp_path):
         )],
     )
 
-    with patch("haizflow.pipeline.sequence_compiler._run") as run:
+    with patch("hflow.pipeline.sequence_compiler._run") as run:
         apply_overlays(str(source), str(destination), document, "test")
 
     command = run.call_args.args[0]
@@ -1453,8 +1453,8 @@ def test_unmuted_video_overlay_audio_is_mixed_on_the_editor_clock(tmp_path):
     )
 
     with (
-        patch("haizflow.pipeline.sequence_compiler.get_media_stream_types", return_value={"video", "audio"}),
-        patch("haizflow.pipeline.sequence_compiler._run") as run,
+        patch("hflow.pipeline.sequence_compiler.get_media_stream_types", return_value={"video", "audio"}),
+        patch("hflow.pipeline.sequence_compiler._run") as run,
     ):
         apply_overlays(str(source), str(destination), document, "test")
 

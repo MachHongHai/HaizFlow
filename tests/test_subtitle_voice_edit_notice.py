@@ -3,8 +3,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.desktop.subtitle_voice_edit_notice import SubtitleVoiceEditNotice
+from hflow.desktop.qml_controller import HFlowController
+from hflow.desktop.subtitle_voice_edit_notice import SubtitleVoiceEditNotice
 
 
 def test_warning_waits_for_success_and_only_once_per_project_session():
@@ -61,13 +61,13 @@ def test_controller_prepares_notice_only_for_changed_voiced_subtitle(had_voice, 
             saveText=Mock(return_value=accepted),
         ),
     )
-    with patch("haizflow.desktop.qml_controller.video_store.get_video", return_value=video), \
-            patch("haizflow.pipeline.manual_tools.published_voice_record", return_value={} if not had_voice else {"id": "voice"}), \
-            patch("haizflow.pipeline.manual_tools.ensure_narrator_anchor"):
-        result = HaizFlowController.saveManualSubtitleText(
+    with patch("hflow.desktop.qml_controller.video_store.get_video", return_value=video), \
+            patch("hflow.pipeline.manual_tools.published_voice_record", return_value={} if not had_voice else {"id": "voice"}), \
+            patch("hflow.pipeline.manual_tools.ensure_narrator_anchor"):
+        result = HFlowController.saveManualSubtitleText(
             host, "sentence", "Changed" if changed else "Original", 0, "save",
         )
     assert result is accepted
     alert.assert_not_called()  # Accepted is not the same as durable success.
-    HaizFlowController._subtitle_voice_edit_saved(host, "sentence", 1, "save")
+    HFlowController._subtitle_voice_edit_saved(host, "sentence", 1, "save")
     assert alert.call_count == int(had_voice and changed and accepted)

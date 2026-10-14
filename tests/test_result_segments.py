@@ -10,10 +10,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.schemas.editor import EditorClip, EditorDocument, EditorSequence, EditorTrack
-from haizflow.services import editor_documents, result_segments, video_export
-from haizflow.utils.ffmpeg import _binary, get_video_duration, get_media_stream_types
+from hflow.desktop.qml_controller import HFlowController
+from hflow.schemas.editor import EditorClip, EditorDocument, EditorSequence, EditorTrack
+from hflow.services import editor_documents, result_segments, video_export
+from hflow.utils.ffmpeg import _binary, get_video_duration, get_media_stream_types
 
 
 def make_document():
@@ -44,20 +44,20 @@ def test_split_trim_delete_keep_other_tracks_clock_and_render_identity():
     before = result_segments.render_payload(document)
     voice = document.clips[0].model_dump()
     host = host_for(document)
-    assert HaizFlowController.splitResultClip(host, "result-1", 2000)
-    assert not HaizFlowController.splitResultClip(host, "result-1", 40)
+    assert HFlowController.splitResultClip(host, "result-1", 2000)
+    assert not HFlowController.splitResultClip(host, "result-1", 40)
     ranges = result_segments.ranges(document)
     assert [(item["startMs"], item["endMs"]) for item in ranges] == [(0, 2000), (2000, 4000)]
     second = ranges[1]["id"]
-    assert HaizFlowController.trimClip(host, second, "left", 2500)
-    assert HaizFlowController.trimClip(host, "result-1", "right", 1500)
-    assert not HaizFlowController.moveClip(host, second, 0)
-    assert not HaizFlowController.trimClip(host, second, "right", 10000)  # Already at its bounded end.
+    assert HFlowController.trimClip(host, second, "left", 2500)
+    assert HFlowController.trimClip(host, "result-1", "right", 1500)
+    assert not HFlowController.moveClip(host, second, 0)
+    assert not HFlowController.trimClip(host, second, "right", 10000)  # Already at its bounded end.
     assert result_segments.ranges(document)[1]["endMs"] == 4000
     assert document.sequence.duration_ms == 4000
     assert document.clips[0].model_dump() == voice
     assert result_segments.render_payload(document) == before
-    assert HaizFlowController.removeClips(host, [second], False)
+    assert HFlowController.removeClips(host, [second], False)
     assert result_segments.render_payload(document) == before
     assert len(result_segments.ranges(document)) == 1
 
@@ -65,14 +65,14 @@ def test_split_trim_delete_keep_other_tracks_clock_and_render_identity():
 def test_toolbar_split_finds_result_clip_at_playhead_without_selection():
     document = make_document()
     host = host_for(document)
-    assert HaizFlowController.splitResultClip(host, "", 1800)
+    assert HFlowController.splitResultClip(host, "", 1800)
     assert [(item["startMs"], item["endMs"]) for item in result_segments.ranges(document)] == [
         (0, 1800), (1800, 4000)]
-    assert HaizFlowController.splitResultClip(host, "", 2900)
+    assert HFlowController.splitResultClip(host, "", 2900)
     assert [(item["startMs"], item["endMs"]) for item in result_segments.ranges(document)] == [
         (0, 1800), (1800, 2900), (2900, 4000)]
-    assert not HaizFlowController.splitResultClip(host, "", 2900)
-    assert not HaizFlowController.splitResultClip(host, "", 4000)
+    assert not HFlowController.splitResultClip(host, "", 2900)
+    assert not HFlowController.splitResultClip(host, "", 4000)
     assert document.clips[0].asset_id == "published-voice"
 
 
@@ -147,7 +147,7 @@ def test_segment_export_is_frame_accurate_atomic_and_keeps_render(composed_sourc
     assert target.read_bytes() == old
     with pytest.raises(ValueError):
         video_export.export_video(video, tmp_path / "invalid.mp4", range_ms=(0, 10000))
-    assert not list(tmp_path.glob(".haizflow-export-*"))
+    assert not list(tmp_path.glob(".hflow-export-*"))
 
 
 def test_undo_payload_restores_result_ranges_without_retouching_other_clips():

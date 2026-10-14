@@ -1,0 +1,47 @@
+import QtQuick
+import QtQuick.Layouts
+import "."
+
+AppDialog {
+    id: root
+
+    property string alertMessage: ""
+    property string severity: "information"
+    readonly property bool isError: severity === "critical" || severity === "error" || severity === "danger" || severity === "failed"
+    readonly property color accentColor: isError ? Theme.danger
+        : severity === "warning" ? Theme.warning : Theme.textMuted
+
+    preferredWidth: 440
+    maximumWidth: 520
+
+    function showAlert(alertTitle, message, level) {
+        title = alertTitle || "HFlow"
+        alertMessage = message || ""
+        severity = level || "information"
+        open()
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: Theme.space12
+
+        Text {
+            Layout.fillWidth: true
+            text: root.alertMessage
+            color: Theme.textMuted
+            font.family: Theme.fontFamily
+            font.pixelSize: TypeScale.control
+            lineHeight: 1.35
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+        }
+    }
+
+    footerActions: [
+        StudioButton {
+            text: qsTr("Đóng")
+            variant: "primary"
+            onClicked: root.close()
+        }
+    ]
+}

@@ -22,11 +22,11 @@ $PackId = switch ($Profile) {
 $BuildRoot = [System.IO.Path]::GetFullPath((Join-Path $Root "build\resource-engines\$PackId"))
 $Environment = Join-Path $BuildRoot "venv"
 $Python = Join-Path $Environment "Scripts\python.exe"
-$Artifact = Join-Path $BuildRoot "dist\HaizFlowEngine"
+$Artifact = Join-Path $BuildRoot "dist\HFlowEngine"
 $Compliance = Join-Path $BuildRoot "compliance"
 $Archive = Join-Path $BuildRoot "$PackId-$Version.zip"
 $Lock = Join-Path $Root "requirements-lock-engine-$Profile-py313-win64.txt"
-$EntryPoint = Join-Path $Root "src\haizflow\engine\main.py"
+$EntryPoint = Join-Path $Root "src\hflow\engine\main.py"
 $VerifierPython = if (Test-Path -LiteralPath (Join-Path $Root ".venv\Scripts\python.exe")) {
   Join-Path $Root ".venv\Scripts\python.exe"
 } else {
@@ -113,7 +113,7 @@ try {
     "--clean",
     "--console",
     "--onedir",
-    "--name", "HaizFlowEngine",
+    "--name", "HFlowEngine",
     "--distpath", (Join-Path $BuildRoot "dist"),
     "--workpath", (Join-Path $BuildRoot "work"),
     "--specpath", (Join-Path $BuildRoot "spec"),
@@ -133,12 +133,12 @@ try {
       $Arguments += @("--collect-binaries", $Module)
     }
     foreach ($Module in @(
-      "haizflow.pipeline.transcribe",
-      "haizflow.pipeline.audio_separation",
-      "haizflow.pipeline.omnivoice_tts",
-      "haizflow.pipeline.vieneu_tts",
-      "haizflow.services.translation",
-      "haizflow.services.hymt2_worker"
+      "hflow.pipeline.transcribe",
+      "hflow.pipeline.audio_separation",
+      "hflow.pipeline.omnivoice_tts",
+      "hflow.pipeline.vieneu_tts",
+      "hflow.services.translation",
+      "hflow.services.hymt2_worker"
       "pydub"
       "pydub.silence"
       "audioop"
@@ -148,10 +148,10 @@ try {
     $Arguments += @("--exclude-module", "rapidocr")
   }
   else {
-    # Do not collect RapidOCR's mutable default model payload. HaizFlow loads
+    # Do not collect RapidOCR's mutable default model payload. HFlow loads
     # only the separately checksum-pinned subtitle OCR assets.
     $Arguments += @("--collect-binaries", "onnxruntime")
-    $Arguments += @("--hidden-import", "rapidocr", "--hidden-import", "haizflow.pipeline.subtitle_ocr")
+    $Arguments += @("--hidden-import", "rapidocr", "--hidden-import", "hflow.pipeline.subtitle_ocr")
     foreach ($Module in @("torch", "torchaudio", "torchvision", "whisperx", "transformers", "demucs")) {
       $Arguments += @("--exclude-module", $Module)
     }
@@ -182,19 +182,19 @@ try {
   Copy-Item -LiteralPath (Join-Path $Compliance "licenses") -Destination $Artifact -Recurse -Force
   & $VerifierPython (Join-Path $PSScriptRoot "verify-legal-state.py") --artifact $Artifact
   if ($LASTEXITCODE -ne 0) { throw "Packaged engine legal documents differ from source." }
-  Sign-EngineExecutable (Join-Path $Artifact "HaizFlowEngine.exe")
+  Sign-EngineExecutable (Join-Path $Artifact "HFlowEngine.exe")
   $SmokeRoot = Join-Path $BuildRoot ("smoke-" + [guid]::NewGuid().ToString("N"))
   $SmokeEnvironment = @{}
-  foreach ($Name in @("HAIZFLOW_HOME", "RUNTIME_DATA_DIR", "MODELS_DIR", "HAIZFLOW_TMP_DIR", "HAIZFLOW_SMOKE_TEST")) {
+  foreach ($Name in @("HFLOW_HOME", "RUNTIME_DATA_DIR", "MODELS_DIR", "HFLOW_TMP_DIR", "HFLOW_SMOKE_TEST")) {
     $SmokeEnvironment[$Name] = [Environment]::GetEnvironmentVariable($Name, "Process")
   }
   try {
-    $env:HAIZFLOW_HOME = $SmokeRoot
+    $env:HFLOW_HOME = $SmokeRoot
     $env:RUNTIME_DATA_DIR = Join-Path $SmokeRoot "data"
     $env:MODELS_DIR = Join-Path $SmokeRoot "models"
-    $env:HAIZFLOW_TMP_DIR = Join-Path $SmokeRoot "tmp"
-    $env:HAIZFLOW_SMOKE_TEST = "1"
-    & (Join-Path $Artifact "HaizFlowEngine.exe") --smoke --profile $Profile
+    $env:HFLOW_TMP_DIR = Join-Path $SmokeRoot "tmp"
+    $env:HFLOW_SMOKE_TEST = "1"
+    & (Join-Path $Artifact "HFlowEngine.exe") --smoke --profile $Profile
     if ($LASTEXITCODE -ne 0) { throw "Frozen engine smoke test failed." }
   } finally {
     foreach ($Name in $SmokeEnvironment.Keys) {

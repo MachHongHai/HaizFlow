@@ -16,6 +16,6 @@ gcc --version > "$work/compiler-version.txt"
   --extra-version=haizflow-engine --disable-autodetect --disable-debug --disable-doc \
   --disable-programs --disable-static --enable-shared --disable-gpl --disable-nonfree \
   --disable-version3 --enable-zlib --enable-schannel
-make -j "${HAIZFLOW_BUILD_JOBS:-4}"
+make -j "${HFLOW_BUILD_JOBS:-4}"
 make install
 cp ffbuild/config.log config.h ffbuild/config.mak "$work/"

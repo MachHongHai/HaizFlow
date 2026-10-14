@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication
 
-from haizflow.desktop.single_instance import SingleInstanceCoordinator, default_server_name
+from hflow.desktop.single_instance import SingleInstanceCoordinator, default_server_name
 
 
 class SingleInstanceTests(unittest.TestCase):
@@ -18,10 +18,10 @@ class SingleInstanceTests(unittest.TestCase):
 
     def test_default_lock_name_is_stable_and_user_scoped(self):
         self.assertEqual(default_server_name(), default_server_name())
-        self.assertRegex(default_server_name(), r"^HaizFlow-[0-9a-f]{16}$")
+        self.assertRegex(default_server_name(), r"^HFlow-[0-9a-f]{16}$")
 
     def test_second_instance_notifies_the_primary_instance(self):
-        server_name = f"HaizFlow-test-{uuid.uuid4().hex}"
+        server_name = f"HFlow-test-{uuid.uuid4().hex}"
         primary = SingleInstanceCoordinator(server_name)
         secondary = SingleInstanceCoordinator(server_name)
         activations = []
@@ -39,7 +39,7 @@ class SingleInstanceTests(unittest.TestCase):
             primary.close()
 
     def test_lock_and_activation_work_across_processes(self):
-        server_name = f"HaizFlow-process-test-{uuid.uuid4().hex}"
+        server_name = f"HFlow-process-test-{uuid.uuid4().hex}"
         root = Path(__file__).resolve().parents[1]
         environment = os.environ.copy()
         environment["PYTHONPATH"] = str(root / "src")
@@ -48,7 +48,7 @@ class SingleInstanceTests(unittest.TestCase):
             (
                 "import sys",
                 "from PySide6.QtCore import QCoreApplication, QTimer",
-                "from haizflow.desktop.single_instance import SingleInstanceCoordinator",
+                "from hflow.desktop.single_instance import SingleInstanceCoordinator",
                 "app = QCoreApplication([])",
                 f"coordinator = SingleInstanceCoordinator({server_name!r})",
                 "assert coordinator.acquire()",
@@ -65,7 +65,7 @@ class SingleInstanceTests(unittest.TestCase):
         secondary_code = "\n".join(
             (
                 "from PySide6.QtCore import QCoreApplication",
-                "from haizflow.desktop.single_instance import SingleInstanceCoordinator",
+                "from hflow.desktop.single_instance import SingleInstanceCoordinator",
                 "app = QCoreApplication([])",
                 f"coordinator = SingleInstanceCoordinator({server_name!r})",
                 "assert not coordinator.acquire()",

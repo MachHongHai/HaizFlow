@@ -21,7 +21,7 @@ cookie file is used. Results are samples, not a measured platform success rate.
 The public video `7692729822069443859` was inspected through both the
 `jingxuan?modal_id=` and `/video/` forms. A complete 60.488-second video
 (6,544,810 bytes) and a 60.489-second AAC/M4A file (1,486,874 bytes) downloaded
-through the existing HaizFlow pipeline. FFprobe verified the media.
+through the existing HFlow pipeline. FFprobe verified the media.
 
 The video's public author profile returned three candidates. One 66.571-second
 channel video (9,136,067 bytes, HEVC picture and AAC audio) downloaded through
@@ -36,7 +36,7 @@ need refresh or user verification.
 
 The observed invitation has the title `登录后免费畅享高清视频`, the semantic
 panel ID `douyin_login_comp_flat_panel`, and a normal X control in its header.
-HaizFlow now clicks only that known visible invitation's unambiguous X through
+HFlow now clicks only that known visible invitation's unambiguous X through
 normal hit testing. It does not remove/hide DOM, force a click, press Escape on
 an unknown overlay, fill a login form, or solve verification. At most two
 dismissal attempts are allowed per signing-readiness operation.
@@ -55,7 +55,7 @@ signing or a metadata request. Closing the invitation alone is therefore not a
 complete explanation of the intermittent failures.
 
 A transient missing body now means unknown readiness, not "no CAPTCHA" or an
-immediate failed session. HaizFlow waits within its existing bounded SDK deadline,
+immediate failed session. HFlow waits within its existing bounded SDK deadline,
 honours cancellation and does not sign or dismiss anything until the document
 can be examined. A sustained loading timeout is reported as a transient failure.
 Reloads during manual verification retain the human-wait deadline rather than

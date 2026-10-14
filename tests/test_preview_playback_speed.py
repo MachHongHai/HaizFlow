@@ -7,10 +7,10 @@ import time
 import numpy as np
 import pytest
 
-from haizflow.desktop.manual_preview_audio_controller import (
+from hflow.desktop.manual_preview_audio_controller import (
     ManualPreviewAudioController, PCM_BUFFER_FRAMES, RATE, mix_frames,
 )
-from haizflow.desktop.preview_tempo import PreviewTempoStream
+from hflow.desktop.preview_tempo import PreviewTempoStream
 
 
 def ramp_track():
@@ -163,7 +163,7 @@ def test_pump_accounts_for_audible_not_buffered_timeline_at_every_rate(rate, mon
     audio._cursor = RATE * 5
     tempo = Mock(error="")
     tempo.peek.side_effect = lambda count: bytes(count * 4)
-    monkeypatch.setattr("haizflow.desktop.preview_tempo.PreviewTempoStream", Mock(return_value=tempo))
+    monkeypatch.setattr("hflow.desktop.preview_tempo.PreviewTempoStream", Mock(return_value=tempo))
     try:
         audio._pump()
         assert audio._cursor == RATE * 5 + 4801 * rate

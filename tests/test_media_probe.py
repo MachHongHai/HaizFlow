@@ -11,8 +11,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.desktop.media_probe import VideoDimensionProbe
-from haizflow.utils import ffmpeg
+from hflow.desktop.media_probe import VideoDimensionProbe
+from hflow.utils import ffmpeg
 
 
 class MediaProbeTests(unittest.TestCase):
@@ -22,7 +22,7 @@ class MediaProbeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "clip.mp4"
             path.write_bytes(b"source")
-            with patch("haizflow.desktop.media_probe.get_video_dimensions", return_value=(1920, 1080)) as probe:
+            with patch("hflow.desktop.media_probe.get_video_dimensions", return_value=(1920, 1080)) as probe:
                 worker = VideoDimensionProbe(lambda *result: (results.append(result), ready.set()), workers=1)
                 worker.request("video-1", str(path))
                 self.assertTrue(ready.wait(2.0))
@@ -40,7 +40,7 @@ class MediaProbeTests(unittest.TestCase):
             release.wait(2.0)
             return 1920, 1080
 
-        with patch("haizflow.desktop.media_probe.get_video_dimensions", side_effect=blocked_probe):
+        with patch("hflow.desktop.media_probe.get_video_dimensions", side_effect=blocked_probe):
             worker = VideoDimensionProbe(lambda *_result: None, workers=1)
             worker.request("video-1", "clip.mp4")
             self.assertTrue(started.wait(1.0))

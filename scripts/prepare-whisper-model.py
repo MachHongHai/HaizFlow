@@ -11,8 +11,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.config import MODELS_DIR, WHISPER_MODEL_REPO, WHISPER_MODEL_REVISION  # noqa: E402
-from haizflow.core.model_integrity import verify_whisper_model  # noqa: E402
+from hflow.config import MODELS_DIR, WHISPER_MODEL_REPO, WHISPER_MODEL_REVISION  # noqa: E402
+from hflow.core.model_integrity import verify_whisper_model  # noqa: E402
 from huggingface_hub import snapshot_download  # noqa: E402
 
 

@@ -2,10 +2,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from haizflow.services.douyin_video import (
-    HaizFlowDouyinIE, share_page_detail, video_id_from_url,
+from hflow.services.douyin_video import (
+    HFlowDouyinIE, share_page_detail, video_id_from_url,
 )
-from haizflow.services.video_download import _extract_video_info, validate_video_url
+from hflow.services.video_download import _extract_video_info, validate_video_url
 
 
 @pytest.mark.parametrize("url", [
@@ -39,7 +39,7 @@ def test_extractor_delegates_to_one_adapter():
     adapter.session.lock = threading.RLock()
     adapter.inspect.return_value = {"aweme_id": "768495470663049704", "video": {}}
     adapter.session.profile.ua = "stable UA"
-    ie = HaizFlowDouyinIE(adapter=adapter)
+    ie = HFlowDouyinIE(adapter=adapter)
     ie._parse_aweme_video_app = Mock(return_value={"formats": [{"url": "https://example.com/public.mp4"}]})
     result = ie._real_extract("https://v.douyin.com/demo/")
     assert result["webpage_url"] == "https://www.douyin.com/video/768495470663049704"

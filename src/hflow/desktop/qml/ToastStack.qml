@@ -1,0 +1,123 @@
+pragma ComponentBehavior: Bound
+
+import QtQuick
+import QtQuick.Layouts
+import "."
+
+Item {
+    id: root
+
+    property int maximumVisible: 4
+    property int defaultDuration: 4200
+    signal detailsRequested(string title, string message, string tone)
+
+    function show(title, message, tone, duration) {
+        while (toastModel.count >= maximumVisible)
+            toastModel.remove(0)
+        toastModel.append({
+            titleText: String(title || "HFlow"),
+            messageText: String(message || ""),
+            toneName: String(tone || "info"),
+            timeoutMs: Math.max(1600, Number(duration || defaultDuration))
+        })
+    }
+
+    implicitWidth: 380
+    implicitHeight: toastColumn.implicitHeight
+
+    ListModel { id: toastModel }
+
+    Column {
+        id: toastColumn
+        anchors.fill: parent
+        spacing: Theme.space8
+
+        Repeater {
+            model: toastModel
+
+            delegate: Rectangle {
+                id: toast
+                required property int index
+                required property string titleText
+                required property string messageText
+                required property string toneName
+                required property int timeoutMs
+
+                width: toastColumn.width
+                height: toastContent.implicitHeight + Theme.space16 * 2
+                radius: Theme.radius
+                color: Theme.surfaceElevated
+                border.width: 1
+                border.color: toneName === "failed" || toneName === "critical" ? Theme.danger
+                    : toneName === "warning" ? Theme.warning : Theme.outlineStrong
+
+                RowLayout {
+                    id: toastContent
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: Theme.space16
+                    anchors.rightMargin: Theme.space8
+                    spacing: Theme.space12
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+
+                        Text {
+                            id: titleLabel
+                            Layout.fillWidth: true
+                            text: toast.titleText
+                            color: Theme.text
+                            font.family: Theme.fontFamily
+                            font.pixelSize: TypeScale.control
+                            font.weight: Font.DemiBold
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            id: messageLabel
+                            objectName: "toastMessage"
+                            Layout.fillWidth: true
+                            text: toast.messageText
+                            color: Theme.textMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: TypeScale.label
+                            textFormat: Text.PlainText
+                            wrapMode: Text.WordWrap
+                            maximumLineCount: 3
+                            elide: Text.ElideRight
+                        }
+                        StudioButton {
+                            objectName: "toastDetailsButton"
+                            text: qsTr("Chi tiết")
+                            visible: titleLabel.truncated || messageLabel.truncated
+                            variant: "ghost"
+                            compact: true
+                            onClicked: {
+                                root.detailsRequested(toast.titleText, toast.messageText, toast.toneName)
+                                toastModel.remove(toast.index)
+                            }
+                        }
+                    }
+
+                    IconButton {
+                        objectName: "toastCloseButton"
+                        glyph: "\uE711"
+                        toolTipText: qsTr("Đóng")
+                        onClicked: toastModel.remove(toast.index)
+                    }
+                }
+
+                Timer {
+                    interval: toast.timeoutMs
+                    running: toast.visible
+                    onTriggered: {
+                        if (toast.index >= 0 && toast.index < toastModel.count)
+                            toastModel.remove(toast.index)
+                    }
+                }
+            }
+        }
+    }
+}

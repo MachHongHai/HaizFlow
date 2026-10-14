@@ -13,8 +13,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.desktop.project_commands_controller import ProjectCommandsController
-from haizflow.pipeline import omnivoice_tts as voice, process_registry as registry
+from hflow.desktop.project_commands_controller import ProjectCommandsController
+from hflow.pipeline import omnivoice_tts as voice, process_registry as registry
 
 
 def test_manual_pause_does_not_wait_for_a_modal_confirmation():
@@ -26,11 +26,11 @@ def test_manual_pause_does_not_wait_for_a_modal_confirmation():
         selectedVideoChanged=Mock(), refreshVideos=Mock(),
     )
     with (
-        patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=video),
-        patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update,
-        patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
-        patch("haizflow.desktop.project_commands_controller.QMessageBox.question") as question,
-        patch("haizflow.desktop.project_commands_controller.pause_video") as pause,
+        patch("hflow.desktop.project_commands_controller.video_store.get_video", return_value=video),
+        patch("hflow.desktop.project_commands_controller.video_store.update_video") as update,
+        patch("hflow.desktop.project_commands_controller.video_store.log_to_video"),
+        patch("hflow.desktop.project_commands_controller.QMessageBox.question") as question,
+        patch("hflow.desktop.project_commands_controller.pause_video") as pause,
     ):
         ProjectCommandsController(host).stop_video()
     question.assert_not_called()

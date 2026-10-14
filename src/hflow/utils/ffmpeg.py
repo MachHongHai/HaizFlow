@@ -1,0 +1,248 @@
+import json
+import shutil
+import subprocess
+from functools import lru_cache
+from pathlib import Path
+
+from hflow.config import BIN_DIR
+
+
+def _binary(name: str) -> str:
+    resolved = shutil.which(name)
+    if resolved:
+        return resolved
+    return str(Path(BIN_DIR) / f"{name}.exe")
+
+
+@lru_cache(maxsize=1)
+def available_video_encoders() -> set[str]:
+    try:
+        result = subprocess.run(
+            [_binary("ffmpeg"), "-hide_banner", "-encoders"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+            check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    encoders = set()
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0].startswith("V"):
+            encoders.add(parts[1])
+    return encoders
+
+
+@lru_cache(maxsize=None)
+def _encoder_works(encoder: str) -> bool:
+    if encoder not in available_video_encoders():
+        return False
+    try:
+        result = subprocess.run(
+            [
+                _binary("ffmpeg"), "-hide_banner", "-loglevel", "error",
+                "-f", "lavfi", "-i", "color=c=black:s=256x256:d=0.1",
+                "-frames:v", "1", "-c:v", encoder, "-f", "null", "-",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
+def preferred_video_encoder(quality: int = 23) -> tuple[str, list[str]]:
+    """Return a verified hardware encoder, with a universal CPU fallback.
+
+    Video encoding support is independent from the device selected for AI
+    inference.  A CPU inference profile can still use Intel Quick Sync, AMD
+    AMF, or an NVIDIA encoder, so probe every supported backend directly.
+    """
+    candidates = ["h264_nvenc", "h264_qsv", "h264_amf"]
+    quality_value = str(max(0, min(51, int(quality))))
+    for encoder in candidates:
+        if not _encoder_works(encoder):
+            continue
+        if encoder == "h264_nvenc":
+            return encoder, ["-preset", "p4", "-cq", quality_value]
+        if encoder == "h264_qsv":
+            return encoder, ["-preset", "faster", "-global_quality", quality_value]
+        return encoder, ["-quality", "speed", "-qp_i", quality_value, "-qp_p", quality_value]
+    return "libx264", ["-preset", "veryfast", "-crf", quality_value]
+
+
+def preferred_export_encoder(quality: int, *, dimensions: tuple[int, int] | None = None,
+                             duration: float = 0) -> tuple[str, list[str]]:
+    """Avoid hardware setup overhead for small, short finishing/cut passes.
+
+    Full HD, vertical HD and long segments retain hardware acceleration. This
+    does not change the main renderer or the device selected for AI models.
+    """
+    if dimensions and 0 < duration <= 30 and dimensions[0] * dimensions[1] <= 1280 * 720:
+        return "libx264", ["-preset", "veryfast", "-crf", str(max(0, min(51, int(quality))))]
+    return preferred_video_encoder(quality)
+
+
+def is_ffmpeg_available() -> bool:
+    """Checks if both ffmpeg and ffprobe are available in the PATH."""
+    return shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
+
+def get_ffmpeg_version(*, timeout_seconds: float = 15.0) -> str:
+    """Retrieves the first line of ffmpeg's version details."""
+    try:
+        result = subprocess.run(
+            [_binary("ffmpeg"), "-version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=max(1.0, float(timeout_seconds)),
+            check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if result.stdout:
+            return result.stdout.splitlines()[0]
+        return "Unknown version"
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"Unknown (Error: {exc})"
+
+
+def get_video_duration(video_path: str, *, timeout_seconds: float = 15.0) -> float:
+    """Calculates the duration of a video file using ffprobe."""
+    try:
+        cmd = [
+            _binary("ffprobe"), "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            video_path
+        ]
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=max(1.0, float(timeout_seconds)),
+            check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return float(result.stdout.strip())
+    except (OSError, subprocess.SubprocessError, TypeError, ValueError):
+        return 0.0
+
+
+def get_video_dimensions(video_path: str, *, timeout_seconds: float = 15.0) -> tuple[int, int]:
+    """Return the first video stream dimensions for subtitle positioning and crop math."""
+    try:
+        result = subprocess.run(
+            [
+                _binary("ffprobe"), "-v", "error", "-select_streams", "v:0",
+                "-show_entries", "stream=width,height", "-of", "csv=p=0", video_path,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+            timeout=max(1.0, float(timeout_seconds)),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        width, height = result.stdout.strip().split(",")
+        return int(width), int(height)
+    except Exception as exc:
+        raise RuntimeError(f"Cannot read video dimensions: {exc}") from exc
+
+
+def get_media_stream_types(media_path: str, *, timeout_seconds: float = 15.0) -> set[str]:
+    """Return codec stream types from a bounded ffprobe call."""
+    try:
+        result = subprocess.run(
+            [
+                _binary("ffprobe"),
+                "-v",
+                "error",
+                "-show_entries",
+                "stream=codec_type",
+                "-of",
+                "json",
+                media_path,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=max(1.0, float(timeout_seconds)),
+            check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        payload = json.loads(result.stdout)
+        return {
+            str(stream.get("codec_type") or "")
+            for stream in payload.get("streams", [])
+            if isinstance(stream, dict) and stream.get("codec_type")
+        }
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError, TypeError, ValueError):
+        return set()
+
+
+def validate_video_integrity(video_path: str, *, timeout_seconds: float = 900.0) -> None:
+    """Scan every input packet so truncated videos cannot produce frozen-tail exports.
+
+    Container metadata can advertise the original duration even when a file was
+    interrupted halfway through. FFprobe alone therefore accepted work5 as a
+    152-second video although its final valid video packet ended at 57 seconds.
+    Stream-copying to the null muxer is fast, does not re-encode, and still makes
+    FFmpeg validate the complete packet stream.
+    """
+    path = str(Path(video_path).resolve())
+    if not Path(path).is_file() or Path(path).stat().st_size <= 0:
+        raise RuntimeError(f"The source video is missing or empty: {path}")
+    try:
+        result = subprocess.run(
+            [
+                _binary("ffmpeg"),
+                "-hide_banner",
+                "-v",
+                "error",
+                "-xerror",
+                "-i",
+                path,
+                "-map",
+                "0:v:0",
+                "-map",
+                "0:a?",
+                "-c",
+                "copy",
+                "-f",
+                "null",
+                "-",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=max(30.0, float(timeout_seconds)),
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            "The source video integrity scan timed out. Try copying or downloading the source again."
+        ) from exc
+    except OSError as exc:
+        raise RuntimeError(f"FFmpeg could not validate the source video: {exc}") from exc
+    if result.returncode != 0:
+        detail = " ".join((result.stderr or "").split())[-900:]
+        raise RuntimeError(
+            "The source video is incomplete or corrupted. Import or download it again before processing."
+            + (f" FFmpeg: {detail}" if detail else "")
+        )

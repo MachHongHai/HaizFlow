@@ -3,9 +3,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from haizflow.pipeline.speech_timing import voiced_subtitle_segments, fitted_speech_duration_ms
-from haizflow.pipeline.sequence_compiler import write_subtitles
-from haizflow.schemas.editor import EditorDocument, EditorTrack, EditorClip, EditorAsset
+from hflow.pipeline.speech_timing import voiced_subtitle_segments, fitted_speech_duration_ms
+from hflow.pipeline.sequence_compiler import write_subtitles
+from hflow.schemas.editor import EditorDocument, EditorTrack, EditorClip, EditorAsset
 
 
 class SpeechTimingTests(unittest.TestCase):
@@ -15,7 +15,7 @@ class SpeechTimingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             audio = Path(folder) / "voice.wav"
             audio.touch()
-            with patch("haizflow.pipeline.speech_timing._trimmed_duration", side_effect=[1930, 2600]):
+            with patch("hflow.pipeline.speech_timing._trimmed_duration", side_effect=[1930, 2600]):
                 result = voiced_subtitle_segments(segments, [str(audio), str(audio)])
         self.assertAlmostEqual(result[0]["end"], 2.93)
         self.assertAlmostEqual(result[1]["end"], 9.60)
@@ -45,7 +45,7 @@ class SpeechTimingTests(unittest.TestCase):
                                   duration_ms=4690)],
                 assets=[EditorAsset(asset_id="a", kind="audio", path=str(audio))])
             output = Path(folder) / "captions.srt"
-            with patch("haizflow.pipeline.speech_timing._trimmed_duration", return_value=1930):
+            with patch("hflow.pipeline.speech_timing._trimmed_duration", return_value=1930):
                 self.assertTrue(write_subtitles(document, output))
                 self.assertIn("00:00:01,000 --> 00:00:02,930", output.read_text())
                 document.tracks[1].muted = True

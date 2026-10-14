@@ -6,9 +6,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.services import gemini_translation, hymt2_worker, translation
-from haizflow.services.translation_progress import TranslationProgress
-from haizflow.pipeline import process_video
+from hflow.services import gemini_translation, hymt2_worker, translation
+from hflow.services.translation_progress import TranslationProgress
+from hflow.pipeline import process_video
 
 
 def test_frozen_worker_request_preserves_unicode_with_windows_system_code_page():

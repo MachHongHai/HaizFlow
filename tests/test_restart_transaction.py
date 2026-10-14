@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from haizflow.schemas.video import VideoConfig
-from haizflow.services import manual_artifacts, project_store, video_store
+from hflow.schemas.video import VideoConfig
+from hflow.services import manual_artifacts, project_store, video_store
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ def test_locked_temp_rename_rolls_back_previously_moved_cache(old_video, monkeyp
         if Path(source) == temporary:
             raise PermissionError(13, "WinError 32: temp locked")
         return replace(source, destination)
-    monkeypatch.setattr("haizflow.services.video_store.os.replace", locked)
+    monkeypatch.setattr("hflow.services.video_store.os.replace", locked)
     with pytest.raises(PermissionError):
         video_store.prepare_video_restart(video.video_id)
     assert (temporary / "voice_final.wav").read_bytes() == b"old voice"

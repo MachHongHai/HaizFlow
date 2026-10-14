@@ -5,12 +5,12 @@ from unittest.mock import PropertyMock, patch
 
 import pytest
 
-from haizflow.services.resource_packs import ResourcePackManager, RESOURCE_STATE_VERSION
+from hflow.services.resource_packs import ResourcePackManager, RESOURCE_STATE_VERSION
 
 
 @pytest.fixture(autouse=True)
 def unpinned_storage(monkeypatch):
-    monkeypatch.delenv("HAIZFLOW_RESOURCE_ROOT", raising=False)
+    monkeypatch.delenv("HFLOW_RESOURCE_ROOT", raising=False)
     monkeypatch.delenv("MODELS_DIR", raising=False)
 
 
@@ -26,8 +26,8 @@ def test_cleanup_rejects_missing_or_broad_targets(tmp_path, previous):
     if previous is not None:
         payload["cleanup_previous"] = values.get(previous, previous)
     pointer.write_text(json.dumps(payload), encoding="utf-8")
-    with (patch("haizflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer),
-          patch("haizflow.services.resource_packs.shutil.rmtree") as remove):
+    with (patch("hflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer),
+          patch("hflow.services.resource_packs.shutil.rmtree") as remove):
         ResourcePackManager.cleanup_previous_storage()
     remove.assert_not_called()
 
@@ -45,7 +45,7 @@ def test_cleanup_requires_a_verified_copy_and_keeps_projects(tmp_path, target_ma
         (active / "models/model.bin").write_bytes(b"CORRUPTED")
     pointer = tmp_path / "pointer.json"
     pointer.write_text(json.dumps(dict(version=RESOURCE_STATE_VERSION, path=str(active), cleanup_previous=str(source))), encoding="utf-8")
-    with patch("haizflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer):
+    with patch("hflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer):
         ResourcePackManager.cleanup_previous_storage()
     assert (source / "projects/project.json").read_bytes() == b"USER PROJECT"
     assert (active / "models/model.bin").exists()
@@ -54,15 +54,15 @@ def test_cleanup_requires_a_verified_copy_and_keeps_projects(tmp_path, target_ma
 
 
 def test_cleanup_rejects_reparse_payload(tmp_path):
-    from haizflow.update.filesystem import UpdateError
+    from hflow.update.filesystem import UpdateError
 
     source = tmp_path / "source"
     active = tmp_path / "active"
     pointer = tmp_path / "pointer.json"
     pointer.write_text(json.dumps(dict(version=RESOURCE_STATE_VERSION, path=str(active), cleanup_previous=str(source))), encoding="utf-8")
-    with (patch("haizflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer),
-          patch("haizflow.update.filesystem.no_links", side_effect=UpdateError("Synthetic reparse point")),
-          patch("haizflow.services.resource_packs.shutil.rmtree") as remove):
+    with (patch("hflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer),
+          patch("hflow.update.filesystem.no_links", side_effect=UpdateError("Synthetic reparse point")),
+          patch("hflow.services.resource_packs.shutil.rmtree") as remove):
         ResourcePackManager.cleanup_previous_storage()
     remove.assert_not_called()
 
@@ -71,8 +71,8 @@ def test_cleanup_rejects_reparse_payload(tmp_path):
 def test_cleanup_rejects_corrupt_pointer_without_deleting(tmp_path, contents):
     pointer = tmp_path / "pointer.json"
     pointer.write_text(contents, encoding="utf-8")
-    with (patch("haizflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer),
-          patch("haizflow.services.resource_packs.shutil.rmtree") as remove):
+    with (patch("hflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer),
+          patch("hflow.services.resource_packs.shutil.rmtree") as remove):
         ResourcePackManager.cleanup_previous_storage()
     remove.assert_not_called()
 
@@ -82,7 +82,7 @@ def test_move_storage_restores_existing_destination_on_promotion_failure(tmp_pat
 
     source = tmp_path / "source"
     destination = tmp_path / "destination"
-    target = destination / "HaizFlowResources"
+    target = destination / "HFlowResources"
     for root, data in ((source, b"SOURCE"), (target, b"PREVIOUS DESTINATION")):
         (root / "models").mkdir(parents=True)
         (root / "models/model.bin").write_bytes(data)
@@ -98,8 +98,8 @@ def test_move_storage_restores_existing_destination_on_promotion_failure(tmp_pat
 
     manager = ResourcePackManager()
     with (patch.object(ResourcePackManager, "storage_root", new_callable=PropertyMock, return_value=source),
-          patch("haizflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer),
-          patch("haizflow.services.resource_packs.os.replace", side_effect=fail_promotion)):
+          patch("hflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer),
+          patch("hflow.services.resource_packs.os.replace", side_effect=fail_promotion)):
         with pytest.raises(PermissionError):
             manager.move_storage(destination)
     assert pointer.read_bytes() == before
@@ -113,7 +113,7 @@ def test_move_storage_pointer_failure_rolls_back_without_losing_either_copy(tmp_
 
     source = tmp_path / "source"
     destination = tmp_path / "destination"
-    target = destination / "HaizFlowResources"
+    target = destination / "HFlowResources"
     (source / "models").mkdir(parents=True)
     (source / "models/model.bin").write_bytes(b"SOURCE")
     if existing_destination:
@@ -130,8 +130,8 @@ def test_move_storage_pointer_failure_rolls_back_without_losing_either_copy(tmp_
         return replace(origin, dest)
 
     with (patch.object(ResourcePackManager, "storage_root", new_callable=PropertyMock, return_value=source),
-          patch("haizflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer),
-          patch("haizflow.services.resource_packs.os.replace", side_effect=fail_pointer)):
+          patch("hflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer),
+          patch("hflow.services.resource_packs.os.replace", side_effect=fail_pointer)):
         with pytest.raises(PermissionError):
             ResourcePackManager().move_storage(destination)
     assert pointer.read_bytes() == before
@@ -143,11 +143,11 @@ def test_move_storage_pointer_failure_rolls_back_without_losing_either_copy(tmp_
 
 
 def test_move_storage_never_replaces_a_destination_containing_user_files(tmp_path):
-    from haizflow.services.resource_packs import ResourcePackError
+    from hflow.services.resource_packs import ResourcePackError
 
     source = tmp_path / "source"
     destination = tmp_path / "destination"
-    target = destination / "HaizFlowResources"
+    target = destination / "HFlowResources"
     source.mkdir()
     target.mkdir(parents=True)
     (target / "important.txt").write_bytes(b"KEEP")
@@ -165,7 +165,7 @@ def test_move_storage_verified_copy_and_cleanup_preserve_app_data(tmp_path):
         (source / name / "file.bin").write_bytes(name.encode())
     pointer = tmp_path / "pointer.json"
     with (patch.object(ResourcePackManager, "storage_root", new_callable=PropertyMock, return_value=source),
-          patch("haizflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer)):
+          patch("hflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer)):
         target = ResourcePackManager().move_storage(destination)
         ResourcePackManager.cleanup_previous_storage()
     for name in ("models", "engines", "packages"):
@@ -177,13 +177,13 @@ def test_move_storage_verified_copy_and_cleanup_preserve_app_data(tmp_path):
 
 
 def test_move_reports_copy_and_verification_and_reuses_existing_destination(tmp_path):
-    source = tmp_path / "HaizFlowResources"
+    source = tmp_path / "HFlowResources"
     (source / "models").mkdir(parents=True)
     (source / "models/model.bin").write_bytes(b"MODEL" * 200000)
     pointer = tmp_path / "pointer.json"
     events = []
     with (patch.object(ResourcePackManager, "storage_root", new_callable=PropertyMock, return_value=source),
-          patch("haizflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer)):
+          patch("hflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer)):
         manager = ResourcePackManager()
         assert manager.move_storage(tmp_path) == source
         target = manager.move_storage(tmp_path / "new", progress=lambda *event: events.append(event))
@@ -208,8 +208,8 @@ def test_failed_cleanup_keeps_retry_pointer_and_preserves_projects(tmp_path):
             return
         original(path, **kwargs)
 
-    with patch("haizflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer):
-        with patch("haizflow.services.resource_packs.shutil.rmtree", side_effect=locked):
+    with patch("hflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer):
+        with patch("hflow.services.resource_packs.shutil.rmtree", side_effect=locked):
             ResourcePackManager.cleanup_previous_storage()
         assert json.loads(pointer.read_text())["cleanup_previous"] == str(source)
         ResourcePackManager.cleanup_previous_storage()
@@ -219,7 +219,7 @@ def test_failed_cleanup_keeps_retry_pointer_and_preserves_projects(tmp_path):
 
 def test_cancel_during_copy_keeps_old_storage_and_removes_partial(tmp_path):
     import threading
-    from haizflow.services.resource_packs import ModelBootstrapCancelled
+    from hflow.services.resource_packs import ModelBootstrapCancelled
 
     source, destination = tmp_path / "source", tmp_path / "destination"
     (source / "models").mkdir(parents=True)
@@ -232,7 +232,7 @@ def test_cancel_during_copy_keeps_old_storage_and_removes_partial(tmp_path):
             token.set()
 
     with (patch.object(ResourcePackManager, "storage_root", new_callable=PropertyMock, return_value=source),
-          patch("haizflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer)):
+          patch("hflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer)):
         with pytest.raises(ModelBootstrapCancelled):
             ResourcePackManager().move_storage(destination, progress=progress, cancel_event=token)
     assert (source / "models/model.bin").stat().st_size == 10000000

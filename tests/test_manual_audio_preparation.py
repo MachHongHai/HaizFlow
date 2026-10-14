@@ -9,7 +9,7 @@ from unittest.mock import patch
 import numpy as np
 from PySide6.QtGui import QGuiApplication
 
-from haizflow.desktop.manual_preview_audio_controller import (
+from hflow.desktop.manual_preview_audio_controller import (
     RATE,
     ManualPreviewAudioController,
     apply_source_decisions,
@@ -60,8 +60,8 @@ def test_audio_preparing_state_is_generation_safe_and_blocks_silent_playback():
     audio = ManualPreviewAudioController()
     video = SimpleNamespace(video_id="video", project_type="manual", enable_audio_separation=False, files={})
     try:
-        with patch("haizflow.services.editor_documents.load", return_value=None), \
-                patch("haizflow.pipeline.manual_tools.published_voice_record", return_value=None), \
+        with patch("hflow.services.editor_documents.load", return_value=None), \
+                patch("hflow.pipeline.manual_tools.published_voice_record", return_value=None), \
                 patch.object(audio._executor, "submit"):
             audio.request(video, [])
         generation = audio._generation

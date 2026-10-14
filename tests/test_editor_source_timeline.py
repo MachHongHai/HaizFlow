@@ -7,14 +7,14 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 
-from haizflow.desktop.manual_preview_audio_controller import RATE, apply_source_decisions
-from haizflow.desktop.project_import_controller import ProjectImportController
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.pipeline.sequence_compiler import materialize_source_sequence, materialize_source_video
-from haizflow.schemas.editor import EditorAsset, EditorClip, EditorDocument, EditorSequence, SourceEditDecision
-from haizflow.schemas.video import SubtitleStyle, VideoConfig, subtitle_style_for_project
-from haizflow.services import editor_documents
-from haizflow.utils.ffmpeg import _binary, get_video_duration
+from hflow.desktop.manual_preview_audio_controller import RATE, apply_source_decisions
+from hflow.desktop.project_import_controller import ProjectImportController
+from hflow.desktop.qml_controller import HFlowController
+from hflow.pipeline.sequence_compiler import materialize_source_sequence, materialize_source_video
+from hflow.schemas.editor import EditorAsset, EditorClip, EditorDocument, EditorSequence, SourceEditDecision
+from hflow.schemas.video import SubtitleStyle, VideoConfig, subtitle_style_for_project
+from hflow.services import editor_documents
+from hflow.utils.ffmpeg import _binary, get_video_duration
 
 
 def source_document():
@@ -51,7 +51,7 @@ def mutation_host(document):
     return SimpleNamespace(
         _manual_editor_document=SimpleNamespace(document_object=document),
         _editor_track_locked=lambda _document, _track: False,
-        _refresh_source_sequence=HaizFlowController._refresh_source_sequence,
+        _refresh_source_sequence=HFlowController._refresh_source_sequence,
         _apply_editor_mutation=mutate,
     ), history
 
@@ -61,9 +61,9 @@ def test_source_drag_and_edge_resize_are_temporarily_disabled():
     host, history = mutation_host(document)
     untouched = document.model_dump()
     for edge in ("left", "right"):
-        assert not HaizFlowController.trimClip(host, "source", edge, 3000)
-    assert not HaizFlowController.moveClip(host, "source", 5000, "source-video")
-    assert not HaizFlowController.moveClip(host, "source", 5000)
+        assert not HFlowController.trimClip(host, "source", edge, 3000)
+    assert not HFlowController.moveClip(host, "source", 5000, "source-video")
+    assert not HFlowController.moveClip(host, "source", 5000)
     assert document.model_dump() == untouched
     assert history == []
 
@@ -71,8 +71,8 @@ def test_source_drag_and_edge_resize_are_temporarily_disabled():
 def test_subtitle_and_voice_edge_editing_is_not_disabled_with_source():
     document = source_document()
     host, _ = mutation_host(document)
-    assert HaizFlowController.trimClip(host, "subtitle", "right", 4500)
-    assert HaizFlowController.moveClip(host, "voice", 3200, "voice")
+    assert HFlowController.trimClip(host, "subtitle", "right", 4500)
+    assert HFlowController.moveClip(host, "voice", 3200, "voice")
     assert document.clips[2].duration_ms == 1500
     assert document.clips[3].start_ms == 3200
     assert document.clips[0].duration_ms == 10000
@@ -82,7 +82,7 @@ def test_explicit_source_cut_remains_available_without_drag_resize():
     document = source_document()
     document.clips[1].metadata["follow_source"] = False
     host, _ = mutation_host(document)
-    assert HaizFlowController.trimSourceBoundary(host, "right", 7000)
+    assert HFlowController.trimSourceBoundary(host, "right", 7000)
     assert document.clips[0].duration_ms == 7000
     assert document.sequence.edit_decisions[0].source_end_ms == 7000
     assert document.clips[1].metadata["follow_source"] is False

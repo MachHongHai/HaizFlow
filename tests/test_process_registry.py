@@ -2,7 +2,7 @@ import subprocess
 import unittest
 from unittest import mock
 
-from haizflow.pipeline import process_registry
+from hflow.pipeline import process_registry
 
 
 class ProcessRegistryTests(unittest.TestCase):

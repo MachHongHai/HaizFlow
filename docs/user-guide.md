@@ -1,4 +1,4 @@
-# Use HaizFlow
+# Use HFlow
 
 [Home](../README.md) · [Installation](install.md) · [Tiếng Việt](user-guide.vi.md)
 
@@ -26,7 +26,7 @@ Back/Forward navigate pages. Undo/Redo in the editor apply to supported edits, n
 
 Install **Douyin browser (Chromium)** in **Settings → Resource Packs**, then choose **Create Douyin session** on the Downloads page. Complete any verification yourself in the window that opens. The browser closes when the session is ready; Video, Channel and Audio share that session.
 
-No login or personal browser profile is required. If the pack is missing, HaizFlow shows a notification and does not download it automatically. Use **Refresh session** when a new session is needed.
+No login or personal browser profile is required. If the pack is missing, HFlow shows a notification and does not download it automatically. Use **Refresh session** when a new session is needed.
 
 ## Recognition and translation
 
@@ -90,7 +90,7 @@ Seek using the timeline or preview controls. Use **Compare** to view the source 
 
 Review the first caption, speaker changes, music sections and the end of the video. Check fonts, caption placement, watermark and audio levels.
 
-Choose **Export**, quality and destination. Existing files require overwrite confirmation. Save exports outside HaizFlow's managed project folders to keep an independent copy. Export does not automatically run additional AI tools you did not select.
+Choose **Export**, quality and destination. Existing files require overwrite confirmation. Save exports outside HFlow's managed project folders to keep an independent copy. Export does not automatically run additional AI tools you did not select.
 
 ## Social publishing
 

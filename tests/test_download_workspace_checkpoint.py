@@ -1,7 +1,7 @@
 from pathlib import Path
 import pytest
 from PySide6.QtGui import QGuiApplication
-from haizflow.desktop.media_download_controller import MediaDownloadController
+from hflow.desktop.media_download_controller import MediaDownloadController
 
 _APP = None
 
@@ -42,8 +42,8 @@ def test_download_forms_preview_restore_and_project_isolation(tmp_path):
 
 
 def test_legacy_channel_scan_restores_form_without_workspace_file(tmp_path):
-    from haizflow.schemas.channel_import import ChannelImportRequest, ChannelVideoCandidate
-    from haizflow.services.channel_import import new_session, save_session
+    from hflow.schemas.channel_import import ChannelImportRequest, ChannelVideoCandidate
+    from hflow.services.channel_import import new_session, save_session
     session = new_session('a', str(tmp_path), ChannelImportRequest(
         url='https://www.douyin.com/user/demo', platform='douyin', ranking='popular', duration_filter='all'))
     session.state = 'ready'
@@ -75,9 +75,9 @@ def test_corrupt_checkpoint_is_safe(tmp_path):
 def test_channel_qml_restores_visible_results_and_switches_forms(tmp_path):
     from PySide6.QtCore import QObject, QUrl
     from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlPropertyMap
-    from haizflow.desktop.douyin_session_controller import DouyinSessionController
-    from haizflow.schemas.channel_import import ChannelImportRequest, ChannelVideoCandidate
-    from haizflow.services.channel_import import new_session, save_session
+    from hflow.desktop.douyin_session_controller import DouyinSessionController
+    from hflow.schemas.channel_import import ChannelImportRequest, ChannelVideoCandidate
+    from hflow.services.channel_import import new_session, save_session
     first = tmp_path / 'first'
     session = new_session('a', str(first), ChannelImportRequest(
         url='https://www.douyin.com/user/demo', platform='douyin', ranking='popular', duration_filter='all'))
@@ -93,7 +93,7 @@ def test_channel_qml_restores_visible_results_and_switches_forms(tmp_path):
     owner.insert('douyinSession', guest)
     engine.rootContext().setContextProperty('AppController', owner)
     component = QQmlComponent(engine, QUrl.fromLocalFile(str(
-        Path(__file__).parents[1] / 'src/haizflow/desktop/qml/ChannelDownloadPage.qml')))
+        Path(__file__).parents[1] / 'src/hflow/desktop/qml/ChannelDownloadPage.qml')))
     assert component.isReady(), [error.toString() for error in component.errors()]
     root = component.createWithInitialProperties({'downloader': controller})
     assert root is not None
@@ -120,7 +120,7 @@ def test_video_link_paste_and_typing_survive_preview_notifications(tmp_path):
     from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlPropertyMap
     from PySide6.QtQuick import QQuickWindow
     from PySide6.QtTest import QTest
-    from haizflow.desktop.douyin_session_controller import DouyinSessionController
+    from hflow.desktop.douyin_session_controller import DouyinSessionController
 
     controller = MediaDownloadController()
     controller.attach_project('a', str(tmp_path / 'first'))
@@ -130,7 +130,7 @@ def test_video_link_paste_and_typing_survive_preview_notifications(tmp_path):
     owner.insert('douyinSession', guest)
     engine.rootContext().setContextProperty('AppController', owner)
     component = QQmlComponent(engine, QUrl.fromLocalFile(str(
-        Path(__file__).parents[1] / 'src/haizflow/desktop/qml/VideoDownloadPage.qml')))
+        Path(__file__).parents[1] / 'src/hflow/desktop/qml/VideoDownloadPage.qml')))
     assert component.isReady(), [error.toString() for error in component.errors()]
     root = component.createWithInitialProperties({'downloader': controller, 'width': 780, 'height': 680})
     assert root is not None
@@ -180,8 +180,8 @@ def test_channel_rescan_uses_edited_limit_without_enter(tmp_path, monkeypatch, r
     from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlPropertyMap
     from PySide6.QtQuick import QQuickWindow
     from PySide6.QtTest import QTest
-    from haizflow.desktop.douyin_session_controller import DouyinSessionController
-    from haizflow.schemas.channel_import import ChannelVideoCandidate
+    from hflow.desktop.douyin_session_controller import DouyinSessionController
+    from hflow.schemas.channel_import import ChannelVideoCandidate
 
     requests = []
 
@@ -192,7 +192,7 @@ def test_channel_rescan_uses_edited_limit_without_enter(tmp_path, monkeypatch, r
             title=f'Video {index}', platform='YouTube', duration_seconds=60)
             for index in range(request.limit)]
 
-    monkeypatch.setattr('haizflow.desktop.channel_import.scan_channel', scan)
+    monkeypatch.setattr('hflow.desktop.channel_import.scan_channel', scan)
     controller = MediaDownloadController()
     controller.attach_project('channel-rescan', str(tmp_path))
     controller.saveWorkspaceState({'channelUrl': 'https://www.youtube.com/@creator',
@@ -204,7 +204,7 @@ def test_channel_rescan_uses_edited_limit_without_enter(tmp_path, monkeypatch, r
     owner.insert('douyinSession', guest)
     engine.rootContext().setContextProperty('AppController', owner)
     component = QQmlComponent(engine, QUrl.fromLocalFile(str(
-        Path(__file__).parents[1] / 'src/haizflow/desktop/qml/ChannelDownloadPage.qml')))
+        Path(__file__).parents[1] / 'src/hflow/desktop/qml/ChannelDownloadPage.qml')))
     assert component.isReady(), [error.toString() for error in component.errors()]
     root = component.createWithInitialProperties({'downloader': controller, 'width': 1000, 'height': 900})
     assert root is not None

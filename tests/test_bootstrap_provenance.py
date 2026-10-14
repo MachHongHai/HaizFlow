@@ -17,16 +17,16 @@ SPEC.loader.exec_module(bootstrap)
 def payload(tmp_path):
     artifact = tmp_path / "launcher"
     (artifact / "_internal").mkdir(parents=True)
-    (artifact / "HaizFlow.exe").write_bytes(b"launcher fixture")
+    (artifact / "HFlow.exe").write_bytes(b"launcher fixture")
     (artifact / "_internal/python313.dll").write_bytes(b"python fixture")
     with patch.object(bootstrap, "git", side_effect=lambda *args: "test-commit" if args == ("rev-parse", "HEAD") else ""):
-        bootstrap.finalize(artifact, "HaizFlow.exe", source_commit="test-commit", engineering=False)
+        bootstrap.finalize(artifact, "HFlow.exe", source_commit="test-commit", engineering=False)
     return artifact
 
 
 def verify(artifact, **changes):
     args = dict(source_commit="test-commit", version=CURRENT_VERSION, engineering=False)
-    bootstrap.verify(artifact, "HaizFlow.exe", **dict(args, **changes))
+    bootstrap.verify(artifact, "HFlow.exe", **dict(args, **changes))
 
 
 def test_finalized_bootstrap_matches_core(payload):
@@ -49,7 +49,7 @@ def test_user_created_directory_rejected_even_empty(payload, directory):
 @pytest.mark.parametrize("mutation", ["modified", "added", "deleted"])
 def test_checksum_and_exact_file_set_enforced(payload, mutation):
     if mutation == "modified":
-        (payload / "HaizFlow.exe").write_bytes(b"tampered")
+        (payload / "HFlow.exe").write_bytes(b"tampered")
     elif mutation == "added":
         (payload / "extra.bin").write_bytes(b"unexpected")
     else:
@@ -69,7 +69,7 @@ def test_dirty_public_provenance_rejected(payload):
 
 def test_changed_commit_during_build_rejected(payload):
     with patch.object(bootstrap, "git", return_value="other-commit"), pytest.raises(ValueError, match="changed"):
-        bootstrap.finalize(payload, "HaizFlow.exe", source_commit="test-commit", engineering=True)
+        bootstrap.finalize(payload, "HFlow.exe", source_commit="test-commit", engineering=True)
 
 
 def test_signed_bootstrap_also_requires_public_legal_gate():

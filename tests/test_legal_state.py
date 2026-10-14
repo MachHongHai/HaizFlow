@@ -16,7 +16,7 @@ SPEC.loader.exec_module(legal)
 
 class LegalStateTests(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix="haizflow-legal-test-")
+        self.temporary = tempfile.TemporaryDirectory(prefix="hflow-legal-test-")
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name) / "source"
         self.root.mkdir()
@@ -114,15 +114,15 @@ class LegalStateTests(unittest.TestCase):
                 self.assertTrue((ROOT / target.split("#", 1)[0]).exists(), f"{filename}: {target}")
 
     def test_creator_and_legal_ui_match_current_state(self):
-        about = (ROOT / "src/haizflow/desktop/qml/AboutDialog.qml").read_text(encoding="utf-8")
+        about = (ROOT / "src/hflow/desktop/qml/AboutDialog.qml").read_text(encoding="utf-8")
         self.assertIn("root.controller.currentAppVersion", about)
         self.assertNotIn("Khởi tạo bởi", about)
         self.assertNotIn("THIRD_PARTY_NOTICES.md", about)
-        copyright = (ROOT / "src/haizflow/desktop/qml/CopyrightDialog.qml").read_text(encoding="utf-8")
+        copyright = (ROOT / "src/hflow/desktop/qml/CopyrightDialog.qml").read_text(encoding="utf-8")
         self.assertIn("© 2026 Mạch Hồng Hải", copyright)
-        self.assertIn("HaizFlow Source-Available 1.0", copyright)
+        self.assertIn("HFlow Source-Available 1.0", copyright)
         self.assertIn("THIRD_PARTY_NOTICES.md", copyright)
-        installer = (ROOT / "installer/HaizFlow.iss").read_text(encoding="utf-8")
+        installer = (ROOT / "installer/HFlow.iss").read_text(encoding="utf-8")
         self.assertIn('LicenseFile={#SourceDir}\\LICENSE.txt', installer)
         self.assertNotIn("LicenseFile={#SourceDir}\\legal", installer)
 

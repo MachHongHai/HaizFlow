@@ -2,7 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import QtTest
-import "../../src/haizflow/desktop/qml"
+import "../../src/hflow/desktop/qml"
 
 Item {
     id: root

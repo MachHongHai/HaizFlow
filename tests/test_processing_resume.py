@@ -3,11 +3,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.desktop.project_commands_controller import ProjectCommandsController
-from haizflow.schemas.video import VideoConfig
-from haizflow.services.processing_resume import can_resume, configuration_snapshot
+from hflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
+from hflow.desktop.qml_controller import HFlowController
+from hflow.desktop.project_commands_controller import ProjectCommandsController
+from hflow.schemas.video import VideoConfig
+from hflow.services.processing_resume import can_resume, configuration_snapshot
 
 
 def fixture():
@@ -59,7 +59,7 @@ def test_direct_enqueue_cannot_bypass_resume_guard():
     host, video = fixture()
     video.target_language = "en"
     host._processing_queue = SimpleNamespace(contains=lambda _: False, enqueue=Mock())
-    with patch("haizflow.desktop.processing_lifecycle_controller.video_store.get_video", return_value=video):
+    with patch("hflow.desktop.processing_lifecycle_controller.video_store.get_video", return_value=video):
         assert not ProcessingLifecycleController(host).enqueue_video("fixture")
     host._processing_queue.enqueue.assert_not_called()
 
@@ -71,7 +71,7 @@ def test_batch_resume_is_atomic_when_one_videos_settings_changed():
     host._batch_video_ids = [video.video_id, other.video_id]
     host._processing_queue = SimpleNamespace(contains=lambda _: False)
     host._enqueue_videos = Mock()
-    with patch("haizflow.desktop.project_commands_controller.video_store.get_video", side_effect=lambda key: video if key == video.video_id else other):
+    with patch("hflow.desktop.project_commands_controller.video_store.get_video", side_effect=lambda key: video if key == video.video_id else other):
         ProjectCommandsController(host).resume_batch()
     host._enqueue_videos.assert_not_called()
 
@@ -91,18 +91,18 @@ def test_manual_restart_confirmation_cannot_discard_progress_on_rejection():
     host._selected_video = lambda: video
     host._processing_queue = SimpleNamespace(contains=lambda _: False)
     host.runManualTool = Mock(return_value=True)
-    from haizflow.desktop.localization import QMessageBox
+    from hflow.desktop.localization import QMessageBox
 
     with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No):
-        assert not HaizFlowController.restartManualTool(host, "translation")
+        assert not HFlowController.restartManualTool(host, "translation")
     host.runManualTool.assert_not_called()
     with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes):
-        assert HaizFlowController.restartManualTool(host, "translation")
+        assert HFlowController.restartManualTool(host, "translation")
     host.runManualTool.assert_called_once_with("translation")
 
 
 def test_explicit_restart_invalidates_an_unfinished_branch_without_deleting_outputs():
-    from haizflow.pipeline import manual_tools
+    from hflow.pipeline import manual_tools
 
     _, video = fixture()
     video.manual_tool_generations = {"voice": 2}

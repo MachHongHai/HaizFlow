@@ -6,8 +6,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.services import gemini_translation, hymt2_worker, translation
-from haizflow.services.translation_timing import (
+from hflow.services import gemini_translation, hymt2_worker, translation
+from hflow.services.translation_timing import (
     POLICY_VERSION, speech_duration, timing_budget, timing_instruction,
 )
 

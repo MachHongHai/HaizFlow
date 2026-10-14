@@ -14,7 +14,7 @@ SOURCE_ROOT = ROOT / "src"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
-from haizflow.core.storage_policy import MINIMUM_OPERATIONAL_FREE_BYTES  # noqa: E402
+from hflow.core.storage_policy import MINIMUM_OPERATIONAL_FREE_BYTES  # noqa: E402
 
 
 GIB = 1024**3
@@ -93,7 +93,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     artifact = args.artifact.resolve()
-    if not any((artifact / name).is_file() for name in ("HaizFlow.exe", "HaizFlowCore.exe")):
+    if not any((artifact / name).is_file() for name in ("HFlow.exe", "HFlowCore.exe")):
         raise SystemExit(f"Frozen artifact is missing its executable: {artifact}")
     if args.write:
         payload, serialized_payload = requirements_with_embedded_manifest(

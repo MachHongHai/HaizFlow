@@ -9,10 +9,10 @@ import numpy as np
 import pytest
 
 import test_render_export_storage as storage_tests
-from haizflow.pipeline import segment_export
-from haizflow.schemas.editor import EditorDocument, EditorSequence
-from haizflow.services import editor_documents, manual_artifacts, video_export, video_store
-from haizflow.utils.ffmpeg import _binary, get_video_duration
+from hflow.pipeline import segment_export
+from hflow.schemas.editor import EditorDocument, EditorSequence
+from hflow.services import editor_documents, manual_artifacts, video_export, video_store
+from hflow.utils.ffmpeg import _binary, get_video_duration
 
 
 @pytest.fixture

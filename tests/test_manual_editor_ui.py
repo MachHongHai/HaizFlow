@@ -8,7 +8,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlComponent, QQmlEngine
 
 
-QML_DIR = Path(__file__).resolve().parents[1] / "src" / "haizflow" / "desktop" / "qml"
+QML_DIR = Path(__file__).resolve().parents[1] / "src" / "hflow" / "desktop" / "qml"
 
 
 def test_fresh_import_hides_unresolved_ocr_timeline_without_deleting_layers():
@@ -238,7 +238,7 @@ def test_text_style_controls_are_inline_in_both_editor_tools():
 
 
 def test_manual_layout_preferences_are_bounded_and_survive_partial_updates(tmp_path, monkeypatch):
-    from haizflow.services import desktop_settings
+    from hflow.services import desktop_settings
 
     monkeypatch.setattr(desktop_settings, "SETTINGS_PATH", tmp_path / "desktop-settings.json")
     desktop_settings.save_settings({
@@ -254,7 +254,7 @@ def test_manual_layout_preferences_are_bounded_and_survive_partial_updates(tmp_p
 
 
 def test_manual_workspace_dock_preferences_are_normalized(tmp_path, monkeypatch):
-    from haizflow.services import desktop_settings
+    from hflow.services import desktop_settings
 
     monkeypatch.setattr(desktop_settings, "SETTINGS_PATH", tmp_path / "desktop-settings.json")
     saved = desktop_settings.save_settings({"manual_editor_workspace": {

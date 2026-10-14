@@ -11,10 +11,10 @@ from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickWindow
 from pydantic import ValidationError
 
-from haizflow.pipeline import sequence_compiler
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.schemas.video import VideoConfig
-from haizflow.utils.ffmpeg import _binary, get_video_duration, get_media_stream_types
+from hflow.pipeline import sequence_compiler
+from hflow.desktop.qml_controller import HFlowController
+from hflow.schemas.video import VideoConfig
+from hflow.utils.ffmpeg import _binary, get_video_duration, get_media_stream_types
 
 _APP = None
 
@@ -59,7 +59,7 @@ def test_invalid_output_speed_is_rejected(speed):
 
 def test_default_speed_keeps_original_copy_path(tmp_path, monkeypatch):
     copy = Mock()
-    monkeypatch.setattr('haizflow.utils.ffmpeg.get_video_dimensions', lambda _: (96, 64))
+    monkeypatch.setattr('hflow.utils.ffmpeg.get_video_dimensions', lambda _: (96, 64))
     monkeypatch.setattr(sequence_compiler, '_copy_video', copy)
     monkeypatch.setattr(sequence_compiler, '_run', Mock(side_effect=AssertionError('Must not encode at 1x')))
     sequence_compiler.finish_export_resolution('source', str(tmp_path / 'output.mp4'), 'source', 'test')
@@ -73,13 +73,13 @@ def test_scaled_render_never_replaces_original_editor_or_review_clock(tmp_path, 
     voice = tmp_path / 'voice.wav'
     rendered.write_bytes(b'rendered')
     voice.write_bytes(b'voice')
-    monkeypatch.setattr('haizflow.services.video_export.render_path', lambda _: str(rendered))
-    monkeypatch.setattr('haizflow.services.video_store.get_video_dir', lambda _: str(tmp_path))
-    monkeypatch.setattr('haizflow.services.ocr_regions.effective_region', lambda *_: {})
-    monkeypatch.setattr('haizflow.pipeline.render.resolve_subtitle_preview_layout', lambda *_: {})
+    monkeypatch.setattr('hflow.services.video_export.render_path', lambda _: str(rendered))
+    monkeypatch.setattr('hflow.services.video_store.get_video_dir', lambda _: str(tmp_path))
+    monkeypatch.setattr('hflow.services.ocr_regions.effective_region', lambda *_: {})
+    monkeypatch.setattr('hflow.pipeline.render.resolve_subtitle_preview_layout', lambda *_: {})
     video = SimpleNamespace(**VideoConfig(project_type=kind, output_speed=speed).model_dump(),
                             video_id='preview-clock', files={'voice_output': str(voice)})
-    media = HaizFlowController._review_preview_media_for(SimpleNamespace(), video)
+    media = HFlowController._review_preview_media_for(SimpleNamespace(), video)
     assert bool(media['renderedVideoSource']) == (speed == 1.0)
     assert bool(media['finalMixSource']) == (speed == 1.0)
     assert bool(media['voiceSource']) == (speed != 1.0)
@@ -89,7 +89,7 @@ def test_output_speed_qml_slider_only_and_popup_toggle():
     app = QGuiApplication.instance() or QGuiApplication([])
     engine = QQmlEngine()
     component = QQmlComponent(engine, QUrl.fromLocalFile(str(Path(__file__).parents[1] /
-        'src/haizflow/desktop/qml/OutputSpeedButton.qml')))
+        'src/hflow/desktop/qml/OutputSpeedButton.qml')))
     assert component.isReady(), [error.toString() for error in component.errors()]
     root = component.createWithInitialProperties({'width': 130, 'height': 42})
     assert root is not None

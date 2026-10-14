@@ -152,7 +152,7 @@ licensing boundary; passing download tests does not grant distribution rights.
 
 Final verification: `scripts/test.ps1 -SkipCompile` passed Python correctness
 lint, 1,739 tests, 243 subtests and all QML lint (one skip, four existing Qt/
-optional TorchCodec warnings). Isolated `haizflow_desktop.py --ui-smoke-test`
+optional TorchCodec warnings). Isolated `hflow_desktop.py --ui-smoke-test`
 exited successfully. Dependency lock manifest verification also passed.
 Strict notice generation copied the complete retained browser license texts,
 notice and version/hash manifest into its isolated compliance output. This was

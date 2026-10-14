@@ -9,19 +9,19 @@ from unittest.mock import Mock, patch
 import pytest
 from PySide6.QtCore import QObject, Signal
 
-from haizflow.services import douyin_component as browser
-from haizflow.services.model_bootstrap import ModelBootstrapCancelled, _approved_download_url
-from haizflow.services.resource_packs import ResourcePackManager
+from hflow.services import douyin_component as browser
+from hflow.services.model_bootstrap import ModelBootstrapCancelled, _approved_download_url
+from hflow.services.resource_packs import ResourcePackManager
 
 
 @pytest.fixture
 def pack(tmp_path, monkeypatch):
     engines, packages = tmp_path / "engines", tmp_path / "packages"
     packages.mkdir()
-    monkeypatch.setattr("haizflow.services.resource_packs.engines_dir", lambda: engines)
-    monkeypatch.setattr("haizflow.core.paths.engines_dir", lambda: engines)
-    monkeypatch.setattr("haizflow.services.resource_packs.resource_packages_dir", lambda: packages)
-    monkeypatch.setattr("haizflow.services.resource_packs.resource_storage_dir", lambda: tmp_path)
+    monkeypatch.setattr("hflow.services.resource_packs.engines_dir", lambda: engines)
+    monkeypatch.setattr("hflow.core.paths.engines_dir", lambda: engines)
+    monkeypatch.setattr("hflow.services.resource_packs.resource_packages_dir", lambda: packages)
+    monkeypatch.setattr("hflow.services.resource_packs.resource_storage_dir", lambda: tmp_path)
     definition = ResourcePackManager().definitions[browser.PACK_ID]
     archive = packages / f"{browser.PACK_ID}-{browser.REVISION}.zip"
     with zipfile.ZipFile(archive, "w") as bundle:
@@ -45,7 +45,7 @@ def test_playwright_import_is_not_an_installed_browser(pack):
 
 def test_install_reuses_cache_and_second_install_does_not_unpack_again(pack):
     manager, _ = pack
-    with patch("haizflow.services.model_bootstrap.urllib.request.urlopen") as network:
+    with patch("hflow.services.model_bootstrap.urllib.request.urlopen") as network:
         manager.install(browser.PACK_ID, lambda *_: None)
         assert manager.status(browser.PACK_ID) == "installed"
         assert browser.installed()
@@ -141,14 +141,14 @@ def test_only_official_chromium_bucket_is_added_to_download_allowlist():
 
 
 def test_missing_pack_shows_notification_and_does_not_create_worker(pack):
-    from haizflow.desktop.douyin_session_controller import DouyinSessionController
+    from hflow.desktop.douyin_session_controller import DouyinSessionController
     class Host(QObject):
         appAlertRequested = Signal(str, str, str)
     host = Host()
     alerts = []
     host.appAlertRequested.connect(lambda *args: alerts.append(args))
     session = DouyinSessionController(host)
-    with patch("haizflow.desktop.douyin_session_controller.threading.Thread") as thread:
+    with patch("hflow.desktop.douyin_session_controller.threading.Thread") as thread:
         session.create()
         thread.assert_not_called()
     assert not session.ready and not session.busy
@@ -159,21 +159,21 @@ def test_missing_pack_shows_notification_and_does_not_create_worker(pack):
 
 
 def test_pending_browser_operation_blocks_create_without_losing_previous_session(pack):
-    from haizflow.desktop.douyin_session_controller import DouyinSessionController
+    from hflow.desktop.douyin_session_controller import DouyinSessionController
     host = QObject()
     host._resource_packs = Mock()
     host._resource_packs._storage_mutating.return_value = False
     host._resource_packs.browser_operation_pending.return_value = True
     session = DouyinSessionController(host)
     session._ready = True
-    with patch("haizflow.desktop.douyin_session_controller.threading.Thread") as thread:
+    with patch("hflow.desktop.douyin_session_controller.threading.Thread") as thread:
         session.create()
         thread.assert_not_called()
     assert session.ready and not session.busy
 
 
 def test_removed_pack_clears_ready_flag():
-    from haizflow.desktop.douyin_session_controller import DouyinSessionController
+    from hflow.desktop.douyin_session_controller import DouyinSessionController
     session = DouyinSessionController()
     session._ready = True
     session._set_status(browser.MISSING_MESSAGE)
@@ -181,8 +181,8 @@ def test_removed_pack_clears_ready_flag():
 
 
 def test_browser_progress_reserves_unpack_and_validation_stages():
-    from haizflow.desktop.resource_progress import InstallProgress, localized_progress
-    from haizflow.services.model_bootstrap import ModelProgress
+    from hflow.desktop.resource_progress import InstallProgress, localized_progress
+    from hflow.services.model_bootstrap import ModelProgress
     tracker = InstallProgress(((browser.PACK_ID, 100),))
     downloaded = tracker.update(browser.PACK_ID, ModelProgress("ready", "", "", 100, 100, "transfer"))
     unpacked = tracker.update(browser.PACK_ID, ModelProgress("installing", "", "", 100, 100, "installing"))

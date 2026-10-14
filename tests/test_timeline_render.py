@@ -8,9 +8,9 @@ from unittest import mock
 
 import srt
 
-from haizflow.pipeline.audio_timeline import _segment_slot_end_ms
-from haizflow.pipeline import render
-from haizflow.schemas.video import CropSettings, SubtitleStyle
+from hflow.pipeline.audio_timeline import _segment_slot_end_ms
+from hflow.pipeline import render
+from hflow.schemas.video import CropSettings, SubtitleStyle
 
 
 class TimelineRenderTests(unittest.TestCase):
@@ -205,7 +205,7 @@ class TimelineRenderTests(unittest.TestCase):
                     SubtitleStyle(),
                     CropSettings(),
                     "editor-preview",
-                    watermark_text="HaizFlow",
+                    watermark_text="HFlow",
                     source_start_seconds=12.5,
                     source_duration_seconds=3.25,
                     compatibility_preview=True,
@@ -298,7 +298,7 @@ class TimelineRenderTests(unittest.TestCase):
                     str(root / "input.mp4"), str(root / "voice.wav"), str(subtitle_path),
                     str(root / "output.mp4"), "keep_ratio", SubtitleStyle(), CropSettings(), "video-id",
                     {"x_percent": 20, "y_percent": 78, "width_percent": 60, "height_percent": 7},
-                    "HaizFlow",
+                    "HFlow",
                     original_subtitle_removal_mode="blur",
                 )
             ass_text = (root / "positioned_subtitles.ass").read_text(encoding="utf-8-sig")
@@ -312,7 +312,7 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertIn("overlay=384:842", command[command.index("-filter_complex") + 1])
         self.assertNotIn("between(t", command[command.index("-filter_complex") + 1])
         self.assertIn("drawtext=fontfile=", command[command.index("-filter_complex") + 1])
-        self.assertIn("text='HaizFlow'", command[command.index("-filter_complex") + 1])
+        self.assertIn("text='HFlow'", command[command.index("-filter_complex") + 1])
         self.assertIn("fontsdir=", command[command.index("-filter_complex") + 1])
         font_directory = render._karaoke_font_directory().resolve().as_posix().replace(":", "\\:")
         self.assertIn(f"fontsdir='{font_directory}'", filter_graph)
@@ -404,7 +404,7 @@ class TimelineRenderTests(unittest.TestCase):
                     self.assertNotIn("between(t", filter_graph)
 
     def test_ocr_cover_mode_uses_default_until_caption_layout_is_edited(self):
-        from haizflow.pipeline.process_video import _manual_subtitle_layout_for_render
+        from hflow.pipeline.process_video import _manual_subtitle_layout_for_render
 
         default_video = SimpleNamespace(
             remove_original_subtitles=True,
@@ -443,10 +443,10 @@ class TimelineRenderTests(unittest.TestCase):
         )
 
     def test_text_watermark_uses_a_bold_italic_social_video_treatment(self):
-        watermark = render._watermark_filter("HaizFlow: creator's cut", 1080, 1920)
+        watermark = render._watermark_filter("HFlow: creator's cut", 1080, 1920)
 
         self.assertIn("drawtext=fontfile='", watermark)
-        self.assertIn("text='HaizFlow\\: creator\\'s cut'", watermark)
+        self.assertIn("text='HFlow\\: creator\\'s cut'", watermark)
         self.assertIn("fontsize=31", watermark)
         self.assertIn("fontcolor=white@0.46", watermark)
         self.assertIn("borderw=2", watermark)
@@ -456,9 +456,9 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertIn("sin(2*PI*t/43+1.2)", watermark)
 
     def test_manual_watermark_scale_preserves_the_auto_default_and_allows_larger_text(self):
-        default_watermark = render._watermark_filter("HaizFlow", 1080, 1920)
+        default_watermark = render._watermark_filter("HFlow", 1080, 1920)
         enlarged_watermark = render._watermark_filter(
-            "HaizFlow", 1080, 1920, scale_percent=200
+            "HFlow", 1080, 1920, scale_percent=200
         )
 
         self.assertIn("fontsize=31", default_watermark)
@@ -469,7 +469,7 @@ class TimelineRenderTests(unittest.TestCase):
 
     def test_watermark_opacity_and_outline_are_independent(self):
         watermark = render._watermark_filter(
-            "HaizFlow", 1080, 1920, opacity_percent=72, outline_percent=200
+            "HFlow", 1080, 1920, opacity_percent=72, outline_percent=200
         )
         self.assertIn("fontcolor=white@0.72", watermark)
         self.assertIn("bordercolor=black@0.74", watermark)

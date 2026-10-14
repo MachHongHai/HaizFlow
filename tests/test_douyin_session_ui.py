@@ -9,20 +9,20 @@ from PySide6.QtCore import QObject, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlPropertyMap
 
-from haizflow.desktop.douyin_session_controller import DouyinSessionController
+from hflow.desktop.douyin_session_controller import DouyinSessionController
 
 
 @pytest.fixture(autouse=True)
 def installed_browser_fixture():
-    with patch("haizflow.services.douyin_component.installed", return_value=True):
+    with patch("hflow.services.douyin_component.installed", return_value=True):
         yield
 
 
 def test_missing_browser_notifies_without_starting_worker_or_downloading():
-    from haizflow.services.douyin_component import MISSING_MESSAGE
+    from hflow.services.douyin_component import MISSING_MESSAGE
     session = DouyinSessionController()
-    with patch("haizflow.services.douyin_component.installed", return_value=False), \
-         patch("haizflow.desktop.douyin_session_controller.threading.Thread") as thread:
+    with patch("hflow.services.douyin_component.installed", return_value=False), \
+         patch("hflow.desktop.douyin_session_controller.threading.Thread") as thread:
         session.create()
         assert not session.busy and not session.ready
         assert session.status == MISSING_MESSAGE
@@ -37,8 +37,8 @@ def test_session_action_loads_without_launching_browser_and_shows_cancel_only_wh
     owner.insert("douyinSession", session)
     engine.rootContext().setContextProperty("AppController", owner)
     component = QQmlComponent(engine)
-    file = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml/DouyinSessionAction.qml"
-    with patch("haizflow.services.douyin_adapter.get_douyin_adapter") as adapter:
+    file = Path(__file__).resolve().parents[1] / "src/hflow/desktop/qml/DouyinSessionAction.qml"
+    with patch("hflow.services.douyin_adapter.get_douyin_adapter") as adapter:
         component.loadUrl(QUrl.fromLocalFile(str(file)))
         assert component.isReady(), "\n".join(e.toString() for e in component.errors())
         # Inject before bindings initialize: another suite may have registered
@@ -76,7 +76,7 @@ def test_session_action_loads_without_launching_browser_and_shows_cancel_only_wh
 def test_controller_does_not_accept_duplicate_create_requests():
     app = QGuiApplication.instance() or QGuiApplication([])
     session = DouyinSessionController()
-    with patch("haizflow.desktop.douyin_session_controller.threading.Thread") as thread:
+    with patch("hflow.desktop.douyin_session_controller.threading.Thread") as thread:
         thread.return_value = Mock()
         session.create()
         session.create()
@@ -93,7 +93,7 @@ def test_failed_repeated_refresh_retains_readiness_and_real_request_clears_warni
     QGuiApplication.instance() or QGuiApplication([])
     session = DouyinSessionController()
     session._complete("Douyin session ready")
-    with patch("haizflow.desktop.douyin_session_controller.threading.Thread"):
+    with patch("hflow.desktop.douyin_session_controller.threading.Thread"):
         for _ in range(3):
             session.create()
             assert session.busy and session.ready
@@ -107,7 +107,7 @@ def test_failed_repeated_refresh_retains_readiness_and_real_request_clears_warni
 def test_initial_failure_is_not_presented_as_a_ready_session():
     QGuiApplication.instance() or QGuiApplication([])
     session = DouyinSessionController()
-    with patch("haizflow.desktop.douyin_session_controller.threading.Thread"):
+    with patch("hflow.desktop.douyin_session_controller.threading.Thread"):
         session.create()
         session._set_status("Douyin session ready")  # SDK probe, not committed refresh
         assert not session.ready
@@ -130,7 +130,7 @@ def test_rejected_session_is_not_labelled_ready_or_allowed_to_preview():
 def test_successful_request_is_not_overwritten_by_late_refresh_failure():
     QGuiApplication.instance() or QGuiApplication([])
     session = DouyinSessionController()
-    with patch("haizflow.desktop.douyin_session_controller.threading.Thread"):
+    with patch("hflow.desktop.douyin_session_controller.threading.Thread"):
         session.create()
         session._set_status("Douyin request succeeded")
         session._complete("The Douyin browser session could not complete the request.")
@@ -143,7 +143,7 @@ def test_cancelled_refresh_retains_previous_session_but_initial_cancel_does_not(
         session = DouyinSessionController()
         if was_ready:
             session._complete("Douyin session ready")
-        with patch("haizflow.desktop.douyin_session_controller.threading.Thread"):
+        with patch("hflow.desktop.douyin_session_controller.threading.Thread"):
             session.create()
             session.cancel()
             session._complete("Douyin session cancelled")
@@ -171,7 +171,7 @@ def test_qml_gate_tracks_creation_refresh_cancel_and_url_changes():
     app = QGuiApplication.instance() or QGuiApplication([])
     engine = QQmlEngine()
     session = DouyinSessionController()
-    file = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml/DouyinSessionAction.qml"
+    file = Path(__file__).resolve().parents[1] / "src/hflow/desktop/qml/DouyinSessionAction.qml"
     component = QQmlComponent(engine, QUrl.fromLocalFile(str(file)))
     assert component.isReady(), "\n".join(e.toString() for e in component.errors())
     root = component.createWithInitialProperties({"session": session, "url": "https://v.douyin.com/demo"})
@@ -196,8 +196,8 @@ def test_qml_gate_tracks_creation_refresh_cancel_and_url_changes():
 
 
 def test_backend_guard_blocks_inspection_and_download_without_starting_worker(tmp_path):
-    from haizflow.desktop.url_import import VideoUrlImportCoordinator
-    from haizflow.desktop.media_download_controller import MediaDownloadController
+    from hflow.desktop.url_import import VideoUrlImportCoordinator
+    from hflow.desktop.media_download_controller import MediaDownloadController
     session = DouyinSessionController()
     importer = VideoUrlImportCoordinator()
     importer.set_request_guard(session.request_error)

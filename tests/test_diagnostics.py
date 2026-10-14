@@ -11,7 +11,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.core.diagnostics import export_diagnostics, redact_diagnostic_text
+from hflow.core.diagnostics import export_diagnostics, redact_diagnostic_text
 
 
 class DiagnosticsTest(unittest.TestCase):
@@ -51,7 +51,7 @@ class DiagnosticsTest(unittest.TestCase):
             (install / "BUILD-INFO.json").write_text(
                 json.dumps(
                     {
-                        "application": "HaizFlow",
+                        "application": "HFlow",
                         "version": "1.2.3",
                         "build_id": "1.2.3+abcdef",
                         "git_commit": "abcdef",

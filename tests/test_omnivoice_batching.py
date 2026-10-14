@@ -10,8 +10,8 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from haizflow.pipeline import omnivoice_tts as voice
-from haizflow.core.memory import MemorySnapshot
+from hflow.pipeline import omnivoice_tts as voice
+from hflow.core.memory import MemorySnapshot
 
 
 class FakeCudaOom(RuntimeError):
@@ -188,7 +188,7 @@ class OmniVoiceBatchTests(unittest.TestCase):
                      patch.object(voice, "_cancel_idle_shutdown"), \
                      patch.object(voice, "_schedule_idle_shutdown") as idle, \
                      patch.object(voice, "_stop_persistent_worker_unlocked") as stop, \
-                     patch("haizflow.core.memory.memory_snapshot", return_value=MemorySnapshot(
+                     patch("hflow.core.memory.memory_snapshot", return_value=MemorySnapshot(
                          usable_bytes=total * 1024**3, available_bytes=ram,
                          process_commit_available_bytes=None if commit is None else commit * 1024**3,
                      )):

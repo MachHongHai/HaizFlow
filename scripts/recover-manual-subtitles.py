@@ -7,8 +7,8 @@ import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
-from haizflow.pipeline.manual_tools import publish_edited_subtitles
-from haizflow.services import manual_artifacts, video_store
+from hflow.pipeline.manual_tools import publish_edited_subtitles
+from hflow.services import manual_artifacts, video_store
 
 
 def recover(video_id: str, signature: str, expected_current: str, apply: bool = False):

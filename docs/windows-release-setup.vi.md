@@ -1,10 +1,10 @@
-# Cài đặt và phát hành HaizFlow miễn phí trên Windows
+# Cài đặt và phát hành HFlow miễn phí trên Windows
 
 Phiên bản mục tiêu: **0.1.0**. Hướng dẫn cập nhật ngày 04/10/2026. Theo lựa chọn của chủ dự án: phát hành **unsigned**, không mua chứng chỉ Authenticode.
 
 ## 1. Bản hiện tại dùng vào việc gì?
 
-Bản `HaizFlow-0.1.0-DEVELOPMENT-Setup.exe` dùng để nghiệm thu nội bộ, **chưa ký số và chưa phải bản phát hành công khai**. Không đổi tên nó thành bản chính thức. Development dùng AppId riêng để không ghi đè đăng ký cài đặt của bản public.
+Bản `HFlow-0.1.0-DEVELOPMENT-Setup.exe` dùng để nghiệm thu nội bộ, **chưa ký số và chưa phải bản phát hành công khai**. Không đổi tên nó thành bản chính thức. Development dùng AppId riêng để không ghi đè đăng ký cài đặt của bản public.
 
 Các bằng chứng cuối đợt build được ghi trong `docs/installer-build-report-2026-10-04.vi.md`. Có thể xem log thô tại `build/installer-reports/` và `build/frozen-delta-reports/`.
 
@@ -17,13 +17,13 @@ Trước khi phát hành còn phải hoàn tất:
 
 ## 2. Cài thử và vị trí dữ liệu
 
-Chạy installer, chọn một thư mục local mà tài khoản Windows có quyền ghi, ví dụ `D:\Apps\HaizFlow-Test`. Không chọn gốc ổ đĩa, thư mục chứa dữ liệu khác, UNC/network drive hoặc junction. Không dùng thư mục của bản đang chạy. Bản cài không cần quyền administrator với thư mục phù hợp.
+Chạy installer, chọn một thư mục local mà tài khoản Windows có quyền ghi, ví dụ `D:\Apps\HFlow-Test`. Không chọn gốc ổ đĩa, thư mục chứa dữ liệu khác, UNC/network drive hoặc junction. Không dùng thư mục của bản đang chạy. Bản cài không cần quyền administrator với thư mục phù hợp.
 
 Bố cục dự kiến:
 
 ```text
-D:\Apps\HaizFlow-Test\
-  HaizFlow.exe                    launcher, mở app bằng tệp này
+D:\Apps\HFlow-Test\
+  HFlow.exe                    launcher, mở app bằng tệp này
   _internal\                     runtime riêng của launcher
   versions\0.1.0\                Core bất biến và phụ thuộc
   update-state\                  pointer, transaction, health IPC
@@ -46,7 +46,7 @@ Với bản cũ dạng flat chưa có `update-layout.json`: không tự chuyển
 
 ### Thiết lập lần đầu cho người dùng
 
-1. Mở `HaizFlow.exe`. Cài mới mặc định tiếng Việt; lựa chọn tiếng Anh đã lưu được giữ khi cài lại. Kiểm tra CPU/GPU trong Cài đặt. GPU chỉ dùng khi máy/driver và engine tương thích. Nhận diện nhiều người nói vẫn CPU.
+1. Mở `HFlow.exe`. Cài mới mặc định tiếng Việt; lựa chọn tiếng Anh đã lưu được giữ khi cài lại. Kiểm tra CPU/GPU trong Cài đặt. GPU chỉ dùng khi máy/driver và engine tương thích. Nhận diện nhiều người nói vẫn CPU.
 2. Chọn thư mục lưu tài nguyên trước khi tải gói lớn; kiểm tra dung lượng trống.
 3. Cài engine/model cần dùng trong Gói tài nguyên. Ba engine frozen đã qua cài cache thực bằng manager của app (GPU qua ghép multipart), kiểm executable và dung lượng. Bản engineering vẫn thiếu địa chỉ engine phát hành, nên tải từ GitHub và pipeline đầy đủ trên máy mới chưa được nghiệm thu.
 4. Chỉ thêm Gemini key nếu dùng dịch Gemini; chỉ thêm Zernio key nếu đăng mạng xã hội. Đặt tên từng key, chọn key đang dùng và kiểm tra kết nối. Dấu chấm của Zernio thể hiện kết quả các API đọc được kiểm tra, không chứng minh đã đăng thành công hay mọi quyền ghi.
@@ -67,7 +67,7 @@ Các script có hai chế độ không ký khác nhau:
 - `-UnsignedRelease`: ứng viên công khai unsigned; vẫn bắt buộc source sạch, giấy phép được duyệt, catalog tài nguyên đầy đủ và các kiểm thử.
 - `-AllowUnsigned`: chỉ kiểm thử nội bộ. Installer phải dùng thêm `-EngineeringBuild`, AppId và tên DEVELOPMENT riêng. Không đổi tên file để giả thành release.
 
-`-UnsignedRelease` không được kết hợp với signing identity, `-AllowUnsigned`, `-AllowDirtyBuild` hay `-EngineeringBuild`. Tên bộ cài công khai là `HaizFlow-0.1.0-Setup.exe`, thống nhất cho cả bản có và chưa có chữ ký số. Trạng thái chữ ký được ghi trong release notes, hướng dẫn cài đặt và metadata. Hỗ trợ ký trong source vẫn được giữ như một lựa chọn tương lai, không phải điều kiện của hướng miễn phí.
+`-UnsignedRelease` không được kết hợp với signing identity, `-AllowUnsigned`, `-AllowDirtyBuild` hay `-EngineeringBuild`. Tên bộ cài công khai là `HFlow-0.1.0-Setup.exe`, thống nhất cho cả bản có và chưa có chữ ký số. Trạng thái chữ ký được ghi trong release notes, hướng dẫn cài đặt và metadata. Hỗ trợ ký trong source vẫn được giữ như một lựa chọn tương lai, không phải điều kiện của hướng miễn phí.
 
 SHA-256 giúp kiểm toàn vẹn file, **không thay chữ ký danh tính**. Bảo vệ tài khoản GitHub bằng 2FA/passkey, review quyền write/release, bảo vệ tag, dùng draft để nghiệm thu đủ assets rồi mới publish. Nếu tài khoản phát hành bị chiếm, checksum đăng trên cùng tài khoản không đủ bảo vệ.
 
@@ -78,7 +78,7 @@ Máy build cần Windows x64, Git, Python 3.13 x64, uv theo lock tooling và Inn
 Đặt repo, temp và cache trên ổ đủ chỗ. Build Core đã dùng môi trường độc lập `build/core-env`, không gom mọi package AI của `.venv` vào installer. Không tự nâng phiên bản dependency lúc build release.
 
 ```powershell
-Set-Location D:\Du-an\HaizFlow
+Set-Location D:\Du-an\HFlow
 New-Item -ItemType Directory -Force -Path build\tool-temp, build\cache\uv | Out-Null
 $env:TEMP = (Resolve-Path build\tool-temp).Path
 $env:TMP = $env:TEMP
@@ -153,18 +153,18 @@ Chỉ thực hiện khi source sạch, legal/resource gate đạt và version c�
 ```powershell
 git status --short
 .\scripts\build-exe.ps1 -CoreLayout `
-  -PythonExecutable D:\Du-an\HaizFlow\build\core-env\Scripts\python.exe `
+  -PythonExecutable D:\Du-an\HFlow\build\core-env\Scripts\python.exe `
   -UnsignedRelease
 
-.\scripts\build-bootstrap.ps1 -OutputDirectory D:\Du-an\HaizFlow\dist\bootstrap-public `
-  -PythonExecutable D:\Du-an\HaizFlow\build\core-env\Scripts\python.exe `
+.\scripts\build-bootstrap.ps1 -OutputDirectory D:\Du-an\HFlow\dist\bootstrap-public `
+  -PythonExecutable D:\Du-an\HFlow\build\core-env\Scripts\python.exe `
   -UnsignedRelease
 
 .venv\Scripts\python.exe scripts\assemble-versioned.py `
-  --core dist\HaizFlowCore --launcher dist\bootstrap-public\HaizFlow `
-  --output dist\HaizFlow-public --assets dist\release-assets-0.1.0
+  --core dist\HFlowCore --launcher dist\bootstrap-public\HFlow `
+  --output dist\HFlow-public --assets dist\release-assets-0.1.0
 
-.\scripts\build-installer.ps1 -ArtifactPath D:\Du-an\HaizFlow\dist\HaizFlow-public `
+.\scripts\build-installer.ps1 -ArtifactPath D:\Du-an\HFlow\dist\HFlow-public `
   -UnsignedRelease
 ```
 
@@ -172,13 +172,13 @@ git status --short
 
 ```powershell
 .\scripts\test-installer.ps1 `
-  -InstallerPath D:\Release\HaizFlow-0.1.0-Setup.exe `
+  -InstallerPath D:\Release\HFlow-0.1.0-Setup.exe `
   -AllowRegisteredInstall
 ```
 
-`AllowRegisteredInstall` chỉ dùng trong VM sạch; không dùng trên máy có HaizFlow production. Test tự cài vào đường dẫn có khoảng trắng, không tạo shortcut, chạy UI frozen, repair, gỡ, cài lại trên dữ liệu giữ lại và kiểm hash fixture. Vẫn cần test tương tác wizard/IME/DPI, cảnh báo từ file tải qua browser và pipeline với engine thật. Không truyền `RequireSignature` cho bản unsigned.
+`AllowRegisteredInstall` chỉ dùng trong VM sạch; không dùng trên máy có HFlow production. Test tự cài vào đường dẫn có khoảng trắng, không tạo shortcut, chạy UI frozen, repair, gỡ, cài lại trên dữ liệu giữ lại và kiểm hash fixture. Vẫn cần test tương tác wizard/IME/DPI, cảnh báo từ file tải qua browser và pipeline với engine thật. Không truyền `RequireSignature` cho bản unsigned.
 
-Cả Core, launcher, engine, setup và uninstaller của HaizFlow sẽ không ký trong hướng này. Manifest/Full Core được tạo sau khi executable hoàn chỉnh; bất kỳ thay đổi bytes nào sau đó đều cần build lại metadata/hash/package/installer tương ứng. Không thay version hay bytes của một release đã công khai.
+Cả Core, launcher, engine, setup và uninstaller của HFlow sẽ không ký trong hướng này. Manifest/Full Core được tạo sau khi executable hoàn chỉnh; bất kỳ thay đổi bytes nào sau đó đều cần build lại metadata/hash/package/installer tương ứng. Không thay version hay bytes của một release đã công khai.
 
 Launcher có `BOOTSTRAP-INFO.json` và checksum riêng; assembly
 kiểm chúng cùng commit/phiên bản/chế độ build với Core. Không tái dùng thư mục
@@ -187,7 +187,7 @@ bằng tay để vượt kiểm tra. Build lại bootstrap từ cùng source s�
 
 ## 7. Nâng cấp phiên bản
 
-- HaizFlow không tự kiểm tra hay tải phiên bản mới.
+- HFlow không tự kiểm tra hay tải phiên bản mới.
 - Người dùng nâng cấp bằng cách chạy bộ cài phiên bản mới và cài vào cùng thư mục. `runtime\` được giữ nguyên.
 - Bộ cài không cho cài phiên bản thấp hơn bản đang dùng.
 - Bộ cài xóa thư mục `updater\` còn sót lại từ các bản cài cũ.
@@ -199,7 +199,7 @@ Chỉ sau khi tất cả gate và installer acceptance qua, bạn review/commit 
 
 Assets release v0.1.0 gồm:
 
-- `HaizFlow-0.1.0-Setup.exe` và `.exe.sha256`.
+- `HFlow-0.1.0-Setup.exe` và `.exe.sha256`.
 - Changelog/release notes: yêu cầu máy, resource downloads, vị trí dữ liệu, trạng thái unsigned/caveat SmartScreen và Smart App Control, giấy phép/limitations.
 - Có thể kèm checksum tổng, SBOM và evidence build; không kèm `.env`, API key, PFX, runtime, test fixtures hay installer DEVELOPMENT.
 
@@ -209,12 +209,12 @@ Các lệnh dưới **tạo/publish release bên ngoài**, chỉ chạy khi bạ
 gh auth login
 gh auth status
 gh release create v0.1.0 --repo MachHongHai/HaizFlow --verify-tag --draft `
-  --title 'HaizFlow 0.1.0' --notes-file docs\release-notes-0.1.0.md `
-  dist\installer\HaizFlow-0.1.0-Setup.exe `
-  dist\installer\HaizFlow-0.1.0-Setup.exe.sha256
+  --title 'HFlow 0.1.0' --notes-file docs\release-notes-0.1.0.md `
+  dist\installer\HFlow-0.1.0-Setup.exe `
+  dist\installer\HFlow-0.1.0-Setup.exe.sha256
 ```
 
-`docs/release-notes-0.1.0.md` phải viết theo kết quả nghiệm thu thực, không có sẵn chứng nhận production. Kiểm tra draft có đủ asset, verify digest phía GitHub, tên và nguồn thư viện đi kèm; trạng thái Authenticode của các executable HaizFlow sẽ là `NotSigned`. Kiểm tải/cài trên máy sạch là bước bổ sung cần ghi riêng, không được giả định đã qua. Nếu bật immutable releases, tải đủ assets **trước** publish; GitHub không cho thay assets/tag sau đó. Xem [quản lý release](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository) và [CLI create](https://cli.github.com/manual/gh_release_create).
+`docs/release-notes-0.1.0.md` phải viết theo kết quả nghiệm thu thực, không có sẵn chứng nhận production. Kiểm tra draft có đủ asset, verify digest phía GitHub, tên và nguồn thư viện đi kèm; trạng thái Authenticode của các executable HFlow sẽ là `NotSigned`. Kiểm tải/cài trên máy sạch là bước bổ sung cần ghi riêng, không được giả định đã qua. Nếu bật immutable releases, tải đủ assets **trước** publish; GitHub không cho thay assets/tag sau đó. Xem [quản lý release](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository) và [CLI create](https://cli.github.com/manual/gh_release_create).
 
 Khi đã chốt stable:
 

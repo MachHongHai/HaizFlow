@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from haizflow.pipeline import speaker_identity as identity
+from hflow.pipeline import speaker_identity as identity
 
 
 class SpeakerIdentityTests(unittest.TestCase):
@@ -117,7 +117,7 @@ class SpeakerIdentityTests(unittest.TestCase):
 
     def test_male_source_profile_reaches_tts_despite_default_female_preset(self):
         from types import SimpleNamespace
-        from haizflow.pipeline import tts
+        from hflow.pipeline import tts
 
         kind, uncertain, pitch = identity._voice_pitch_profile([120] * 30 + [240] * 50)
         self.assertEqual(kind, "male")
@@ -137,13 +137,13 @@ class SpeakerIdentityTests(unittest.TestCase):
                     Path(item["output_path"]).write_bytes(b"ID3" + bytes(600))
             with (patch.object(tts, "get_video", return_value=video), patch.object(tts, "log_to_video"),
                   patch.object(identity, "prepare_speakers", return_value=mapped),
-                  patch("haizflow.pipeline.omnivoice_tts.synthesize_batch_to_mp3", side_effect=synthesize) as worker):
+                  patch("hflow.pipeline.omnivoice_tts.synthesize_batch_to_mp3", side_effect=synthesize) as worker):
                 tts.generate_voice_parts(str(transcript), str(root / "parts"), "omnivoice:female", "fixture")
             self.assertEqual(worker.call_args.args[0][0]["voice"], "omnivoice:male")
 
     def test_multiple_speaker_logs_match_voices_sent_to_worker(self):
         from types import SimpleNamespace
-        from haizflow.pipeline import tts
+        from hflow.pipeline import tts
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -163,7 +163,7 @@ class SpeakerIdentityTests(unittest.TestCase):
                     Path(item["output_path"]).write_bytes(b"ID3" + bytes(600))
             with patch.object(tts, "get_video", return_value=video), patch.object(tts, "log_to_video") as log, \
                  patch.object(identity, "prepare_speakers", return_value=mapped), \
-                 patch("haizflow.pipeline.omnivoice_tts.synthesize_batch_to_mp3", side_effect=synthesize) as worker:
+                 patch("hflow.pipeline.omnivoice_tts.synthesize_batch_to_mp3", side_effect=synthesize) as worker:
                 tts.generate_voice_parts(str(transcript), str(root / "parts"), "omnivoice:female", "fixture")
             self.assertEqual([item["voice"] for item in worker.call_args.args[0]],
                              ["omnivoice:male", "omnivoice:female"])
@@ -193,7 +193,7 @@ class SpeakerIdentityTests(unittest.TestCase):
 
     def test_clone_and_multiple_modes_are_not_silently_combined(self):
         from types import SimpleNamespace
-        from haizflow.pipeline import tts
+        from hflow.pipeline import tts
 
         with tempfile.TemporaryDirectory() as directory:
             transcript = Path(directory) / "translated.json"
@@ -248,8 +248,8 @@ class SpeakerIdentityTests(unittest.TestCase):
             pool = Mock()
             with (
                 patch.object(identity, "verify_model"),
-                patch("haizflow.services.external_tasks.run_external_task", side_effect=engine) as task,
-                patch("haizflow.services.external_engine.shared_external_engine_pool", return_value=pool),
+                patch("hflow.services.external_tasks.run_external_task", side_effect=engine) as task,
+                patch("hflow.services.external_engine.shared_external_engine_pool", return_value=pool),
             ):
                 first = identity.prepare_speakers(str(audio), segments, "fixture")
                 self.assertEqual(identity.prepare_speakers(str(audio), segments, "fixture"), first)
@@ -271,8 +271,8 @@ class SpeakerIdentityTests(unittest.TestCase):
             audio.write_bytes(b"fixture")
             with (
                 patch.object(identity, "verify_model"),
-                patch("haizflow.services.external_tasks.run_external_task", return_value={"segments": []}),
-                patch("haizflow.services.external_engine.shared_external_engine_pool") as pool,
+                patch("hflow.services.external_tasks.run_external_task", return_value={"segments": []}),
+                patch("hflow.services.external_engine.shared_external_engine_pool") as pool,
             ):
                 with self.assertRaisesRegex(RuntimeError, "invalid identity map"):
                     identity.prepare_speakers(str(audio), [{"start": 0, "end": 2, "text": "hello"}], "fixture")
@@ -288,8 +288,8 @@ class SpeakerIdentityTests(unittest.TestCase):
                 return {"segments": [{**item, "speaker_id": "speaker-1", "speaker_voice": "omnivoice:male"}
                                      for item in payload["segments"]]}
             with (patch.object(identity, "verify_model"),
-                  patch("haizflow.services.external_tasks.run_external_task", side_effect=engine) as task,
-                  patch("haizflow.services.external_engine.shared_external_engine_pool")):
+                  patch("hflow.services.external_tasks.run_external_task", side_effect=engine) as task,
+                  patch("hflow.services.external_engine.shared_external_engine_pool")):
                 with patch.object(identity, "IDENTITY_VERSION", "previous-policy"):
                     identity.prepare_speakers(str(audio), segments, "fixture")
                 current = identity.prepare_speakers(str(audio), segments, "fixture")

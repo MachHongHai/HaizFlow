@@ -3,9 +3,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.services import hymt2_worker
-from haizflow.schemas.video import VideoConfig
-from haizflow.services.checkpoint_reader import BufferedCheckpoint
+from hflow.services import hymt2_worker
+from hflow.schemas.video import VideoConfig
+from hflow.services.checkpoint_reader import BufferedCheckpoint
 
 
 def test_windows_checkpoint_reader_uses_buffered_backend_and_restores_on_error():

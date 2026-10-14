@@ -9,8 +9,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from haizflow.pipeline import sequence_compiler
-from haizflow.services import manual_artifacts, video_export
+from hflow.pipeline import sequence_compiler
+from hflow.services import manual_artifacts, video_export
 import test_render_export_storage as storage_tests
 
 
@@ -55,7 +55,7 @@ def test_same_size_corruption_is_rejected_even_without_pre_hash(storage):
     with pytest.raises(OSError, match="verification"):
         video_export.export_video(video, output, overwrite=True)
     assert output.read_bytes() == b"prior export"
-    assert not list(storage.external.glob(".haizflow-export-*"))
+    assert not list(storage.external.glob(".hflow-export-*"))
     assert not manual_artifacts._RUNTIME_PINS
     assert video_export.current_render(video, verify=False) is None
 
@@ -90,7 +90,7 @@ def test_cancel_during_final_verification_keeps_old_output_and_render(storage):
         video_export.export_video(video, output, overwrite=True, cancel=token, progress=progress)
     assert output.read_bytes() == b"old output"
     assert video_export.current_render(video)
-    assert not list(storage.external.glob(".haizflow-export-*"))
+    assert not list(storage.external.glob(".hflow-export-*"))
     assert not manual_artifacts._RUNTIME_PINS
 
 
@@ -124,7 +124,7 @@ def test_passthrough_never_copies_or_mutates_input(tmp_path, monkeypatch, operat
     source.write_bytes(b"original video")
     no_copy = Mock(side_effect=AssertionError("No full file copy expected"))
     monkeypatch.setattr(sequence_compiler, "_copy_video", no_copy)
-    monkeypatch.setattr("haizflow.utils.ffmpeg.get_video_dimensions", lambda _: (96, 64))
+    monkeypatch.setattr("hflow.utils.ffmpeg.get_video_dimensions", lambda _: (96, 64))
     progress = []
     if operation == "overlays":
         result = sequence_compiler.apply_overlays(str(source), str(output), None, "test",
@@ -139,7 +139,7 @@ def test_passthrough_never_copies_or_mutates_input(tmp_path, monkeypatch, operat
 
 
 def test_gpu_encode_falls_back_once_and_progress_does_not_regress(monkeypatch):
-    monkeypatch.setattr("haizflow.utils.ffmpeg.preferred_video_encoder", lambda quality: (
+    monkeypatch.setattr("hflow.utils.ffmpeg.preferred_video_encoder", lambda quality: (
         "h264_nvenc", ["-preset", "p4", "-cq", str(quality)]))
     commands, progress = [], []
 
@@ -161,11 +161,11 @@ def test_gpu_encode_falls_back_once_and_progress_does_not_regress(monkeypatch):
 
 
 def test_cancelled_gpu_encode_never_starts_cpu_fallback(monkeypatch):
-    from haizflow.pipeline import process_registry
+    from hflow.pipeline import process_registry
 
     identifier = "cancel-gpu-export-test"
     process_registry.start_video(identifier)
-    monkeypatch.setattr("haizflow.utils.ffmpeg.preferred_video_encoder", lambda _: ("h264_nvenc", []))
+    monkeypatch.setattr("hflow.utils.ffmpeg.preferred_video_encoder", lambda _: ("h264_nvenc", []))
 
     def cancelled(*_args, **_kwargs):
         process_registry.cancel_video(identifier)
@@ -188,7 +188,7 @@ def test_cancelled_gpu_encode_never_starts_cpu_fallback(monkeypatch):
     ((1080, 1920), 10, True), (None, 10, True),
 ])
 def test_small_short_passes_avoid_gpu_startup_but_long_hd_keeps_gpu(monkeypatch, dimensions, duration, hardware):
-    from haizflow.utils import ffmpeg
+    from hflow.utils import ffmpeg
 
     gpu = Mock(return_value=("h264_nvenc", ["-cq", "18"]))
     monkeypatch.setattr(ffmpeg, "preferred_video_encoder", gpu)
@@ -200,7 +200,7 @@ def test_small_short_passes_avoid_gpu_startup_but_long_hd_keeps_gpu(monkeypatch,
 
 @pytest.fixture
 def real_media(tmp_path):
-    from haizflow.utils.ffmpeg import _binary
+    from hflow.utils.ffmpeg import _binary
 
     path = tmp_path / "source.mp4"
     subprocess.run([_binary("ffmpeg"), "-y", "-v", "error", "-f", "lavfi", "-i",
@@ -210,10 +210,10 @@ def real_media(tmp_path):
 
 
 def test_real_uncached_segment_skips_both_noop_copies_and_preserves_source(real_media, tmp_path, monkeypatch):
-    from haizflow.pipeline import manual_tools, segment_export
-    from haizflow.schemas.video import VideoConfig
-    from haizflow.services import video_store
-    from haizflow.utils.ffmpeg import get_video_duration, validate_video_integrity
+    from hflow.pipeline import manual_tools, segment_export
+    from hflow.schemas.video import VideoConfig
+    from hflow.services import video_store
+    from hflow.utils.ffmpeg import get_video_duration, validate_video_integrity
     from test_segment_export_window import document_for
 
     config = VideoConfig(project_type="manual")
@@ -240,7 +240,7 @@ def test_real_uncached_segment_skips_both_noop_copies_and_preserves_source(real_
 
 
 def test_real_cached_segment_hardware_failure_retries_cpu_only_for_window(real_media, tmp_path, monkeypatch):
-    from haizflow.utils import ffmpeg
+    from hflow.utils import ffmpeg
 
     monkeypatch.setattr(ffmpeg, "preferred_export_encoder", lambda *_args, **_kwargs: ("unavailable_encoder", []))
     original = video_export.subprocess.Popen
@@ -251,7 +251,7 @@ def test_real_cached_segment_hardware_failure_retries_cpu_only_for_window(real_m
         return original(command, **kwargs)
 
     monkeypatch.setattr(video_export.subprocess, "Popen", capture)
-    directory = tmp_path / ".haizflow-segment-test"
+    directory = tmp_path / ".hflow-segment-test"
     directory.mkdir()
     output = directory / "segment.mp4"
     video_export._render_range(real_media, output, (1500, 2500), "source", threading.Event(), None)
@@ -266,7 +266,7 @@ def test_real_cached_segment_hardware_failure_retries_cpu_only_for_window(real_m
 
 
 def test_cancelled_cached_segment_does_not_start_fallback(real_media, tmp_path, monkeypatch):
-    from haizflow.utils import ffmpeg
+    from hflow.utils import ffmpeg
 
     monkeypatch.setattr(ffmpeg, "preferred_export_encoder", lambda *_args, **_kwargs: ("h264_nvenc", []))
     token = threading.Event()

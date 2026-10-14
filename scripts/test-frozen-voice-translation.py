@@ -15,9 +15,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from haizflow.services.resource_packs import _assets_by_component  # noqa: E402
-from haizflow.update.filesystem import atomic_json, no_links, remove_owned  # noqa: E402
-from haizflow.update.state import provision  # noqa: E402
+from hflow.services.resource_packs import _assets_by_component  # noqa: E402
+from hflow.update.filesystem import atomic_json, no_links, remove_owned  # noqa: E402
+from hflow.update.state import provision  # noqa: E402
 
 
 def main():
@@ -55,7 +55,7 @@ def main():
     sdk = models / "omnivoice/sdk"
     site = sdk / "site-packages"
     site.mkdir(exist_ok=True)
-    from haizflow.core.model_integrity import OMNIVOICE_RUNTIME_FILES
+    from hflow.core.model_integrity import OMNIVOICE_RUNTIME_FILES
 
     for name in OMNIVOICE_RUNTIME_FILES:
         with zipfile.ZipFile(sdk / name) as archive:
@@ -67,11 +67,11 @@ def main():
     if args.prepare_only:
         return
     environment = os.environ.copy()
-    for name in ("HAIZFLOW_HOME", "HAIZFLOW_INSTALL_ROOT", "HAIZFLOW_RESOURCE_ROOT", "MODELS_DIR",
-                 "RUNTIME_DATA_DIR", "APP_DATA_DIR", "HAIZFLOW_SMOKE_TEST", "HYMT2_CPU_MODEL_PATH",
+    for name in ("HFLOW_HOME", "HFLOW_INSTALL_ROOT", "HFLOW_RESOURCE_ROOT", "MODELS_DIR",
+                 "RUNTIME_DATA_DIR", "APP_DATA_DIR", "HFLOW_SMOKE_TEST", "HYMT2_CPU_MODEL_PATH",
                  "HYMT2_GPU_MODEL_PATH"):
         environment.pop(name, None)
-    environment.update(HAIZFLOW_ENGINE_APP_ROOT=str(app), HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1",
+    environment.update(HFLOW_ENGINE_APP_ROOT=str(app), HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1",
                        PYANNOTE_METRICS_ENABLED="false", OMP_NUM_THREADS="1", MKL_NUM_THREADS="1")
     environment["PATH"] = str(ROOT / "runtime/bin") + os.pathsep + environment.get("PATH", "")
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -115,8 +115,8 @@ def main():
         translation_input += json.dumps(dict(request_id="shutdown", command="shutdown")) + "\n"
         completed = run(f"{label}-translation", [engine.resolve(), "--hymt2-worker", "--server"],
             stdin=translation_input,
-            extra={"HAIZFLOW_PROCESSING_DEVICE": "gpu" if label == "gpu" else "cpu",
-                   "HAIZFLOW_TRANSLATION_MODEL": "full" if label == "gpu" else "q4"})
+            extra={"HFLOW_PROCESSING_DEVICE": "gpu" if label == "gpu" else "cpu",
+                   "HFLOW_TRANSLATION_MODEL": "full" if label == "gpu" else "q4"})
         responses = [json.loads(line) for line in completed.stdout.splitlines() if line.startswith("{")]
         translation = next((entry for entry in responses if entry.get("request_id") == "translate"
                             and entry.get("event") == "response"), {})

@@ -18,8 +18,8 @@ def main() -> int:
     expected = (ROOT / ".venv").resolve()
     if Path(sys.prefix).resolve() != expected:
         raise SystemExit("Run this script with this checkout's .venv Python.")
-    from haizflow import config
-    from haizflow.core.paths import engines_dir, resource_packages_dir
+    from hflow import config
+    from hflow.core.paths import engines_dir, resource_packages_dir
 
     paths = [
         config.APP_DATA_DIR,
@@ -32,7 +32,7 @@ def main() -> int:
     # This is a dev-specific opt-in. Do not impose a drive letter on the
     # application or on users who intentionally install on the system drive.
     if sys.platform == "win32" and any(Path(value).drive.casefold() == "c:" for value in paths):
-        raise SystemExit("Development storage still points to C:. Select another HAIZFLOW_HOME/resource root first.")
+        raise SystemExit("Development storage still points to C:. Select another HFLOW_HOME/resource root first.")
     environment = dict(config._RUNTIME_ENVIRONMENT)
     site = expected / (
         "Lib/site-packages"
@@ -41,16 +41,16 @@ def main() -> int:
     )
     if not site.is_dir():
         raise SystemExit("Virtual-environment site-packages is missing.")
-    module = site / "_haizflow_dev_storage.py"
+    module = site / "_hflow_dev_storage.py"
     module.write_text(
         '"""Generated local development cache containment; not shipped."""\n'
         "import os\n"
-        'if os.environ.get("HAIZFLOW_SMOKE_TEST") != "1":\n'
-        '    os.environ.setdefault("HAIZFLOW_NATIVE_WINDOWS_USERPROFILE", os.environ.get("USERPROFILE", ""))\n'
+        'if os.environ.get("HFLOW_SMOKE_TEST") != "1":\n'
+        '    os.environ.setdefault("HFLOW_NATIVE_WINDOWS_USERPROFILE", os.environ.get("USERPROFILE", ""))\n'
         f"    os.environ.update({environment!r})\n",
         encoding="utf-8",
     )
-    (site / "haizflow_dev_storage.pth").write_text("import _haizflow_dev_storage\n", encoding="utf-8")
+    (site / "hflow_dev_storage.pth").write_text("import _hflow_dev_storage\n", encoding="utf-8")
     pip_config = expected / "pip.ini" if sys.platform == "win32" else expected / "pip.conf"
     parser = configparser.RawConfigParser()
     parser.read(pip_config, encoding="utf-8")

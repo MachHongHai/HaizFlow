@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.pipeline import manual_tools, omnivoice_tts, process_video, speaker_identity, tts
+from hflow.pipeline import manual_tools, omnivoice_tts, process_video, speaker_identity, tts
 
 
 @pytest.mark.parametrize("provider", ["omnivoice", "omnivoice-gpu"])
@@ -170,8 +170,8 @@ def test_edited_subtitle_subset_reuses_persisted_source_mapping_after_reopening(
     with (patch.object(tts, "get_video", return_value=video) as get_video,
           patch.object(tts, "log_to_video"),
           patch.object(speaker_identity, "verify_model") as verify,
-          patch("haizflow.services.external_tasks.run_external_task", return_value={"segments": mapped}) as engine,
-          patch("haizflow.services.external_engine.shared_external_engine_pool", return_value=Mock()),
+          patch("hflow.services.external_tasks.run_external_task", return_value={"segments": mapped}) as engine,
+          patch("hflow.services.external_engine.shared_external_engine_pool", return_value=Mock()),
           patch.object(omnivoice_tts, "synthesize_batch_to_mp3", side_effect=synthesize) as worker):
         tts.generate_voice_parts(str(translated_path), str(first_parts), "omnivoice:female", "fixture", provider=provider)
         original_items = {item["index"]: item for item in worker.call_args.args[0]}
@@ -259,7 +259,7 @@ def test_manual_scheduler_regenerates_only_text_edited_multispeaker_clips(tmp_pa
               patch.object(manual_tools, "_update_files"),
               patch.object(manual_tools, "shutdown_hymt2_worker"),
               patch.object(manual_tools, "_release_recognition_runtime"),
-              patch("haizflow.core.memory.cpu_memory_constrained", return_value=False),
+              patch("hflow.core.memory.cpu_memory_constrained", return_value=False),
               patch.object(manual_tools.editor_documents, "mark_voice_clips_ready")):
             manual_tools._run_voice(video, SimpleNamespace(update=Mock()))
         worker.assert_called_once()

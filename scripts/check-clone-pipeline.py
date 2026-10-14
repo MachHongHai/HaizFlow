@@ -17,16 +17,16 @@ def main():
     root = args.output_root.resolve() / datetime.now(UTC).strftime("clone-check-%Y%m%dT%H%M%SZ")
     root.mkdir(parents=True, exist_ok=False)
     os.environ.update(
-        HAIZFLOW_SMOKE_TEST="1", APP_DATA_DIR=str(root), RUNTIME_DATA_DIR=str(root),
-        MODELS_DIR=str(args.models.resolve()), HAIZFLOW_PROCESSING_DEVICE="gpu",
+        HFLOW_SMOKE_TEST="1", APP_DATA_DIR=str(root), RUNTIME_DATA_DIR=str(root),
+        MODELS_DIR=str(args.models.resolve()), HFLOW_PROCESSING_DEVICE="gpu",
     )
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-    from haizflow.core.hardware import configure_processing_device
-    from haizflow.pipeline.process_video import process_video_sync
-    from haizflow.schemas.video import VideoConfig
-    from haizflow.services.desktop_videos import create_desktop_video
-    from haizflow.services.external_engine import shared_external_engine_pool
-    from haizflow.services.video_store import get_video, update_video
+    from hflow.core.hardware import configure_processing_device
+    from hflow.pipeline.process_video import process_video_sync
+    from hflow.schemas.video import VideoConfig
+    from hflow.services.desktop_videos import create_desktop_video
+    from hflow.services.external_engine import shared_external_engine_pool
+    from hflow.services.video_store import get_video, update_video
 
     print(f"Diagnostic output: {root}", flush=True)
     for translation in ("full", "q4"):

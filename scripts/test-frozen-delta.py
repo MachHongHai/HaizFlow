@@ -12,11 +12,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from haizflow.update.filesystem import atomic_json, no_links, remove_owned, sha256
-from haizflow.update.manifest import inventory
-from haizflow.update.manifest import Manifest
-from haizflow.update.packages import generate
-from haizflow.update.state import Layout
+from hflow.update.filesystem import atomic_json, no_links, remove_owned, sha256
+from hflow.update.manifest import inventory
+from hflow.update.manifest import Manifest
+from hflow.update.packages import generate
+from hflow.update.state import Layout
 
 
 def main():
@@ -53,8 +53,8 @@ def main():
     if args.require_unsigned:
         if sys.platform != "win32":
             raise RuntimeError("Authenticode status inspection requires Windows.")
-        executables = (artifact / "HaizFlow.exe",
-                       artifact / "versions" / current_version / "HaizFlowCore.exe")
+        executables = (artifact / "HFlow.exe",
+                       artifact / "versions" / current_version / "HFlowCore.exe")
         for executable in executables:
             environment = os.environ.copy()
             # pwsh 7's inherited module path can make Windows PowerShell 5 try
@@ -62,9 +62,9 @@ def main():
             shell = shutil.which("pwsh.exe") or "powershell.exe"
             if shell.lower().endswith("powershell.exe"):
                 environment.pop("PSModulePath", None)
-            environment["HAIZFLOW_TEST_SIGN_TARGET"] = str(executable)
+            environment["HFLOW_TEST_SIGN_TARGET"] = str(executable)
             check = subprocess.run([shell, "-NoProfile", "-NonInteractive", "-Command",
-                "$signature = Get-AuthenticodeSignature -LiteralPath $env:HAIZFLOW_TEST_SIGN_TARGET; if (!$signature) { exit 2 }; $signature.Status.ToString() | ConvertTo-Json; exit 0"],
+                "$signature = Get-AuthenticodeSignature -LiteralPath $env:HFLOW_TEST_SIGN_TARGET; if (!$signature) { exit 2 }; $signature.Status.ToString() | ConvertTo-Json; exit 0"],
                 env=environment, capture_output=True, text=True, timeout=30,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             if check.returncode or json.loads(check.stdout) != "NotSigned":
@@ -115,7 +115,7 @@ def main():
         (root / "temp").mkdir()
         def launch(label):
             with (report / (label + ".stdout.log")).open("wb") as out, (report / (label + ".stderr.log")).open("wb") as err:
-                result = subprocess.run([str(install / "HaizFlow.exe"), "--ui-smoke-test", "--health-timeout", "30"],
+                result = subprocess.run([str(install / "HFlow.exe"), "--ui-smoke-test", "--health-timeout", "30"],
                                         env=environment, stdout=out, stderr=err, timeout=args.process_timeout,
                                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             if result.returncode:
@@ -127,7 +127,7 @@ def main():
         print("Real Core health confirmed; testing failed-start rollback.", flush=True)
 
         # A checksum-valid but unlaunchable future Core must roll back once.
-        (source / "HaizFlowCore.exe").write_bytes(b"INTENTIONALLY NOT A WINDOWS EXECUTABLE")
+        (source / "HFlowCore.exe").write_bytes(b"INTENTIONALLY NOT A WINDOWS EXECUTABLE")
         broken = generate(layout.core(target_version), source, assets,
                           base_version=target_version, target_version=broken_version)
         layout.prepare(assets / broken.data["package_name"], broken)

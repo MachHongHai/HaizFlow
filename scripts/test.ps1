@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $Python = Join-Path $Root ".venv\Scripts\python.exe"
 $QmlLint = Join-Path $Root ".venv\Lib\site-packages\PySide6\qmllint.exe"
-$QmlDirectory = Join-Path $Root "src\haizflow\desktop\qml"
+$QmlDirectory = Join-Path $Root "src\hflow\desktop\qml"
 $TestTempParent = [System.IO.Path]::GetFullPath((Join-Path $Root "build\test-temp"))
 $TestTemp = [System.IO.Path]::GetFullPath((Join-Path $TestTempParent ([guid]::NewGuid().ToString("N"))))
 
@@ -20,7 +20,7 @@ if (!(Test-Path -LiteralPath $QmlLint -PathType Leaf)) {
 $PreviousTemp = $env:TEMP
 $PreviousTmp = $env:TMP
 $PreviousAppEnvironment = @{}
-foreach ($Name in @("HAIZFLOW_HOME", "RUNTIME_DATA_DIR", "HAIZFLOW_RESOURCE_ROOT", "HAIZFLOW_SMOKE_TEST", "PYTHONPATH")) {
+foreach ($Name in @("HFLOW_HOME", "RUNTIME_DATA_DIR", "HFLOW_RESOURCE_ROOT", "HFLOW_SMOKE_TEST", "PYTHONPATH")) {
   $PreviousAppEnvironment[$Name] = [Environment]::GetEnvironmentVariable($Name, "Process")
 }
 try {
@@ -32,10 +32,10 @@ try {
   $env:TMP = $TestTemp
   $env:PYTHONPATH = Join-Path $Root "src"
   # Qt singleton startup and maintenance must never see a developer's projects.
-  $env:HAIZFLOW_SMOKE_TEST = "1"
-  $env:HAIZFLOW_HOME = Join-Path $TestTemp "app"
+  $env:HFLOW_SMOKE_TEST = "1"
+  $env:HFLOW_HOME = Join-Path $TestTemp "app"
   $env:RUNTIME_DATA_DIR = Join-Path $TestTemp "app\data"
-  $env:HAIZFLOW_RESOURCE_ROOT = Join-Path $TestTemp "resources"
+  $env:HFLOW_RESOURCE_ROOT = Join-Path $TestTemp "resources"
 
   if (!$SkipCompile) {
     & $Python -m compileall -q (Join-Path $Root "src") (Join-Path $Root "scripts") (Join-Path $Root "tests")
@@ -50,7 +50,7 @@ try {
   # them.
   # Ruff's cache has no value in the deterministic release gate and otherwise
   # follows the caller's current directory, which can create .ruff_cache next
-  # to the repository instead of below HaizFlow's portable data root.
+  # to the repository instead of below HFlow's portable data root.
   & $Python -m ruff check (Join-Path $Root "src") (Join-Path $Root "scripts") --select F --no-cache
   if ($LASTEXITCODE -ne 0) {
     throw "Python correctness lint failed."

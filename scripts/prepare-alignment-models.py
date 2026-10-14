@@ -17,8 +17,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.config import MODELS_DIR, TORCH_HOME  # noqa: E402
-from haizflow.core.model_integrity import (  # noqa: E402
+from hflow.config import MODELS_DIR, TORCH_HOME  # noqa: E402
+from hflow.core.model_integrity import (  # noqa: E402
     ALIGNMENT_MODEL_BASE_URL,
     ALIGNMENT_MODELS,
     ModelIntegrityError,
@@ -74,7 +74,7 @@ def _download(filename: str, expected_size: int, expected_sha256: str, destinati
     try:
         request = urllib.request.Request(
             source,
-            headers={"User-Agent": "HaizFlow offline-model preparation"},
+            headers={"User-Agent": "HFlow offline-model preparation"},
         )
         digest = hashlib.sha256()
         received = 0

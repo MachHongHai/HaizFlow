@@ -9,10 +9,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from haizflow.core.voice_profile_model import (  # noqa: E402
+from hflow.core.voice_profile_model import (  # noqa: E402
     MODEL_FILE, MODEL_SIZE, MODEL_SHA256, MODEL_URL, verify_voice_profile,
 )
-from haizflow.services.model_bootstrap import ModelAsset, install_model_assets  # noqa: E402
+from hflow.services.model_bootstrap import ModelAsset, install_model_assets  # noqa: E402
 
 
 def main() -> int:

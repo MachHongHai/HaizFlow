@@ -8,13 +8,13 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from haizflow.services.douyin_adapter import DouyinAdapter, DouyinSession
-from haizflow.services.douyin_classification import DouyinError, Outcome, classify
-from haizflow.services.douyin_signing import DETAIL_PATH, POSTS_PATH, DouyinSigner, SignedRequest
-from haizflow.services.douyin_transport import BrowserProfile, DouyinTransport, Response, validate_douyin_address
-from haizflow.services.video_download import DownloadCancelled, VideoMetadata, download_audio, download_video
-from haizflow.vendor.douyin_abogus import ABogus, decode, structure_error
-from haizflow.vendor.douyin_sm3 import sm3_hexdigest
+from hflow.services.douyin_adapter import DouyinAdapter, DouyinSession
+from hflow.services.douyin_classification import DouyinError, Outcome, classify
+from hflow.services.douyin_signing import DETAIL_PATH, POSTS_PATH, DouyinSigner, SignedRequest
+from hflow.services.douyin_transport import BrowserProfile, DouyinTransport, Response, validate_douyin_address
+from hflow.services.video_download import DownloadCancelled, VideoMetadata, download_audio, download_video
+from hflow.vendor.douyin_abogus import ABogus, decode, structure_error
+from hflow.vendor.douyin_sm3 import sm3_hexdigest
 
 ID = "7683481325270177898"
 
@@ -69,7 +69,7 @@ def test_popular_pagination_waits_and_retries_with_the_same_working_identity():
     adapter, transport = adapter_with(response(page), response(status=429), response(final))
     adapter.session.native_verified = True
     adapter.session.browser = Mock()
-    with patch("haizflow.services.video_download._wait_for_retry") as wait:
+    with patch("hflow.services.video_download._wait_for_retry") as wait:
         _, videos = adapter.profile_posts("https://www.douyin.com/user/public-user", limit=2)
     assert len(videos) == 2 and len(transport.calls) == 3
     assert adapter.session.generation == 1 and adapter.session.ready
@@ -108,8 +108,8 @@ def test_popular_scan_resumes_throttled_cursor_without_repeating_first_page():
 
 
 def test_scan_recovers_after_cooldown_and_ranks_fifty_across_all_pages():
-    from haizflow.schemas.channel_import import ChannelImportRequest
-    from haizflow.services.channel_import import scan_channel
+    from hflow.schemas.channel_import import ChannelImportRequest
+    from hflow.services.channel_import import scan_channel
 
     post = detail()["aweme_detail"]
 
@@ -129,8 +129,8 @@ def test_scan_recovers_after_cooldown_and_ranks_fifty_across_all_pages():
                                    platform="douyin", ranking="popular", limit=50,
                                    scan_scope=300, duration_filter="all")
     progress = Mock()
-    with patch("haizflow.services.douyin_adapter.get_douyin_adapter", return_value=adapter), \
-         patch("haizflow.services.video_download._wait_for_retry") as wait:
+    with patch("hflow.services.douyin_adapter.get_douyin_adapter", return_value=adapter), \
+         patch("hflow.services.video_download._wait_for_retry") as wait:
         _, _, rows = scan_channel(request, progress_callback=progress)
     assert len(rows) == 50 and not getattr(rows, "warning", "")
     assert [row.view_count for row in rows] == list(range(69, 19, -1))
@@ -159,7 +159,7 @@ def test_second_cooldown_can_recover_the_same_cursor():
     first = response({"aweme_list": [post], "has_more": 1, "max_cursor": 42})
     final = response({"aweme_list": [{**post, "aweme_id": "other"}], "has_more": 0, "max_cursor": 84})
     adapter, transport = adapter_with(first, *[response(status=429)] * 6, final)
-    with patch("haizflow.services.video_download._wait_for_retry") as wait:
+    with patch("hflow.services.video_download._wait_for_retry") as wait:
         _, rows = adapter.profile_posts("https://www.douyin.com/user/public-user", limit=100)
     assert len(rows) == 2 and not getattr(rows, "warning", "")
     assert any(59 <= call.args[1] <= 60 for call in wait.call_args_list)
@@ -178,7 +178,7 @@ def test_cancel_during_throttle_cooldown_keeps_cursor_for_rescan():
             cancel.set()
             raise DownloadCancelled("stopped")
 
-    with patch("haizflow.services.video_download._wait_for_retry", side_effect=wait):
+    with patch("hflow.services.video_download._wait_for_retry", side_effect=wait):
         with pytest.raises(DownloadCancelled):
             adapter.profile_posts("https://www.douyin.com/user/public-user", limit=100, cancel_event=cancel)
     assert len(transport.calls) == 4
@@ -225,7 +225,7 @@ def test_valid_empty_profile_is_a_zero_result_not_an_exception():
 def test_cancel_during_pagination_wait_makes_no_next_request():
     page = {"aweme_list": [detail()["aweme_detail"]], "has_more": 1, "max_cursor": 42}
     adapter, transport = adapter_with(response(page))
-    with patch("haizflow.services.video_download._wait_for_retry", side_effect=DownloadCancelled("stopped")):
+    with patch("hflow.services.video_download._wait_for_retry", side_effect=DownloadCancelled("stopped")):
         with pytest.raises(DownloadCancelled):
             adapter.profile_posts("https://www.douyin.com/user/public-user", limit=2)
     assert len(transport.calls) == 1 and adapter.session.ready
@@ -234,7 +234,7 @@ def test_cancel_during_pagination_wait_makes_no_next_request():
 def test_bare_continuation_response_retries_briefly_without_long_cooldowns_or_false_eof():
     page = {"aweme_list": [detail()["aweme_detail"]], "has_more": 1, "max_cursor": 42}
     adapter, transport = adapter_with(response(page), *[response({"status_code": 0})] * 3)
-    with patch("haizflow.services.video_download._wait_for_retry") as wait:
+    with patch("hflow.services.video_download._wait_for_retry") as wait:
         _, rows = adapter.profile_posts("https://www.douyin.com/user/public-user", limit=300)
     assert len(transport.calls) == 4 and len(rows) == 1
     assert "không trả trang tiếp theo" in rows.warning and rows.scan_progress < 100
@@ -256,7 +256,7 @@ def test_transient_bare_continuation_can_recover_without_new_identity():
 
 @pytest.fixture(autouse=True)
 def no_network_wait():
-    with patch("haizflow.services.video_download._wait_for_retry"):
+    with patch("hflow.services.video_download._wait_for_retry"):
         yield
 
 
@@ -286,9 +286,9 @@ def test_video_channel_and_audio_inspection_share_owned_session_without_recreati
     backend = Mock()
     backend.sign.return_value = SignedRequest("https://www.douyin.com/detail", {}, "browser-sdk"), state
     adapter.session.browser = backend
-    from haizflow.services.douyin_adapter import get_douyin_adapter
-    with patch("haizflow.services.douyin_adapter._adapter", adapter), \
-         patch("haizflow.services.douyin_browser.create_anonymous_state") as create:
+    from hflow.services.douyin_adapter import get_douyin_adapter
+    with patch("hflow.services.douyin_adapter._adapter", adapter), \
+         patch("hflow.services.douyin_browser.create_anonymous_state") as create:
         get_douyin_adapter().inspect(f"https://www.douyin.com/video/{ID}")
         get_douyin_adapter({}).profile_posts("https://www.douyin.com/user/creator", limit=1)
         get_douyin_adapter().inspect(f"https://www.douyin.com/jingxuan?modal_id={ID}")
@@ -353,8 +353,8 @@ def test_signer_never_invents_a_visitor_or_token():
 
 
 def test_web_signature_covers_the_exact_encoded_query():
-    with patch("haizflow.services.douyin_signing.ABogus") as algorithm, \
-         patch("haizflow.services.douyin_signing.time.time", return_value=1700000000):
+    with patch("hflow.services.douyin_signing.ABogus") as algorithm, \
+         patch("hflow.services.douyin_signing.time.time", return_value=1700000000):
         algorithm.return_value.get_value.return_value = "fixed-bogus"
         signed = DouyinSigner().sign(DETAIL_PATH, {"aweme_id": ID},
             {"UIFID_TEMP": "visitor", "s_v_web_id": "verify", "msToken": "real-token"}, BrowserProfile())
@@ -473,7 +473,7 @@ def test_observability_does_not_log_session_values_or_signed_query(caplog):
 
 @pytest.mark.parametrize("audio_only", [False, True])
 def test_expired_media_refreshes_metadata_and_downloads_new_candidate(tmp_path, caplog, audio_only):
-    caplog.set_level(logging.INFO, logger="haizflow.services.douyin_adapter")
+    caplog.set_level(logging.INFO, logger="hflow.services.douyin_adapter")
     adapter, transport = adapter_with(response(detail("https://cdn.example/old.mp4")),
                                       response(detail("https://cdn.example/new.mp4")))
     urls = []
@@ -501,12 +501,12 @@ def test_expired_media_refreshes_metadata_and_downloads_new_candidate(tmp_path, 
         return {"id": data["aweme_id"], "title": "Video", "formats": [
             {"url": data["video"]["play_addr"]["url_list"][0]}]}
 
-    from haizflow.services.douyin_video import HaizFlowDouyinIE
-    with patch("haizflow.services.douyin_adapter.get_douyin_adapter", return_value=adapter), \
-         patch("haizflow.services.video_download._load_yt_dlp", return_value=Mock(YoutubeDL=Downloader)), \
-         patch.object(HaizFlowDouyinIE, "_parse_aweme_video_app", parse), \
-         patch("haizflow.services.video_download._validate_processable_video"), \
-         patch("haizflow.services.video_download._normalize_downloaded_audio",
+    from hflow.services.douyin_video import HFlowDouyinIE
+    with patch("hflow.services.douyin_adapter.get_douyin_adapter", return_value=adapter), \
+         patch("hflow.services.video_download._load_yt_dlp", return_value=Mock(YoutubeDL=Downloader)), \
+         patch.object(HFlowDouyinIE, "_parse_aweme_video_app", parse), \
+         patch("hflow.services.video_download._validate_processable_video"), \
+         patch("hflow.services.video_download._normalize_downloaded_audio",
                side_effect=lambda source, target, cancel: target.write_bytes(b"valid audio")):
         if audio_only:
             path = download_audio(f"https://www.douyin.com/video/{ID}", tmp_path / "audio.m4a")
@@ -522,7 +522,7 @@ def test_expired_media_refreshes_metadata_and_downloads_new_candidate(tmp_path, 
 def test_rate_limit_respects_bounded_retry_after_without_changing_identity():
     busy = Response(429, b"busy", "https://www.douyin.com/", {"retry-after": "3600"})
     adapter, transport = adapter_with(busy, response(detail()))
-    with patch("haizflow.services.video_download._wait_for_retry") as wait:
+    with patch("hflow.services.video_download._wait_for_retry") as wait:
         adapter.inspect(f"https://www.douyin.com/video/{ID}")
     wait.assert_called_once_with(None, 8.0)
     assert adapter.session.generation == 1 and len(transport.calls) == 2
@@ -538,7 +538,7 @@ def test_browser_refresh_is_explicit_and_replaces_the_session_atomically():
     backend = Mock()
     backend.sign.return_value = SignedRequest("https://www.douyin.com/detail", {}, "browser-sdk"), state
     state["backend"] = backend
-    with patch("haizflow.services.douyin_browser.create_anonymous_state", return_value=state) as browser:
+    with patch("hflow.services.douyin_browser.create_anonymous_state", return_value=state) as browser:
         browser.assert_not_called()
         adapter.create_browser_session()
         browser.assert_called_once_with(None, status_callback=None)
@@ -557,7 +557,7 @@ def test_refresh_reuses_existing_backend_and_failure_does_not_destroy_it():
                                (SignedRequest("https://www.douyin.com/detail", {}, "browser-sdk"), state)]
     adapter.session.browser = backend
     status = Mock()
-    with patch("haizflow.services.douyin_browser.create_anonymous_state") as create:
+    with patch("hflow.services.douyin_browser.create_anonymous_state") as create:
         with pytest.raises(RuntimeError):
             adapter.create_browser_session(status_callback=status)
         assert adapter.session.browser is backend and adapter.session.transport is transport
@@ -579,7 +579,7 @@ def test_successful_refresh_reuses_backend_and_commits_transport_after_validatio
     adapter.session.browser = backend
     replacement = FakeTransport(replies=[response({"status_code": 5, "aweme_detail": None})])
     adapter.session.transport_factory = Mock(return_value=replacement)
-    with patch("haizflow.services.douyin_browser.create_anonymous_state") as create:
+    with patch("hflow.services.douyin_browser.create_anonymous_state") as create:
         adapter.create_browser_session()
     create.assert_not_called()
     backend.close.assert_not_called()
@@ -605,8 +605,8 @@ def test_explicit_cookie_file_is_imported_once_without_mixing_identities(tmp_pat
     replacement.cookies = {}
     factory = Mock(return_value=replacement)
     adapter.session.transport_factory = factory
-    from haizflow.services.douyin_adapter import get_douyin_adapter
-    with patch("haizflow.services.douyin_adapter._adapter", adapter):
+    from hflow.services.douyin_adapter import get_douyin_adapter
+    with patch("hflow.services.douyin_adapter._adapter", adapter):
         first = get_douyin_adapter({"cookie_file": str(file)})
         replacement.cookies["UIFID_TEMP"] = "refreshed-by-server"
         second = get_douyin_adapter({"cookie_file": str(file)})
@@ -679,13 +679,13 @@ def test_newest_counts_usable_videos_not_photos_or_repeated_posts():
 
 
 def test_newest_fifty_to_hundred_reuses_full_pages_without_skipping_unused_rows():
-    from haizflow.schemas.channel_import import ChannelImportRequest
-    from haizflow.services.channel_import import scan_channel
+    from hflow.schemas.channel_import import ChannelImportRequest
+    from hflow.services.channel_import import scan_channel
     post = detail()['aweme_detail']
     replies = [response({'aweme_list': [{**post, 'aweme_id': str(i)} for i in range(start,start+40)],
                          'has_more': int(start < 80), 'max_cursor': start+40}) for start in (0,40,80)]
     adapter, transport = adapter_with(*replies)
-    with patch('haizflow.services.douyin_adapter.get_douyin_adapter', return_value=adapter):
+    with patch('hflow.services.douyin_adapter.get_douyin_adapter', return_value=adapter):
         request = ChannelImportRequest(url='https://www.douyin.com/user/creator', platform='douyin',
                                        ranking='newest', limit=50, duration_filter='all')
         _, _, rows = scan_channel(request)
@@ -744,7 +744,7 @@ def test_cancelled_browser_replacement_closes_new_backend_and_preserves_native_j
     def created(*args, **kwargs):
         cancel.set()
         return {"backend": backend}
-    with patch("haizflow.services.douyin_browser.create_anonymous_state", side_effect=created), \
+    with patch("hflow.services.douyin_browser.create_anonymous_state", side_effect=created), \
          pytest.raises(DownloadCancelled):
         adapter.create_browser_session(cancel)
     backend.close.assert_called_once()
@@ -752,10 +752,10 @@ def test_cancelled_browser_replacement_closes_new_backend_and_preserves_native_j
 
 
 def test_douyin_ytdlp_never_reads_an_ambient_browser_profile_or_unscoped_cookie_file():
-    from haizflow.services.video_download import _inspect_video_info, _ytdlp_auth_for_url
+    from hflow.services.video_download import _inspect_video_info, _ytdlp_auth_for_url
     auth = {"cookie_browser": "chrome", "cookie_file": "explicit-cookies.txt"}
     fake = MagicMock()
-    with patch("haizflow.services.video_download._extract_video_info", return_value={}) as extract:
+    with patch("hflow.services.video_download._extract_video_info", return_value={}) as extract:
         _inspect_video_info(fake, f"https://www.douyin.com/video/{ID}", auth=auth)
     options = fake.YoutubeDL.call_args.args[0]
     assert "cookiesfrombrowser" not in options and "cookiefile" not in options
@@ -781,8 +781,8 @@ def test_imported_guest_cookies_retain_secure_domain_and_expiry():
 
 def test_personal_browser_setting_does_not_override_owned_guest_session():
     adapter, transport = adapter_with()
-    from haizflow.services.douyin_adapter import get_douyin_adapter
-    with patch("haizflow.services.douyin_adapter._adapter", adapter):
+    from hflow.services.douyin_adapter import get_douyin_adapter
+    with patch("hflow.services.douyin_adapter._adapter", adapter):
         assert get_douyin_adapter({"cookie_browser": "chrome"}) is adapter
     assert adapter.session.transport is transport
 
@@ -800,9 +800,9 @@ def test_same_cookie_file_cannot_overwrite_a_new_explicit_browser_session(tmp_pa
     backend = Mock()
     backend.sign.return_value = SignedRequest("https://www.douyin.com/detail", {}, "browser-sdk"), state
     state["backend"] = backend
-    from haizflow.services.douyin_adapter import get_douyin_adapter
-    with patch("haizflow.services.douyin_adapter._adapter", adapter), \
-         patch("haizflow.services.douyin_browser.create_anonymous_state", return_value=state):
+    from hflow.services.douyin_adapter import get_douyin_adapter
+    with patch("hflow.services.douyin_adapter._adapter", adapter), \
+         patch("hflow.services.douyin_browser.create_anonymous_state", return_value=state):
         get_douyin_adapter({"cookie_file": str(file)})
         adapter.create_browser_session()
         get_douyin_adapter({"cookie_file": str(file)})
@@ -843,7 +843,7 @@ def test_browser_creation_requires_endpoint_verification_and_preserves_old_jar(r
     backend.sign.return_value = SignedRequest("https://www.douyin.com/detail", {}, "browser-sdk"), state
     state["backend"] = backend
     status = Mock()
-    with patch("haizflow.services.douyin_browser.create_anonymous_state", return_value=state), pytest.raises(DouyinError):
+    with patch("hflow.services.douyin_browser.create_anonymous_state", return_value=state), pytest.raises(DouyinError):
         adapter.create_browser_session(status_callback=status)
     assert adapter.session.transport is old and not old.closed
     assert new.closed and adapter.session.browser is None
@@ -898,7 +898,7 @@ def test_verified_creation_parks_browser_and_preview_uses_native_signing_only():
                              "height": 1080, "language": "zh-CN", "cores": 8, "memory": 8},
              "cookies": [{"name": "UIFID_TEMP", "value": "created-guest", "domain": ".douyin.com"}],
              "backend": backend}
-    with patch("haizflow.services.douyin_browser.create_anonymous_state", return_value=state) as create:
+    with patch("hflow.services.douyin_browser.create_anonymous_state", return_value=state) as create:
         adapter.create_browser_session()
         backend.park.assert_called_once_with()
         assert adapter.session.native_verified and old.closed
@@ -932,7 +932,7 @@ def test_failed_native_probe_never_parks_browser_or_commits_candidate():
     state = {"fingerprint": {"userAgent": BrowserProfile().ua, "platform": "Win32", "width": 1920,
                              "height": 1080, "language": "zh-CN"},
              "cookies": [{"name": "UIFID_TEMP", "value": "guest", "domain": ".douyin.com"}], "backend": backend}
-    with patch("haizflow.services.douyin_browser.create_anonymous_state", return_value=state), pytest.raises(DouyinError):
+    with patch("hflow.services.douyin_browser.create_anonymous_state", return_value=state), pytest.raises(DouyinError):
         adapter.create_browser_session()
     backend.park.assert_not_called()
     backend.close.assert_called_once()

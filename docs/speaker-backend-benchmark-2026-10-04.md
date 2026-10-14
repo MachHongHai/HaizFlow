@@ -60,7 +60,7 @@ there are no project-specific branches in the script or application code.
 
 ```powershell
 # Use an isolated ONNX Runtime GPU 1.23.2 environment on D:, not the app runtime.
-$env:PYTHONPATH = 'D:/Du-an/HaizFlow/build/speaker-gpu-check;D:/Du-an/HaizFlow/src'
+$env:PYTHONPATH = 'D:/Du-an/HFlow/build/speaker-gpu-check;D:/Du-an/HFlow/src'
 .venv/Scripts/python.exe scripts/benchmark-speaker-backends.py `
   --audio '<source-audio>' --segment-file '<source-segments.json>' `
   --segments 500 --trials 3

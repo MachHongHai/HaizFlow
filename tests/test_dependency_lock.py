@@ -88,7 +88,7 @@ class DependencyLockTests(unittest.TestCase):
         environment = os.environ.copy()
         environment["PYTHONPATH"] = str(root / "src")
         script = (
-            "import json,sys; import haizflow.desktop.qml_controller; "
+            "import json,sys; import hflow.desktop.qml_controller; "
             "names=('torch','transformers','onnxruntime','rapidocr','whisperx','demucs'); "
             "print(json.dumps([name for name in names if name in sys.modules]))"
         )

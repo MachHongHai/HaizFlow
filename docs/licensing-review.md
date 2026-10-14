@@ -1,13 +1,13 @@
-# Rà soát giấy phép HaizFlow
+# Rà soát giấy phép HFlow
 
-Ngày 01/10/2026, Mạch Hồng Hải đã duyệt chuyển phần mã HaizFlow thuộc sở hữu
-sang [HaizFlow Source-Available 1.0](../LICENSE). Giấy phép và [NOTICE](../NOTICE)
+Ngày 01/10/2026, Mạch Hồng Hải đã duyệt chuyển phần mã HFlow thuộc sở hữu
+sang [HFlow Source-Available 1.0](../LICENSE). Giấy phép và [NOTICE](../NOTICE)
 đặt tiếng Việt trước tiếng Anh; tiếng Việt được ưu tiên khi bản dịch khác nhau.
 Đây là quyết định của chủ sở hữu, không phải xác nhận pháp lý của luật sư hay
 chứng nhận bản phát hành đủ điều kiện phân phối.
 
-HaizFlow do Mạch Hồng Hải phát triển. Owner xác nhận chỉ có một người phát triển;
-không thêm thông báo chung về “HaizFlow contributors” cho phần mã ứng dụng.
+HFlow do Mạch Hồng Hải phát triển. Owner xác nhận chỉ có một người phát triển;
+không thêm thông báo chung về “HFlow contributors” cho phần mã ứng dụng.
 Git identity/contact phù hợp thông tin user nhưng không chứng minh quyền đối
 với tài sản nhập từ ngoài. Không rewrite Git history hay xóa thông báo hợp lệ
 của Evil0ctal, Microsoft, Bangers, thư viện, codec hoặc model.

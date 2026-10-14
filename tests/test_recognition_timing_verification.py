@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from haizflow.pipeline.transcribe import _refine_suspicious_sentence_timing
+from hflow.pipeline.transcribe import _refine_suspicious_sentence_timing
 
 
 def verify_timing(text="Please, just give me something to eat.", confidence=0.9):
@@ -13,7 +13,7 @@ def verify_timing(text="Please, just give me something to eat.", confidence=0.9)
     decoder.transcribe.return_value = (iter([SimpleNamespace(text=text, words=words)]), None)
     sentence = {"start": 21.647, "end": 28.609,
                 "text": "Please, just give me something to eat.", "language": "en"}
-    with patch("haizflow.pipeline.transcribe.check_cancellation"), patch("haizflow.pipeline.transcribe.log_to_video"):
+    with patch("hflow.pipeline.transcribe.check_cancellation"), patch("hflow.pipeline.transcribe.log_to_video"):
         _refine_suspicious_sentence_timing(SimpleNamespace(model=decoder),
                                          np.zeros(31 * 16000), [sentence], "test")
     return sentence, decoder

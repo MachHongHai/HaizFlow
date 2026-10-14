@@ -16,9 +16,9 @@ from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlExpression
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 
-from haizflow.desktop.input_method_commit_filter import InputMethodCommitFilter
+from hflow.desktop.input_method_commit_filter import InputMethodCommitFilter
 
-QML_DIR = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml"
+QML_DIR = Path(__file__).resolve().parents[1] / "src/hflow/desktop/qml"
 
 
 class VietnameseInputUiTests(unittest.TestCase):
@@ -240,7 +240,7 @@ AppComboBox { objectName: "combo"; x: 300; y: 80; width: 250; model: ["Một", "
             QTest.qWait(10)
             self.assertEqual(self.expression(field, "background.border.color").name(), "#b8b1a6")
             self.assertEqual(self.expression(field, "background.border.width"), 2)
-        directory = os.environ.get("HAIZFLOW_UI_PREVIEWS")
+        directory = os.environ.get("HFLOW_UI_PREVIEWS")
         if directory:
             self.window.grabWindow().save(str(Path(directory) / "neutral-focus-controls.png"))
 

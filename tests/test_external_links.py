@@ -5,16 +5,16 @@ from unittest.mock import patch
 
 from PySide6.QtCore import QUrl
 
-from haizflow.desktop.external_links import open_external_url
-from haizflow.desktop.qml_controller import HaizFlowController
+from hflow.desktop.external_links import open_external_url
+from hflow.desktop.qml_controller import HFlowController
 
 
 ROOT = Path(__file__).resolve().parents[1]
-QML = ROOT / "src" / "haizflow" / "desktop" / "qml"
+QML = ROOT / "src" / "hflow" / "desktop" / "qml"
 
 
 class ExternalLinkTests(unittest.TestCase):
-    @patch("haizflow.desktop.external_links.QDesktopServices.openUrl", return_value=True)
+    @patch("hflow.desktop.external_links.QDesktopServices.openUrl", return_value=True)
     def test_web_links_are_delegated_to_qt(self, qt_open):
         links = (
             "https://github.com/MachHongHai/HaizFlow",
@@ -35,7 +35,7 @@ class ExternalLinkTests(unittest.TestCase):
                 self.assertIsInstance(url, QUrl)
                 self.assertEqual(url.toString(), link)
 
-    @patch("haizflow.desktop.external_links.QDesktopServices.openUrl")
+    @patch("hflow.desktop.external_links.QDesktopServices.openUrl")
     def test_invalid_or_non_web_links_never_reach_the_handler(self, qt_open):
         for value in (
             None, 1, {}, "", "  ", "example.com", "/guide", "//example.com",
@@ -49,25 +49,25 @@ class ExternalLinkTests(unittest.TestCase):
                 self.assertFalse(open_external_url(value))
         qt_open.assert_not_called()
 
-    @patch("haizflow.desktop.external_links.QDesktopServices.openUrl", return_value=True)
+    @patch("hflow.desktop.external_links.QDesktopServices.openUrl", return_value=True)
     def test_surrounding_whitespace_is_trimmed(self, qt_open):
         self.assertTrue(open_external_url("  https://example.com/guide  "))
         self.assertEqual(qt_open.call_args.args[0].toString(), "https://example.com/guide")
 
-    @patch("haizflow.desktop.external_links.QDesktopServices.openUrl", return_value=False)
+    @patch("hflow.desktop.external_links.QDesktopServices.openUrl", return_value=False)
     def test_system_handler_failure_is_returned(self, qt_open):
         self.assertFalse(open_external_url("https://example.com"))
         qt_open.assert_called_once()
 
-    @patch("haizflow.desktop.external_links.QDesktopServices.openUrl", side_effect=RuntimeError("Qt unavailable"))
+    @patch("hflow.desktop.external_links.QDesktopServices.openUrl", side_effect=RuntimeError("Qt unavailable"))
     def test_handler_exception_does_not_escape_into_ui(self, qt_open):
-        with self.assertLogs("haizflow.desktop.external_links", level="WARNING"):
+        with self.assertLogs("hflow.desktop.external_links", level="WARNING"):
             self.assertFalse(open_external_url("https://example.com"))
         qt_open.assert_called_once()
 
-    @patch("haizflow.desktop.qml_controller.open_external_url", return_value=False)
+    @patch("hflow.desktop.qml_controller.open_external_url", return_value=False)
     def test_controller_returns_helper_status(self, helper):
-        self.assertFalse(HaizFlowController.openExternalUrl(object(), "https://example.com"))
+        self.assertFalse(HFlowController.openExternalUrl(object(), "https://example.com"))
         helper.assert_called_once_with("https://example.com")
 
     def test_all_qml_web_links_use_shared_controller(self):
@@ -82,7 +82,7 @@ class ExternalLinkTests(unittest.TestCase):
         self.assertIn("AppController.openExternalUrl", (QML / "ExternalTextLink.qml").read_text(encoding="utf-8"))
 
     def test_helper_cannot_spawn_or_inspect_browser_processes(self):
-        source = (ROOT / "src/haizflow/desktop/external_links.py").read_text(encoding="utf-8")
+        source = (ROOT / "src/hflow/desktop/external_links.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         imported = {
             alias.name.split(".")[0]

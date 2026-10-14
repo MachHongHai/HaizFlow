@@ -9,11 +9,11 @@ from unittest.mock import Mock
 
 import pytest
 
-from haizflow.pipeline import audio_timeline, manual_tools, render, segment_export
-from haizflow.schemas.editor import EditorAsset, EditorClip, EditorDocument, EditorSequence, EditorTrack, SourceEditDecision
-from haizflow.schemas.video import VideoConfig
-from haizflow.services import editor_documents, video_export, video_store
-from haizflow.utils.ffmpeg import _binary, get_video_duration, get_media_stream_types
+from hflow.pipeline import audio_timeline, manual_tools, render, segment_export
+from hflow.schemas.editor import EditorAsset, EditorClip, EditorDocument, EditorSequence, EditorTrack, SourceEditDecision
+from hflow.schemas.video import VideoConfig
+from hflow.services import editor_documents, video_export, video_store
+from hflow.utils.ffmpeg import _binary, get_video_duration, get_media_stream_types
 
 
 def document_for(duration=4000):
@@ -99,7 +99,7 @@ def test_real_bounded_render_without_any_full_export_or_audio_cache(tmp_path, mo
 
 
 def test_audio_cut_keeps_full_voice_slot_then_crops_audio_instead_of_refitting(tmp_path, monkeypatch):
-    from haizflow.utils.audio import AudioSegment
+    from hflow.utils.audio import AudioSegment
 
     path = tmp_path / "segments.json"
     path.write_text(json.dumps([{"start": 1, "end": 3, "_voice_enabled": True}]))
@@ -145,4 +145,4 @@ def test_atomic_segment_export_without_full_render_releases_pins_on_cancel(tmp_p
     assert target.read_bytes() == b"old output"
     pinned.assert_called_once()
     released.assert_called_once()
-    assert not list(tmp_path.glob(".haizflow-segment-*"))
+    assert not list(tmp_path.glob(".hflow-segment-*"))

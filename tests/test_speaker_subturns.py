@@ -6,8 +6,8 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from haizflow.pipeline import speaker_identity as identity, tts
-from haizflow.pipeline.tts_quality import validate_speech_waveform
+from hflow.pipeline import speaker_identity as identity, tts
+from hflow.pipeline.tts_quality import validate_speech_waveform
 
 
 def test_clause_candidates_follow_a_quiet_gap_not_equal_halves():
@@ -97,7 +97,7 @@ def test_composite_counts_one_caption_and_never_uses_default_female(tmp_path):
         Path(destination).write_bytes(b'ID3'+bytes(600))
     with (patch.object(tts,'get_video',return_value=video),patch.object(tts,'log_to_video'),
           patch.object(identity,'prepare_speakers',return_value=[mixed_source()]),
-          patch('haizflow.pipeline.omnivoice_tts.synthesize_batch_to_mp3',side_effect=synthesize),
+          patch('hflow.pipeline.omnivoice_tts.synthesize_batch_to_mp3',side_effect=synthesize),
           patch.object(tts,'_compose_speaker_utterances',side_effect=compose)):
         tts.generate_voice_parts(str(transcript),str(tmp_path/'parts'),'omnivoice:female','fixture',
                                  status_callback=lambda _stage,current,total:progress.append((current,total)))

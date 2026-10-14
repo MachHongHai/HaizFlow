@@ -17,8 +17,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.config import MODELS_DIR, TORCH_HOME  # noqa: E402
-from haizflow.core.model_integrity import (  # noqa: E402
+from hflow.config import MODELS_DIR, TORCH_HOME  # noqa: E402
+from hflow.core.model_integrity import (  # noqa: E402
     DEMUCS_MODEL_FILE,
     DEMUCS_MODEL_SHA256,
     DEMUCS_MODEL_SIZE,
@@ -77,7 +77,7 @@ def _download(destination: Path) -> None:
     try:
         request = urllib.request.Request(
             DEMUCS_MODEL_URL,
-            headers={"User-Agent": "HaizFlow offline-model preparation"},
+            headers={"User-Agent": "HFlow offline-model preparation"},
         )
         digest = hashlib.sha256()
         received = 0

@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from PySide6.QtMultimedia import QAudioFormat
 
-from haizflow.desktop.voice_clone_recorder import VoiceCloneRecorder
+from hflow.desktop.voice_clone_recorder import VoiceCloneRecorder
 
 
 class VoiceCloneRecorderTests(unittest.TestCase):
@@ -34,7 +34,7 @@ class VoiceCloneRecorderTests(unittest.TestCase):
         self.assertEqual(list(result), [1000, -1000])
 
     def test_missing_selected_microphone_is_not_silently_replaced(self):
-        with patch("haizflow.desktop.voice_clone_recorder.QMediaDevices.audioInputs", return_value=[]):
+        with patch("hflow.desktop.voice_clone_recorder.QMediaDevices.audioInputs", return_value=[]):
             recorder = VoiceCloneRecorder()
             self.assertFalse(recorder.start("unused.wav", "disconnected-device"))
             self.assertIn("không còn kết nối", recorder.error)
@@ -88,8 +88,8 @@ class VoiceCloneRecorderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             recorder = VoiceCloneRecorder()
             with (
-                patch("haizflow.desktop.voice_clone_recorder.QMediaDevices.defaultAudioInput", return_value=FakeDevice()),
-                patch("haizflow.desktop.voice_clone_recorder.QAudioSource", FakeSource),
+                patch("hflow.desktop.voice_clone_recorder.QMediaDevices.defaultAudioInput", return_value=FakeDevice()),
+                patch("hflow.desktop.voice_clone_recorder.QAudioSource", FakeSource),
             ):
                 self.assertTrue(recorder.start(str(Path(temporary) / "sample.wav")))
             recorder.cancel()

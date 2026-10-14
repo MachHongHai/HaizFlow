@@ -1,0 +1,1164 @@
+"""One audio owner: stream an untouched source, mix PCM only when needed."""
+from __future__ import annotations
+
+import hashlib
+import bisect
+import json
+import logging
+import math
+import os
+import subprocess
+import tempfile
+import threading
+import time
+import weakref
+from collections import OrderedDict
+from concurrent.futures import CancelledError, ThreadPoolExecutor
+from pathlib import Path
+
+import numpy as np
+from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
+from PySide6.QtMultimedia import QAudioFormat, QAudioOutput, QAudioSink, QMediaDevices, QMediaPlayer
+
+from hflow.config import TMP_DIR
+from hflow.utils.ffmpeg import _binary
+
+RATE = 48000
+PCM_BUFFER_FRAMES = RATE // 5
+_LOG = logging.getLogger(__name__)
+
+
+def voice_segment_is_compatible(current_segment, source_segment, multiple_speakers=False):
+    """Whether a cached voice clip still represents this visible sentence."""
+    if " ".join(str(current_segment.get("text") or "").split()) != " ".join(
+        str(source_segment.get("text") or "").split()
+    ):
+        return False
+    # The caller pairs clips by sentence ID. Retiming must preserve speech for
+    # both single- and multiple-speaker manifests; it only changes placement.
+    current_id = str(current_segment.get("segment_id") or current_segment.get("id") or "")
+    source_id = str(source_segment.get("segment_id") or source_segment.get("id") or "")
+    return not (current_id and source_id and current_id != source_id)
+
+
+def mix_frames(tracks, cursor, count, volumes, muted_ids=frozenset()):
+    """Mix a bounded interleaved stereo buffer without changing track clocks."""
+    result = np.zeros((count, 2), dtype=np.float32)
+    for track in tracks:
+        if track["id"] in muted_ids:
+            continue
+        samples = track["samples"]
+        if len(samples) == 0:
+            continue
+        offset = cursor - track["start"]
+        begin = max(0, -offset)
+        clip_frames = int(track.get("duration_frames") or 0)
+        if clip_frames and offset >= clip_frames:
+            continue
+        end = count if track.get("loop") else min(count, len(samples) - offset)
+        if clip_frames:
+            end = min(end, clip_frames - offset)
+        if end <= begin:
+            continue
+        gain = float(volumes[track["kind"]]) * float(track.get("gain", 1.0))
+        if track.get("loop"):
+            indices = np.arange(offset + begin, offset + end) % len(samples)
+            chunk = samples[indices].astype(np.float32)
+        else:
+            chunk = samples[offset + begin:offset + end].astype(np.float32)
+        local = np.arange(offset + begin, offset + end, dtype=np.float32)
+        envelope = np.full((end - begin,), gain, dtype=np.float32)
+        fade_in = int(track.get("fade_in_frames") or 0)
+        fade_out = int(track.get("fade_out_frames") or 0)
+        if fade_in:
+            envelope *= np.clip(local / max(1, fade_in), 0.0, 1.0)
+        effective_length = clip_frames or len(samples)
+        if fade_out:
+            envelope *= np.clip((effective_length - local) / max(1, fade_out), 0.0, 1.0)
+        if track.get("duck_ranges"):
+            timeline = np.arange(cursor + begin, cursor + end, dtype=np.float32)
+            reduction = float(track.get("duck_gain", 1.0))
+            attack = max(1, int(track.get("duck_attack_frames") or 1))
+            release = max(1, int(track.get("duck_release_frames") or 1))
+            duck_envelope = np.ones((end - begin,), dtype=np.float32)
+            for voice_start, voice_end in track["duck_ranges"]:
+                if cursor + end <= voice_start - attack or cursor + begin >= voice_end + release:
+                    continue
+                attack_gain = 1.0 - (1.0 - reduction) * np.clip(
+                    (timeline - (voice_start - attack)) / attack, 0.0, 1.0
+                )
+                release_gain = reduction + (1.0 - reduction) * np.clip(
+                    (timeline - voice_end) / release, 0.0, 1.0
+                )
+                range_gain = np.where(timeline < voice_start, attack_gain,
+                    np.where(timeline <= voice_end, reduction, release_gain))
+                active = (timeline >= voice_start - attack) & (timeline <= voice_end + release)
+                duck_envelope = np.minimum(duck_envelope, np.where(active, range_gain, 1.0))
+            envelope *= duck_envelope
+        result[begin:end] += chunk * envelope[:, None]
+    return np.clip(result, -32768, 32767).astype("<i2").tobytes()
+
+
+def apply_source_decisions(samples, decisions, allocate=None):
+    """Map source PCM to sequence time, including silent gaps between clips."""
+    if not decisions:
+        return samples
+    ranges = []
+    cursor = 0
+    for decision in sorted(decisions, key=lambda item: int(item.get("sequence_start_ms", 0))):
+        start = max(0, int(int(decision.get("source_start_ms", 0)) * RATE / 1000))
+        end = min(len(samples), int(int(decision.get("source_end_ms", 0)) * RATE / 1000))
+        if end > start:
+            target = max(0, int(int(decision.get("sequence_start_ms", 0)) * RATE / 1000))
+            if target < cursor:
+                raise ValueError("Overlapping source ranges in editor sequence")
+            ranges.append((target, start, end))
+            cursor = target + end - start
+    if not ranges:
+        return np.empty((0, 2), dtype="<i2")
+    if len(ranges) == 1 and ranges[0][0] == 0:
+        return samples[ranges[0][1]:ranges[0][2]]
+    result = allocate(cursor) if allocate else np.zeros((cursor, 2), dtype=samples.dtype)
+    for target, start, end in ranges:
+        for offset in range(0, end - start, RATE):
+            count = min(RATE, end - start - offset)
+            result[target + offset:target + offset + count] = samples[start + offset:start + offset + count]
+    return result
+
+
+def _dispose_pcm(mapping, path, persistent=False):
+    mapping.close()
+    if persistent:
+        return
+    try:
+        Path(path).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+class ManualPreviewAudioController(QObject):
+    errorChanged = Signal(str)
+    positionChanged = Signal()
+    voiceTimingsChanged = Signal()
+    busyChanged = Signal()
+    progressChanged = Signal()
+    nativeAudioChanged = Signal()
+    _ready = Signal(object)
+    _progress_ready = Signal(object)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._sink = None
+        self._sink_device_id = None
+        self._native_player = None
+        self._native_output = None
+        self._native_source = ""
+        self._native_identity = None
+        self._native_gain = 1.0
+        self._embedded_audio = False
+        self._device = None
+        self._tracks = []
+        self._muted_ids = set()
+        self._deferred_ids = set()
+        self._generation = 0
+        self._video_id = ""
+        self._key = ""
+        self._reconciled_voice_state = None
+        self._cursor = 0
+        self._playback_rate = 1.0
+        self._tempo_stream = None
+        self._position_seconds = 0.0
+        self._playing = False
+        self._muted = False
+        self._drift_since = None
+        self._drift_direction = 0
+        self._last_clock_reset = 0.0
+        self._volumes = {"source": .6, "voice": 1.0, "music": .3, "overlay": 1.0}
+        self._cache = OrderedDict()
+        self._cache_lock = threading.Lock()
+        self._closed = False
+        self._busy = False
+        self._progress = 0.0
+        self._decode_lock = threading.Lock()
+        self._decode_process = None
+        self._pcm_directory = tempfile.TemporaryDirectory(
+            prefix="manual-preview-pcm-", dir=TMP_DIR, ignore_cleanup_errors=True,
+        )
+        self._pcm_cache_directory = None
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="manual-audio")
+        self._future = None
+        self._ready.connect(self._accept)
+        self._progress_ready.connect(self._accept_progress)
+        self._timer = QTimer(self)
+        self._timer.setInterval(10)
+        self._timer.timeout.connect(self._pump)
+        self._media_devices = QMediaDevices(self)
+        self._media_devices.audioOutputsChanged.connect(self._sync_output_device)
+
+    @Property(bool, notify=busyChanged)
+    def busy(self):
+        return self._busy
+
+    @Property(float, notify=progressChanged)
+    def progress(self):
+        return self._progress
+
+    @Property(str, notify=nativeAudioChanged)
+    def nativeSource(self):
+        return QUrl.fromLocalFile(self._native_source).toString() if self._native_source else ""
+
+    @Property(float, notify=nativeAudioChanged)
+    def nativeVolume(self):
+        return min(1.0, self._volumes["source"] * self._native_gain)
+
+    @Slot(QUrl, result=bool)
+    def canPlayEmbeddedSource(self, source):
+        # Native visual proxies are hardlinks to the original media. Rendered
+        # proxies contain silence and must continue using our separate mix.
+        if not self._native_source or not source.isLocalFile():
+            return False
+        try:
+            return os.path.samefile(source.toLocalFile(), self._native_source)
+        except OSError:
+            return False
+
+    @Slot(object)
+    def _accept_progress(self, result):
+        generation, value = result
+        if generation != self._generation or not self._busy:
+            return
+        value = max(self._progress, min(.99, float(value)))
+        if value - self._progress >= .01:
+            self._progress = value
+            self.progressChanged.emit()
+
+    def _finish_preparing(self):
+        self._busy = False
+        self._progress = 1.0
+        self.progressChanged.emit()
+        self.busyChanged.emit()
+
+    def _cancel_decode(self):
+        with self._decode_lock:
+            process = self._decode_process
+            if process is not None and process.poll() is None:
+                try:
+                    process.kill()
+                except OSError:
+                    pass  # Windows can finish the process between poll and kill.
+
+    def _pcm_path(self):
+        descriptor, path = tempfile.mkstemp(suffix=".pcm", dir=self._pcm_directory.name)
+        os.close(descriptor)
+        return Path(path)
+
+    @staticmethod
+    def _map_pcm(path, *, persistent=False):
+        samples = np.memmap(path, dtype="<i2", mode="r", shape=(path.stat().st_size // 4, 2))
+        weakref.finalize(samples, _dispose_pcm, samples._mmap, path, persistent)
+        return samples
+
+    def _allocate_pcm(self, frames):
+        path = self._pcm_path()
+        with path.open("wb") as stream:
+            stream.truncate(frames * 4)
+        samples = np.memmap(path, dtype="<i2", mode="r+", shape=(frames, 2))
+        weakref.finalize(samples, _dispose_pcm, samples._mmap, path)
+        return samples
+
+    def _decode_to_pcm(self, command, generation, cache_path=None):
+        path = self._pcm_path()
+        process = None
+        try:
+            with path.open("wb") as output:
+                if self._closed or generation != self._generation:
+                    raise CancelledError()
+                process = subprocess.Popen(
+                    command, stdout=output, stderr=subprocess.PIPE,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                with self._decode_lock:
+                    if self._closed or generation != self._generation:
+                        process.kill()
+                        raise CancelledError()
+                    self._decode_process = process
+                elapsed = 0
+                while True:
+                    if self._closed or generation != self._generation:
+                        process.kill()
+                        raise CancelledError()
+                    try:
+                        _, error = process.communicate(timeout=.2)
+                        break
+                    except subprocess.TimeoutExpired:
+                        elapsed += .2
+                        if elapsed >= 300:
+                            process.kill()
+                            raise subprocess.TimeoutExpired(command, 300)
+                if process.returncode:
+                    raise subprocess.CalledProcessError(process.returncode, command, stderr=error)
+            if path.stat().st_size == 0:
+                path.unlink()
+                return np.empty((0, 2), dtype="<i2")
+            if path.stat().st_size % 4:
+                raise RuntimeError("Âm thanh xem trước chưa được giải mã đầy đủ.")
+            if self._closed or generation != self._generation:
+                raise CancelledError()
+            if cache_path is not None:
+                # Atomic publication: interrupted decodes are never reusable.
+                # Copy across runtime/project drives when required.
+                import shutil
+                staged = cache_path.with_suffix(".partial")
+                try:
+                    try:
+                        os.replace(path, staged)
+                    except OSError:
+                        shutil.copyfile(path, staged)
+                    if self._closed or generation != self._generation:
+                        raise CancelledError()
+                    os.replace(staged, cache_path)
+                finally:
+                    staged.unlink(missing_ok=True)
+                path.unlink(missing_ok=True)
+                return self._map_pcm(cache_path, persistent=True)
+            return self._map_pcm(path)
+        except BaseException:
+            if process is not None:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate()
+            path.unlink(missing_ok=True)
+            raise
+        finally:
+            with self._decode_lock:
+                if self._decode_process is process:
+                    self._decode_process = None
+
+    @Property(float, notify=positionChanged)
+    def positionSeconds(self):
+        """Clock of the samples that have actually reached the audio device.
+
+        The Manual caption renderer follows this clock while playback is
+        active.  QMediaPlayer's video position can lead the separate QAudioSink
+        by one device buffer, which is especially visible on large karaoke
+        captions after a TTS clip has been tempo-fitted to its subtitle slot.
+        """
+        return self._position_seconds
+
+    @Property("QVariantMap", notify=voiceTimingsChanged)
+    def voiceTimings(self):
+        return {
+            str(track["id"]): {
+                "start": track["start"] / RATE,
+                "end": (track["start"] + min(len(track["samples"]),
+                    int(track.get("duration_frames") or len(track["samples"])))) / RATE,
+                "text": track.get("text", ""),
+            }
+            for track in self._tracks if track["kind"] == "voice"
+        }
+
+    def _publish_position(self, seconds):
+        value = max(0.0, float(seconds or 0.0))
+        if abs(value - self._position_seconds) < 0.012:
+            return
+        self._position_seconds = value
+        self.positionChanged.emit()
+
+    def _decode(self, path, duration=None, fit=False, generation=None):
+        generation = self._generation if generation is None else generation
+        if self._closed or generation != self._generation:
+            raise CancelledError()
+        path = Path(path)
+        stat = path.stat()
+        key = (str(path), stat.st_size, stat.st_mtime_ns, duration, fit)
+        with self._cache_lock:
+            if self._closed or generation != self._generation:
+                raise CancelledError()
+            if key in self._cache:
+                self._cache.move_to_end(key)
+                return self._cache[key]
+        cache_path = None
+        if self._pcm_cache_directory is not None:
+            digest = hashlib.sha256(json.dumps((key, "pcm-stereo-48k-fit-v1"), default=str).encode()).hexdigest()
+            cache_path = self._pcm_cache_directory / f"{digest}.pcm"
+            if cache_path.is_file() and cache_path.stat().st_size > 0 and cache_path.stat().st_size % 4 == 0:
+                samples = self._map_pcm(cache_path, persistent=True)
+                try:
+                    cache_path.touch()
+                except OSError:
+                    pass
+                self._remember_pcm(key, samples, generation=generation)
+                return samples
+        command = [_binary("ffmpeg"), "-v", "error", "-threads", "2", "-i", str(path), "-vn"]
+        if duration is not None:
+            from hflow.pipeline.audio_timeline import _atempo_filters, trim_silence
+            from hflow.utils.audio import AudioSegment
+            audio = trim_silence(AudioSegment.from_file(path))
+            # Match export: compress only an overrun. A shorter narration must
+            # end naturally and leave the remainder of its slot silent.
+            from hflow.pipeline.speech_timing import fitted_speech_duration_ms
+
+            target = max(1, fitted_speech_duration_ms(len(audio), duration))
+            speed = len(audio) / target
+            with tempfile.TemporaryDirectory(prefix="hflow-preview-voice-", dir=TMP_DIR) as work:
+                source = Path(work) / "voice.wav"
+                audio.export(source, format="wav").close()
+                command = [_binary("ffmpeg"), "-v", "error", "-threads", "2", "-i", str(source)]
+                if len(audio) > duration:
+                    command += ["-af", _atempo_filters(speed)]
+                command += ["-t", str(target / 1000), "-ac", "2", "-ar", str(RATE), "-f", "s16le", "-"]
+                samples = self._decode_to_pcm(command, generation, cache_path)
+        else:
+            command += ["-ac", "2", "-ar", str(RATE), "-f", "s16le", "-"]
+            samples = self._decode_to_pcm(command, generation, cache_path)
+        self._remember_pcm(key, samples, generation=generation)
+        return samples
+
+    def _remember_pcm(self, key, samples, *, generation=None):
+        with self._cache_lock:
+            if self._closed or (generation is not None and generation != self._generation):
+                raise CancelledError()
+            self._cache[key] = samples
+            while sum(v.nbytes for v in self._cache.values()) > 128 * 1024 * 1024 and len(self._cache) > 1:
+                self._cache.popitem(last=False)
+
+    def request(self, video, segments, voice_enabled=True):
+        if self._closed or not video or video.project_type != "manual":
+            return
+        if self._video_id != video.video_id:
+            self.release()
+            self._video_id = video.video_id
+        from hflow.pipeline import manual_tools
+        from hflow.services import editor_documents
+        from hflow.services import video_store
+
+        try:
+            self._pcm_cache_directory = Path(video_store.get_video_dir(video.video_id)) / "temp" / "manual-preview-pcm"
+            self._pcm_cache_directory.mkdir(parents=True, exist_ok=True)
+        except (OSError, RuntimeError, ValueError):
+            self._pcm_cache_directory = None
+
+        document = editor_documents.load(video.video_id)
+        # A completed TTS manifest can arrive while the editor is open.  The
+        # worker publishes its files independently of document.json, and a
+        # settings save may race that publication.  Repair only when voice
+        # clips are still disabled; otherwise every volume drag would rescan
+        # all media assets and could make the preview stutter.
+        active_voice = manual_tools.published_voice_record(video, validate=False) if voice_enabled else None
+        native_source = self._streamable_source(video, document, active_voice)
+        if native_source:
+            self._use_streaming_source(native_source, video, document)
+            return
+        if self._native_source:
+            self._stop_streaming_source()
+            self._key = ""
+        disabled_voices = tuple(
+            (clip.segment_id, clip.name, clip.metadata.get("text_revision"))
+            for clip in document.clips
+            if clip.track_id == "voice" and not clip.enabled
+        ) if document is not None else ()
+        reconcile_state = (
+            video.video_id,
+            str((active_voice or {}).get("signature") or ""),
+            disabled_voices,
+        )
+        if active_voice and disabled_voices and reconcile_state != self._reconciled_voice_state:
+            document = editor_documents.ensure(video)
+            self._reconciled_voice_state = reconcile_state
+        if document:
+            subtitle_clips = sorted(
+                (
+                    clip for clip in document.clips
+                    if clip.track_id == "subtitles" and clip.enabled and clip.segment_id
+                ),
+                key=lambda clip: (clip.start_ms, clip.clip_id),
+            )
+            timeline_segments = []
+            for clip in subtitle_clips:
+                stored = clip.metadata.get("segment_payload")
+                item = dict(stored) if isinstance(stored, dict) else {}
+                item.update(
+                    segment_id=clip.segment_id,
+                    text=clip.name,
+                    start=clip.start_ms / 1000,
+                    end=(clip.start_ms + clip.duration_ms) / 1000,
+                )
+                timeline_segments.append(item)
+            segments = timeline_segments
+
+        active_voice_signature = str((active_voice or {}).get("signature") or "")
+        # The picker contains a draft voice until the user confirms generation.
+        # Key playback by the published manifest, never by that draft, so merely
+        # browsing presets cannot detach or mute the current editor audio.
+        files = dict(video.files or {})
+        active_artifacts = dict(getattr(video, "active_artifacts", {}) or {})
+        audio_inputs = {
+            name: files.get(name)
+            for name in (
+                "input",
+                "input_video",
+                "source_audio",
+                "background_audio",
+                "background_music",
+            )
+            if files.get(name)
+        }
+        active_audio_artifacts = {
+            name: active_artifacts.get(name)
+            for name in ("source_audio", "separation")
+            if active_artifacts.get(name)
+        }
+        # Caption style, OCR geometry and document revisions cannot change PCM.
+        # Fingerprint only inputs consumed by prepare(), otherwise every visual
+        # step cancels the active mix and reopens all voice decoders.
+        audio_segments = [
+            {name: segment.get(name) for name in (
+                "segment_id", "text", "start", "end", "fit_voice_to_timing",
+            )}
+            for segment in segments
+        ]
+        audio_clips = [
+            clip for clip in document.clips
+            if clip.track_id in {"source-audio", "voice", "music"}
+            or (clip.track_id == "overlays" and clip.kind == "video")
+        ] if document else []
+        asset_inputs = {}
+        if document:
+            for clip in audio_clips:
+                if clip.track_id not in {"music", "overlays"}:
+                    continue
+                asset = editor_documents.asset_by_id(document, clip.asset_id)
+                if asset:
+                    asset_inputs[clip.asset_id] = asset.path
+
+        def file_identity(path):
+            try:
+                stat = Path(path).stat()
+                return str(path), stat.st_size, stat.st_mtime_ns
+            except OSError:
+                return str(path), None, None
+
+        config = (
+            video.video_id,
+            bool(active_voice),
+            active_voice_signature,
+            video.enable_audio_separation,
+            {name: file_identity(path) for name, path in audio_inputs.items()},
+            active_audio_artifacts,
+            audio_segments if active_voice else [],
+            {
+                "sequence": document.sequence.model_dump() if document else {},
+                "tracks": [track.model_dump(include={"track_id", "visible", "muted"}) for track in document.tracks
+                           if track.kind in {"source_audio", "voice", "music", "overlay"}]
+                    if document else [],
+                "clips": [
+                    clip.model_dump(include={
+                        "clip_id", "track_id", "kind", "asset_id", "segment_id",
+                        "start_ms", "duration_ms", "source_in_ms", "enabled",
+                        "volume_percent", "fade_in_ms", "fade_out_ms", "loop", "muted",
+                    })
+                    for clip in audio_clips
+                ],
+                "assets": {name: file_identity(path) for name, path in asset_inputs.items()},
+                "ducking": (
+                    document.audio_ducking_enabled,
+                    document.audio_ducking_reduction_db,
+                    document.audio_ducking_attack_ms,
+                    document.audio_ducking_release_ms,
+                ) if document else (),
+            },
+        )
+        key = hashlib.sha256(json.dumps(config, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
+        current = {str(s.get("segment_id", index)): str(s.get("text", "")) for index, s in enumerate(segments)}
+        muted_ids = {t["id"] for t in self._tracks if t["kind"] == "voice"
+                     and (not voice_enabled or current.get(t["id"]) != t.get("text"))}
+        if muted_ids != self._muted_ids and self._tempo_stream is not None:
+            self.seek(self._position_seconds)
+        self._muted_ids = muted_ids
+        if key == self._key:
+            return
+        self._key = key
+        self._generation += 1
+        generation = self._generation
+        self._cancel_decode()
+        self.synchronize(self._position_seconds, False, self._muted)
+        self._busy = True
+        self._progress = 0.0
+        self.progressChanged.emit()
+        self.busyChanged.emit()
+        if self._future is not None:
+            self._future.cancel()
+        def prepare():
+            try:
+                if generation != self._generation:
+                    return generation, [], ""
+                background, _, _ = manual_tools._audio_background(video, validate=False)
+                if generation != self._generation:
+                    return generation, [], ""
+                tracks = []
+                editor_tracks = {track.track_id: track for track in document.tracks} if document else {}
+                def audible(track_id):
+                    track = editor_tracks.get(track_id)
+                    if track is None:
+                        return True
+                    return track.visible and not track.muted
+
+                source_clip = next(
+                    (clip for clip in document.clips if clip.track_id == "source-audio" and clip.enabled),
+                    None,
+                ) if document else None
+                if background and audible("source-audio") and not (source_clip and source_clip.muted):
+                    try:
+                        source_samples = self._decode(background, generation=generation)
+                        if document:
+                            source_samples = apply_source_decisions(
+                                source_samples,
+                                [item.model_dump() for item in document.sequence.edit_decisions],
+                                allocate=self._allocate_pcm,
+                            )
+                        baseline = max(1, int(video.original_video_volume or 100))
+                        tracks.append({
+                            "id": "source",
+                            "kind": "source",
+                            "start": int((source_clip.start_ms if source_clip else 0) * RATE / 1000),
+                            "duration_frames": int(
+                                (source_clip.duration_ms if source_clip else len(source_samples) * 1000 // RATE)
+                                * RATE / 1000
+                            ),
+                            "gain": (source_clip.volume_percent / baseline) if source_clip else 1.0,
+                            "fade_in_frames": int(
+                                (source_clip.fade_in_ms if source_clip else 0) * RATE / 1000
+                            ),
+                            "fade_out_frames": int(
+                                (source_clip.fade_out_ms if source_clip else 0) * RATE / 1000
+                            ),
+                            "samples": source_samples,
+                        })
+                    except subprocess.CalledProcessError:
+                        pass  # A silent source video is valid.
+                music_clip = next(
+                    (clip for clip in document.clips if clip.track_id == "music" and clip.enabled),
+                    None,
+                ) if document else None
+                music_asset = editor_documents.asset_by_id(document, music_clip.asset_id) \
+                    if document and music_clip else None
+                music = str(music_asset.path) if music_asset else str((video.files or {}).get("background_music") or "")
+                if music and audible("music") and not (music_clip and music_clip.muted):
+                    music_samples = self._decode(music, generation=generation)
+                    source_in = int((music_clip.source_in_ms if music_clip else 0) * RATE / 1000)
+                    music_samples = music_samples[source_in:]
+                    baseline = max(1, int(video.background_music_volume or 100))
+                    tracks.append({
+                        "id": "music",
+                        "kind": "music",
+                        "start": int((music_clip.start_ms if music_clip else 0) * RATE / 1000),
+                        "loop": bool(music_clip.loop) if music_clip else True,
+                        "gain": (music_clip.volume_percent / baseline) if music_clip else 1.0,
+                        "duration_frames": int((music_clip.duration_ms if music_clip else 0) * RATE / 1000),
+                        "fade_in_frames": int((music_clip.fade_in_ms if music_clip else 0) * RATE / 1000),
+                        "fade_out_frames": int((music_clip.fade_out_ms if music_clip else 0) * RATE / 1000),
+                        "samples": music_samples,
+                    })
+                overlay_track = editor_tracks.get("overlays")
+                overlay_audible = bool(
+                    document
+                    and (overlay_track is None or overlay_track.visible)
+                )
+                if overlay_audible:
+                    for overlay_clip in document.clips:
+                        if (
+                            overlay_clip.track_id != "overlays"
+                            or overlay_clip.kind != "video"
+                            or not overlay_clip.enabled
+                            or overlay_clip.muted
+                        ):
+                            continue
+                        overlay_asset = editor_documents.asset_by_id(
+                            document, overlay_clip.asset_id
+                        )
+                        if overlay_asset is None or not overlay_asset.path:
+                            continue
+                        try:
+                            overlay_samples = self._decode(overlay_asset.path, generation=generation)
+                        except subprocess.CalledProcessError:
+                            continue
+                        source_in = int(overlay_clip.source_in_ms * RATE / 1000)
+                        overlay_samples = overlay_samples[source_in:]
+                        tracks.append({
+                            "id": f"overlay:{overlay_clip.clip_id}",
+                            "kind": "overlay",
+                            "start": int(overlay_clip.start_ms * RATE / 1000),
+                            "loop": bool(overlay_clip.loop),
+                            "gain": overlay_clip.volume_percent / 100.0,
+                            "duration_frames": int(overlay_clip.duration_ms * RATE / 1000),
+                            "fade_in_frames": int(overlay_clip.fade_in_ms * RATE / 1000),
+                            "fade_out_frames": int(overlay_clip.fade_out_ms * RATE / 1000),
+                            "samples": overlay_samples,
+                        })
+                if generation != self._generation:
+                    return generation, [], ""
+                self._progress_ready.emit((generation, .15))
+                clip_outputs = dict((active_voice or {}).get("resolved_outputs") or {})
+                manifest_payload = manual_tools._voice_manifest_payload(active_voice)
+                signatures = manifest_payload.get("clips") if isinstance(manifest_payload, dict) else []
+                signatures = [str(value) for value in signatures] if isinstance(signatures, list) else []
+                source_segments = manual_tools.published_voice_source_segments(
+                    video, active_voice, validate=False
+                )
+                multiple = str(manifest_payload.get("speaker_mode") or "single") == "multiple"
+
+                voice_by_segment = {
+                    clip.segment_id: clip
+                    for clip in document.clips
+                    if clip.track_id == "voice" and clip.segment_id
+                } if document else {}
+                source_by_id = {
+                    str(item.get("segment_id") or item.get("id") or ""): index
+                    for index, item in enumerate(source_segments)
+                }
+                voice_starts = sorted({clip.start_ms for clip in voice_by_segment.values() if clip.enabled})
+                video_end = (document.sequence.duration_ms if document
+                             else int(max((s["end"] for s in segments), default=0) * 1000))
+                for index, segment in enumerate(segments):
+                    if generation != self._generation:
+                        return generation, [], ""
+                    voice_clip = voice_by_segment.get(str(segment.get("segment_id") or ""))
+                    if document and (
+                        not audible("voice") or not voice_clip or not voice_clip.enabled or voice_clip.muted
+                    ):
+                        continue
+                    source_index = source_by_id.get(str(segment.get("segment_id") or ""), index)
+                    if source_index >= len(source_segments) or not voice_segment_is_compatible(
+                        segment, source_segments[source_index], multiple
+                    ):
+                        continue
+                    signature = signatures[source_index] if source_index < len(signatures) else ""
+                    clip_path = str(clip_outputs.get(f"clip_{source_index + 1}") or "")
+                    if not clip_path:
+                        continue
+                    from hflow.pipeline.audio_timeline import _segment_slot_end_ms
+                    start = voice_clip.start_ms if voice_clip else int(segment["start"] * 1000)
+                    end = start + (voice_clip.duration_ms if voice_clip else int(
+                        (segment["end"] - segment["start"]) * 1000))
+                    next_index = bisect.bisect_right(voice_starts, start)
+                    next_start = voice_starts[next_index] if next_index < len(voice_starts) else video_end
+                    duration = _segment_slot_end_ms(start, end, next_start, video_end,
+                                                   is_last=next_start >= video_end) - start
+                    if duration <= 0:
+                        continue
+                    baseline = max(1, int(video.tts_volume or 100))
+                    tracks.append({"id": str(segment.get("segment_id", index)), "kind": "voice",
+                        "text": str(segment.get("text", "")), "signature": signature,
+                        "start": start * RATE // 1000,
+                        "gain": (voice_clip.volume_percent / baseline) if voice_clip else 1.0,
+                        "duration_frames": duration * RATE // 1000,
+                        "fade_in_frames": int((voice_clip.fade_in_ms if voice_clip else 0) * RATE / 1000),
+                        "fade_out_frames": int((voice_clip.fade_out_ms if voice_clip else 0) * RATE / 1000),
+                        "samples": self._decode(clip_path, duration,
+                                                bool(segment.get("fit_voice_to_timing")), generation=generation)})
+                    self._progress_ready.emit((generation, .15 + .8 * (index + 1) / max(1, len(segments))))
+                if document and document.audio_ducking_enabled:
+                    voice_ranges = [
+                        (track["start"], track["start"] + int(track.get("duration_frames") or len(track["samples"])))
+                        for track in tracks if track["kind"] == "voice"
+                    ]
+                    for track in tracks:
+                        if track["kind"] != "music":
+                            continue
+                        track["duck_ranges"] = voice_ranges
+                        track["duck_gain"] = 10 ** (document.audio_ducking_reduction_db / 20.0)
+                        track["duck_attack_frames"] = document.audio_ducking_attack_ms * RATE // 1000
+                        track["duck_release_frames"] = document.audio_ducking_release_ms * RATE // 1000
+                self._prune_disk_pcm(generation)
+                return generation, tracks, ""
+            except Exception as exc:
+                return generation, [], str(exc)
+        self._future = self._executor.submit(prepare)
+        self._future.add_done_callback(self._deliver)
+
+    @staticmethod
+    def _streamable_source(video, document, active_voice):
+        files = dict(video.files or {})
+        if active_voice or files.get("background_music") or files.get("background_audio"):
+            return ""
+        if document:
+            decisions = document.sequence.edit_decisions
+            if len(decisions) != 1:
+                return ""
+            decision = decisions[0]
+            if (decision.source_start_ms or decision.sequence_start_ms or
+                    abs(document.sequence.duration_ms - decision.source_end_ms) > 250):
+                return ""
+            for clip in document.clips:
+                if not clip.enabled:
+                    continue
+                if clip.track_id == "music" or (clip.track_id == "overlays" and clip.kind == "video"):
+                    return ""
+                if clip.track_id == "source-audio" and (
+                        clip.start_ms or clip.source_in_ms or clip.fade_in_ms or clip.fade_out_ms or
+                        abs(clip.duration_ms - document.sequence.duration_ms) > 250):
+                    return ""
+        path = next((str(files[name]) for name in ("video_input", "input_video", "input")
+                     if files.get(name)), "")
+        return path if path and Path(path).is_file() else ""
+
+    def _use_streaming_source(self, path, video, document):
+        stat = Path(path).stat()
+        identity = (path, stat.st_size, stat.st_mtime_ns)
+        if self._native_identity != identity:
+            self._generation += 1
+            self._cancel_decode()
+            if self._future:
+                self._future.cancel()
+                self._future = None
+            self.synchronize(self._position_seconds, False, self._muted)
+            self._tracks = []
+            self._key = ""
+            if self._native_player is None:
+                self._native_output = QAudioOutput(QMediaDevices.defaultAudioOutput(), self)
+                self._native_player = QMediaPlayer(self)
+                self._native_player.setPitchCompensation(True)
+                self._native_player.setAudioOutput(self._native_output)
+            elif self._native_source:
+                self._stop_streaming_source()
+            self._native_source = path
+            self._native_identity = identity
+            self._native_player.setSource(QUrl.fromLocalFile(path))
+            self._native_player.setPlaybackRate(self._playback_rate)
+            self._finish_preparing()
+            self.voiceTimingsChanged.emit()
+        source = next((c for c in document.clips if c.track_id == "source-audio" and c.enabled), None) if document else None
+        track = next((t for t in document.tracks if t.track_id == "source-audio"), None) if document else None
+        self._native_gain = (source.volume_percent / max(1, int(video.original_video_volume or 100))) if source else 1.0
+        if (document and not source) or (source and source.muted) or (track and (track.muted or not track.visible)):
+            self._native_gain = 0.0
+        self._native_output.setVolume(min(1.0, self._volumes["source"] * self._native_gain))
+        self.nativeAudioChanged.emit()
+
+    def _stop_streaming_source(self):
+        if self._native_player:
+            self._native_player.stop()
+            self._native_player.setSource(QUrl())
+        self._native_source = ""
+        self._native_identity = None
+        self._embedded_audio = False
+        self.nativeAudioChanged.emit()
+
+    def _prune_disk_pcm(self, generation):
+        directory = self._pcm_cache_directory
+        if directory is None or generation != self._generation:
+            return
+        try:
+            paths = sorted(directory.glob("*.pcm"), key=lambda path: path.stat().st_mtime_ns, reverse=True)
+            used = 0
+            for path in paths:
+                used += path.stat().st_size
+                if used > 1024 * 1024 * 1024:
+                    try:
+                        path.unlink()  # Windows protects files still mapped by playback.
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+
+    def _deliver(self, future):
+        if self._future is future:
+            self._future = None
+        if not self._closed and not future.cancelled():
+            self._ready.emit(future.result())
+        elif self._closed:
+            with self._cache_lock:
+                self._cache.clear()
+            self._pcm_directory.cleanup()
+
+    @Slot(object)
+    def _accept(self, result):
+        generation, tracks, error = result
+        if generation != self._generation:
+            return
+        if error:
+            # A transient decode failure must not pin this request key forever.
+            # The next refresh should retry rather than returning the stale
+            # (possibly silent) track list.
+            self._key = ""
+            self._finish_preparing()
+            self.errorChanged.emit(error)
+            return
+        if self._tempo_stream is not None:
+            self.seek(self._position_seconds)
+        previous = {t["id"]: t.get("signature") for t in self._tracks}
+        if self._playing:
+            self._deferred_ids.update(t["id"] for t in tracks if t["kind"] == "voice"
+                and previous.get(t["id"]) != t.get("signature")
+                and t["start"] < self._cursor < t["start"] + len(t["samples"]))
+        self._tracks = tracks
+        self._muted_ids.clear()
+        self.voiceTimingsChanged.emit()
+        self._finish_preparing()
+
+    @Slot(int, int, int)
+    def setVolumes(self, original, voice, music):
+        if self._tempo_stream is not None:
+            self.seek(self._position_seconds)
+        self._volumes = {
+            "source": max(0, min(100, original)) / 100,
+            "voice": max(0, min(100, voice)) / 100,
+            "music": max(0, min(100, music)) / 100,
+            # Video watermark/legacy overlay audio has per-clip gain only.
+            # Dropping this key on a volume edit made the audio pump raise a
+            # KeyError and silenced every track, including narration.
+            "overlay": 1.0,
+        }
+        if self._native_source:
+            self._native_output.setVolume(min(1.0, self._volumes["source"] * self._native_gain))
+            self.nativeAudioChanged.emit()
+
+    @Slot(float, float)
+    def setPlaybackRate(self, rate, seconds):
+        # Preview speed is independent of project settings and export speed.
+        if not math.isfinite(rate) or not .25 <= rate <= 3.0 or not math.isfinite(seconds):
+            return
+        if rate == self._playback_rate:
+            return
+        self._playback_rate = rate
+        if self._native_player is not None:
+            self._native_player.setPlaybackRate(rate)
+        # Discard the previous-rate audio queue at the video's current clock.
+        # Do not call play() or pause(): changing speed must not start playback.
+        self.seek(seconds)
+
+    @Slot(float, bool, bool)
+    @Slot(float, bool, bool, bool)
+    def synchronize(self, seconds, playing, muted, embedded_audio=False):
+        playing = bool(playing) and not self._busy
+        if self._native_source:
+            was_embedded = self._embedded_audio
+            self._embedded_audio = bool(embedded_audio)
+            self._muted = muted
+            if self._embedded_audio:
+                if self._playing and not was_embedded:
+                    self._native_player.pause()
+                self._native_output.setMuted(True)
+                self._playing = playing
+                self._publish_position(seconds)
+                return
+            self._native_output.setMuted(bool(muted))
+            starting = playing and (not self._playing or was_embedded)
+            if not playing and self._playing:
+                self._native_player.pause()
+            position = max(0, round(seconds * 1000))
+            current = self._native_player.position()
+            if (starting or (not playing and abs(current - position) > 20)
+                    or (playing and self._playing and self._needs_clock_resync(seconds, current / 1000))):
+                self._native_player.setPosition(position)
+                self._reset_clock_tracking()
+            if starting:
+                self._sync_output_device()
+                self._native_player.play()
+            if not playing:
+                self._drift_since = None
+            self._playing = playing
+            self._publish_position(seconds)
+            return
+        if playing and not self._playing:
+            self._sync_output_device()
+        self._muted = muted
+        if not playing:
+            self._playing = False
+            self._reset_tempo()
+            self._timer.stop()
+            if self._sink:
+                self._sink.reset()
+                self._device = None
+            self._cursor = max(0, round(seconds * RATE))
+            self._reset_clock_tracking()
+            self._publish_position(seconds)
+            return
+        if not self._playing:
+            self._cursor = max(0, round(seconds * RATE))
+            self._reset_clock_tracking()
+            self._publish_position(seconds)
+            self._deferred_ids.clear()
+            self._playing = True
+            self._timer.start()
+        elif self._sink:
+            buffered = (self._sink.bufferSize() - self._sink.bytesFree()) // 4
+            if self._needs_clock_resync(seconds, (self._cursor - buffered * self._playback_rate) / RATE):
+                self.seek(seconds)
+
+    def _reset_clock_tracking(self):
+        self._drift_since = None
+        self._drift_direction = 0
+        self._last_clock_reset = time.monotonic()
+
+    def _needs_clock_resync(self, video_seconds, audio_seconds):
+        # Video position notifications are coarse and may arrive late under UI
+        # load. A single late tick is not a seek: resetting the decoder/sink on
+        # it drops buffered samples and produces audible clicks. Explicit seeks
+        # still go through seek() immediately.
+        drift = video_seconds - audio_seconds
+        now = time.monotonic()
+        if abs(drift) <= .35 or now - self._last_clock_reset < 2:
+            self._drift_since = None
+            return False
+        direction = 1 if drift > 0 else -1
+        if self._drift_since is None or self._drift_direction != direction:
+            self._drift_since = now
+            self._drift_direction = direction
+            return False
+        if now - self._drift_since < .75:
+            return False
+        _LOG.debug("preview audio resync mode=%s drift_ms=%d",
+                   "native" if self._native_source else "pcm", round(drift * 1000))
+        return True
+
+    @Slot(float)
+    def seek(self, seconds):
+        self._reset_tempo()
+        self._reset_clock_tracking()
+        if self._native_source and not self._embedded_audio:
+            self._native_player.setPosition(max(0, round(seconds * 1000)))
+        self._cursor = max(0, round(seconds * RATE))
+        self._publish_position(seconds)
+        self._deferred_ids.clear()
+        if self._sink:
+            self._sink.reset()
+            self._device = None
+
+    @Slot()
+    def _sync_output_device(self):
+        if self._closed:
+            return
+        default = QMediaDevices.defaultAudioOutput()
+        if self._native_output:
+            self._native_output.setDevice(default)
+        if self._native_source:
+            return
+        # QAudioSink has no device() accessor. Keep the identity supplied to
+        # its constructor so resuming an existing sink does not raise and
+        # stop both narration and the caption clock.
+        if self._sink and self._sink_device_id != default.id():
+            self._reset_tempo()
+            self._cursor = max(0, round(self._position_seconds * RATE))
+            self._sink.stop()
+            self._sink.deleteLater()
+            self._sink = None
+            self._sink_device_id = None
+            self._device = None
+        if self._playing and not default.isNull():
+            self._timer.start()
+
+    def _pump(self):
+        if not self._playing:
+            return
+        if self._sink is None:
+            device = QMediaDevices.defaultAudioOutput()
+            if device.isNull():
+                self._timer.stop()
+                self.errorChanged.emit("Không tìm thấy thiết bị âm thanh.")
+                return
+            format = QAudioFormat()
+            format.setSampleRate(RATE)
+            format.setChannelCount(2)
+            format.setSampleFormat(QAudioFormat.Int16)
+            self._sink = QAudioSink(device, format, self)
+            self._sink_device_id = device.id()
+            # A 50 ms buffer underruns when timeline/preview painting delays the
+            # GUI timer. Keep a bounded 200 ms buffer, not an entire-video mix.
+            self._sink.setBufferSize(PCM_BUFFER_FRAMES * 4)
+        if self._device is None:
+            self._device = self._sink.start()
+        if self._device is None:
+            return
+        # Refill all available headroom after a delayed tick. Limiting each
+        # refill to 40 ms cannot recover when GUI ticks themselves take >40 ms.
+        count = min(PCM_BUFFER_FRAMES, self._sink.bytesFree() // 4)
+        if count <= 0:
+            return
+        if self._playback_rate == 1.0:
+            data = mix_frames(self._tracks, round(self._cursor), count, self._volumes,
+                              self._muted_ids | self._deferred_ids)
+        else:
+            if self._tempo_stream is None:
+                from hflow.desktop.preview_tempo import PreviewTempoStream
+
+                tracks = tuple(dict(track) for track in self._tracks)
+                volumes = dict(self._volumes)
+                muted_ids = frozenset(self._muted_ids | self._deferred_ids)
+                try:
+                    self._tempo_stream = PreviewTempoStream(
+                        lambda cursor, frames: mix_frames(tracks, cursor, frames, volumes, muted_ids),
+                        self._cursor, self._playback_rate, RATE,
+                    )
+                except OSError as exc:
+                    self._timer.stop()
+                    self.errorChanged.emit(str(exc))
+                    return
+            if self._tempo_stream.error:
+                self.errorChanged.emit(self._tempo_stream.error)
+                self._timer.stop()
+                self._reset_tempo()
+                return
+            data = self._tempo_stream.peek(count)
+            if not data:
+                return
+        if self._muted:
+            data = bytes(len(data))
+        written = self._device.write(data)
+        if written > 0:
+            if self._tempo_stream is not None:
+                self._tempo_stream.consume(written)
+            self._cursor += (written // 4) * self._playback_rate
+            buffered = max(0, (self._sink.bufferSize() - self._sink.bytesFree()) // 4)
+            self._publish_position(max(0, self._cursor - buffered * self._playback_rate) / RATE)
+
+    @Slot()
+    def release(self):
+        self._reset_tempo()
+        self._stop_streaming_source()
+        self._generation += 1
+        self._cancel_decode()
+        if self._future is not None:
+            self._future.cancel()
+            self._future = None
+        self._key = ""
+        self._pcm_cache_directory = None
+        self._reconciled_voice_state = None
+        self._playing = False
+        self._timer.stop()
+        if self._sink:
+            self._sink.stop()
+            self._sink.deleteLater()
+            self._sink = None
+        self._sink_device_id = None
+        self._device = None
+        self._publish_position(0.0)
+        self._tracks = []
+        with self._cache_lock:
+            # Keep persistent .pcm files, not open Windows mapping handles.
+            # Reopening maps the completed disk cache without decoding again.
+            self._cache.clear()
+        self._muted_ids.clear()
+        self._deferred_ids.clear()
+        self.voiceTimingsChanged.emit()
+        self._busy = False
+        self._progress = 0.0
+        self.progressChanged.emit()
+        self.busyChanged.emit()
+
+    def _reset_tempo(self):
+        if self._tempo_stream is not None:
+            self._tempo_stream.close()
+            self._tempo_stream = None
+
+    def close(self):
+        self._closed = True
+        self.release()
+        if self._native_player:
+            self._native_player.deleteLater()
+            self._native_player = None
+        if self._native_output:
+            self._native_output.deleteLater()
+            self._native_output = None
+        self._executor.shutdown(wait=False, cancel_futures=True)
+        self._pcm_directory.cleanup()

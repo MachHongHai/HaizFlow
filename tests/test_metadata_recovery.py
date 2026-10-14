@@ -9,8 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
-from haizflow.schemas.video import VIDEO_METADATA_SCHEMA_VERSION, VideoConfig, MediaSource
-from haizflow.services import video_store, project_store
+from hflow.schemas.video import VIDEO_METADATA_SCHEMA_VERSION, VideoConfig, MediaSource
+from hflow.services import video_store, project_store
 
 
 class ProjectIndexRecoveryTests(unittest.TestCase):
@@ -67,7 +67,7 @@ class ProjectIndexRecoveryTests(unittest.TestCase):
         for number in range(4):
             code = "\n".join(
                 (
-                    "from haizflow.services import project_store",
+                    "from hflow.services import project_store",
                     f"project_store.PROJECT_INDEX_PATH = {project_store.PROJECT_INDEX_PATH!r}",
                     f"project_store.ensure_project('Concurrent {number}', {str(projects_dir)!r}, 'single')",
                 )
@@ -177,7 +177,7 @@ class VideoMetadataMigrationTests(unittest.TestCase):
         self.assertEqual(migrated.source_language, "auto")
         self.assertEqual(migrated.translator_provider, "hymt2")
         self.assertEqual(migrated.media_source.type, "local_file")
-        self.assertEqual(saved["metadata_type"], "haizflow.video")
+        self.assertEqual(saved["metadata_type"], "hflow.video")
         self.assertEqual(saved["media_source"]["type"], "local_file")
         self.assertNotIn("schema_version", backup)
 
@@ -419,12 +419,12 @@ class VideoMetadataMigrationTests(unittest.TestCase):
         video = self._create_video()
         path = Path(video_store.get_video_json_path(video.video_id))
         current = json.loads(path.read_text(encoding="utf-8"))
-        current["watermark_text"] = "  HaizFlow\n" + ("x" * 100)
+        current["watermark_text"] = "  HFlow\n" + ("x" * 100)
         path.write_text(json.dumps(current), encoding="utf-8")
 
         migrated = video_store.get_video(video.video_id)
 
-        self.assertEqual(migrated.watermark_text, "HaizFlow " + ("x" * 71))
+        self.assertEqual(migrated.watermark_text, "HFlow " + ("x" * 74))
 
     def test_current_metadata_clamps_manual_watermark_scale(self):
         video = self._create_video()

@@ -32,8 +32,8 @@ Chạy thực tế bằng `scripts/check-clone-pipeline.py`, dùng video và m�
 
 - Whisper Turbo GPU → HY-MT2 GPU → OmniVoice GPU clone: hoàn tất, không phục hồi xuống CPU.
 - Whisper Turbo GPU → HY-MT2 CPU Q4 → OmniVoice GPU clone: hoàn tất.
-- Chạy lại cả hai sau khi sửa tái dùng stem Demucs: hoàn tất. Kết quả nằm trong `D:/HaizFlowData/tmp/clone-check-20260930T125214Z`; OCR được tắt trong lượt kiểm tra này.
-- Chạy lại cả hai với `--warm-recognition`: engine Whisper đã nạp trước được giải phóng hoàn toàn trước foreground; cả hai chuỗi vẫn hoàn tất. Kết quả ở `D:/HaizFlowData/tmp/clone-check-20260930T130559Z`; OCR cũng được tắt.
+- Chạy lại cả hai sau khi sửa tái dùng stem Demucs: hoàn tất. Kết quả nằm trong `D:/HFlowData/tmp/clone-check-20260930T125214Z`; OCR được tắt trong lượt kiểm tra này.
+- Chạy lại cả hai với `--warm-recognition`: engine Whisper đã nạp trước được giải phóng hoàn toàn trước foreground; cả hai chuỗi vẫn hoàn tất. Kết quả ở `D:/HFlowData/tmp/clone-check-20260930T130559Z`; OCR cũng được tắt.
 - ffprobe xác nhận cả hai video là AAC stereo 48 kHz, khoảng 250 kbps. Stem Demucs 44,1 kHz không bị coi là bản nguồn legacy để trích/tách lại.
 
 Kiểm thử hồi quy cuối: 927 bài Python và 85 subtest qua; Qt Quick có 20 mục qua, không fail/skip. Qt lint các QML thay đổi không báo lỗi. Có một cảnh báo TorchCodec trong môi trường source; đường kiểm tra thật đọc audio bằng FFmpeg/preloaded waveform, không dùng decoder TorchCodec.

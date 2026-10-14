@@ -1,8 +1,8 @@
-# HaizFlow 0.1.6
+# HFlow 0.1.6
 
-**[Tải bộ cài Windows — HaizFlow-0.1.6-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.6/HaizFlow-0.1.6-Setup.exe)**
+**[Tải bộ cài Windows — HFlow-0.1.6-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.6/HaizFlow-0.1.6-Setup.exe)**
 
-HaizFlow là ứng dụng miễn phí để **tải video hàng loạt, dịch video, tạo phụ đề và lồng tiếng** trên Windows. Bạn có thể xử lý tự động, chỉnh từng bước trong chế độ Thủ công hoặc xử lý nhiều video theo hàng đợi.
+HFlow là ứng dụng miễn phí để **tải video hàng loạt, dịch video, tạo phụ đề và lồng tiếng** trên Windows. Bạn có thể xử lý tự động, chỉnh từng bước trong chế độ Thủ công hoặc xử lý nhiều video theo hàng đợi.
 
 ## Chức năng chính
 
@@ -21,7 +21,7 @@ HaizFlow là ứng dụng miễn phí để **tải video hàng loạt, dịch v
 4. Chọn model, ngôn ngữ và giọng đọc. Gemini cần key của bạn; HY-MT2 dịch trên máy, không cần key.
 5. Chạy xử lý, xem lại kết quả rồi bấm **Xuất**. Có thể đăng video qua Zernio.
 
-Đã cài HaizFlow? Bấm **Phiên bản mới → Kiểm tra lại → Cập nhật**, rồi xác nhận **Khởi động lại** khi bản mới sẵn sàng. Có thể cập nhật trực tiếp từ **0.1.0–0.1.5** lên **0.1.6**, không cần cài từng phiên bản trung gian. Dự án, cài đặt và gói tài nguyên đã tải được giữ nguyên. Bạn cũng có thể mở bộ cài EXE và chọn đúng thư mục HaizFlow đang dùng để nâng cấp.
+Đã cài HFlow? Bấm **Phiên bản mới → Kiểm tra lại → Cập nhật**, rồi xác nhận **Khởi động lại** khi bản mới sẵn sàng. Có thể cập nhật trực tiếp từ **0.1.0–0.1.5** lên **0.1.6**, không cần cài từng phiên bản trung gian. Dự án, cài đặt và gói tài nguyên đã tải được giữ nguyên. Bạn cũng có thể mở bộ cài EXE và chọn đúng thư mục HFlow đang dùng để nâng cấp.
 
 [Hướng dẫn cài đặt](https://github.com/MachHongHai/HaizFlow/blob/main/docs/install.vi.md) · [Hướng dẫn sử dụng](https://github.com/MachHongHai/HaizFlow/blob/main/docs/user-guide.vi.md) · [Website](https://haizflow.pages.dev/) · [English guide](https://github.com/MachHongHai/HaizFlow/blob/main/docs/user-guide.md)
 

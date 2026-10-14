@@ -6,12 +6,12 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.core import hardware, memory
-from haizflow.core.model_choices import models_for_device, recognition_context
-from haizflow.desktop.resource_pack_controller import ResourcePackController
-from haizflow.desktop.smart_warmup_controller import SmartWarmupController
-from haizflow.pipeline import manual_tools, omnivoice_tts
-from haizflow.services.external_engine import ExternalEnginePool
+from hflow.core import hardware, memory
+from hflow.core.model_choices import models_for_device, recognition_context
+from hflow.desktop.resource_pack_controller import ResourcePackController
+from hflow.desktop.smart_warmup_controller import SmartWarmupController
+from hflow.pipeline import manual_tools, omnivoice_tts
+from hflow.services.external_engine import ExternalEnginePool
 
 GIB = memory.GIB
 
@@ -167,14 +167,14 @@ def test_resource_packs_share_capacity_policy_used_by_settings_auto_manual_batch
 def test_low_capacity_cpu_does_not_speculatively_load_voice_or_translation():
     controller = SmartWarmupController.__new__(SmartWarmupController)
     with (
-        patch("haizflow.desktop.smart_warmup_controller.runtime_profile", return_value=hardware.runtime_profile_for(caps(), "cpu")),
-        patch("haizflow.desktop.smart_warmup_controller.available_memory_bytes", return_value=10 * GIB),
-        patch("haizflow.desktop.smart_warmup_controller.available_commit_bytes", return_value=16 * GIB),
+        patch("hflow.desktop.smart_warmup_controller.runtime_profile", return_value=hardware.runtime_profile_for(caps(), "cpu")),
+        patch("hflow.desktop.smart_warmup_controller.available_memory_bytes", return_value=10 * GIB),
+        patch("hflow.desktop.smart_warmup_controller.available_commit_bytes", return_value=16 * GIB),
     ):
         assert not controller._has_warmup_budget("voice", {})
         assert not controller._has_warmup_budget("translation", {})
         assert controller._has_warmup_budget("recognition", {"model": "small"})
-    with patch("haizflow.desktop.smart_warmup_controller.available_memory_bytes", return_value=0):
+    with patch("hflow.desktop.smart_warmup_controller.available_memory_bytes", return_value=0):
         assert not controller._has_warmup_budget("recognition", {"model": "small"})
 
 
@@ -186,7 +186,7 @@ def test_omnivoice_preflight_reuses_only_matching_resident_model_and_not_oneshot
         patch.object(omnivoice_tts, "_PERSISTENT_WORKER_PROCESS", process),
         patch.object(omnivoice_tts, "_PERSISTENT_WORKER_DEVICE", "cpu"),
         patch.object(omnivoice_tts, "_PERSISTENT_MODEL_KEY", ("model", "cpu")),
-        patch("haizflow.core.memory.require_cpu_memory") as preflight,
+        patch("hflow.core.memory.require_cpu_memory") as preflight,
     ):
         omnivoice_tts._preflight_cpu_request(request, allow_resident=True)
         preflight.assert_called_with("voice", resident=True)
@@ -197,11 +197,11 @@ def test_omnivoice_preflight_reuses_only_matching_resident_model_and_not_oneshot
 def test_asr_preflight_failure_does_not_start_engine_or_write_output(tmp_path):
     output = tmp_path / "segments.json"
     with (
-        patch("haizflow.pipeline.process_registry.check_cancellation"),
-        patch("haizflow.services.external_engine.shared_external_engine_pool") as pool,
-        patch("haizflow.core.memory.memory_snapshot", return_value=snapshot(available=0.2)),
-        patch("haizflow.services.external_tasks.run_external_task") as execute,
-        patch("haizflow.core.hardware.processing_device_preference", return_value="cpu"),
+        patch("hflow.pipeline.process_registry.check_cancellation"),
+        patch("hflow.services.external_engine.shared_external_engine_pool") as pool,
+        patch("hflow.core.memory.memory_snapshot", return_value=snapshot(available=0.2)),
+        patch("hflow.services.external_tasks.run_external_task") as execute,
+        patch("hflow.core.hardware.processing_device_preference", return_value="cpu"),
     ):
         pool.return_value.is_warm.return_value = False
         with pytest.raises(RuntimeError, match="RAM trống"):
@@ -237,7 +237,7 @@ def test_unknown_commit_blocks_windows_admission_and_pressure_is_live():
 
 
 def test_preflight_warning_keeps_numbers_and_guidance_in_ui():
-    from haizflow.core.processing_errors import describe_failure
+    from hflow.core.processing_errors import describe_failure
 
     with pytest.raises(RuntimeError) as failure:
         memory.require_cpu_memory("voice", snapshot=snapshot(commit=4))

@@ -14,12 +14,12 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.desktop.models import ProjectGridModel, ProjectListModel
-from haizflow.schemas.video import VideoConfig
-from haizflow.services import video_store
-from haizflow.services import project_store
-from haizflow.services.desktop_videos import create_desktop_video, migrate_legacy_single_export
+from hflow.desktop.qml_controller import HFlowController
+from hflow.desktop.models import ProjectGridModel, ProjectListModel
+from hflow.schemas.video import VideoConfig
+from hflow.services import video_store
+from hflow.services import project_store
+from hflow.services.desktop_videos import create_desktop_video, migrate_legacy_single_export
 
 
 def _video(video_id, filename, project_name, project_type, status, progress, updated_at):
@@ -27,7 +27,7 @@ def _video(video_id, filename, project_name, project_type, status, progress, upd
         video_id=video_id,
         original_filename=filename,
         project_name=project_name,
-        project_directory="D:/HaizFlowData/projects",
+        project_directory="D:/HFlowData/projects",
         project_type=project_type,
         status=status,
         progress=progress,
@@ -66,7 +66,7 @@ class ProjectGroupingTests(unittest.TestCase):
         )
         newer_project.created_at = "2026-08-14T12:00:00Z"
 
-        summaries = HaizFlowController._build_project_summaries(
+        summaries = HFlowController._build_project_summaries(
             [older_project, newer_project]
         )
 
@@ -155,7 +155,7 @@ class ProjectGroupingTests(unittest.TestCase):
         self.assertIn(first_video.video_id, catalog_ids)
 
     def test_batch_videos_share_one_project_card(self):
-        summaries = HaizFlowController._build_project_summaries(
+        summaries = HFlowController._build_project_summaries(
             [
                 _video("one", "one.mp4", "Summer launch", "batch", "done", 100, "2026-07-14T10:00:00Z"),
                 _video("two", "two.mp4", "Summer launch", "batch", "processing", 50, "2026-07-14T11:00:00Z"),
@@ -180,12 +180,12 @@ class ProjectGroupingTests(unittest.TestCase):
         imported_later.created_at = "2026-07-14T11:00:00Z"
         imported_later.batch_import_order = 1001
 
-        summary = HaizFlowController._build_project_summaries([imported_later, imported_first])[0]
+        summary = HFlowController._build_project_summaries([imported_later, imported_first])[0]
 
         self.assertEqual([video.video_id for video in summary["videos"]], ["first", "later"])
 
     def test_project_library_models_keep_single_and_batch_projects_separate(self):
-        summaries = HaizFlowController._build_project_summaries(
+        summaries = HFlowController._build_project_summaries(
             [
                 _video("one", "one.mp4", "Campaign", "batch", "pending", 0, "2026-07-14T10:00:00Z"),
                 _video("two", "two.mp4", "Interview", "single", "done", 100, "2026-07-14T11:00:00Z"),
@@ -574,13 +574,13 @@ class ProjectGroupingTests(unittest.TestCase):
 
     def test_empty_project_is_included_in_project_summaries(self):
         persisted = {
-            "key": "single:d:/haizflowdata/projects:draft",
+            "key": "single:d:/hflowdata/projects:draft",
             "project_name": "Draft",
-            "project_directory": "D:/HaizFlowData/projects",
+            "project_directory": "D:/HFlowData/projects",
             "project_type": "single",
             "updated_at": "2026-07-15T10:00:00Z",
         }
-        summaries = HaizFlowController._build_project_summaries([], [persisted])
+        summaries = HFlowController._build_project_summaries([], [persisted])
 
         self.assertEqual(len(summaries), 1)
         self.assertEqual(summaries[0]["status"], "empty")
@@ -949,7 +949,7 @@ class ProjectGroupingTests(unittest.TestCase):
 
             try:
                 with mock.patch(
-                    "haizflow.services.desktop_videos.shutil.copyfile",
+                    "hflow.services.desktop_videos.shutil.copyfile",
                     side_effect=fail_copy,
                 ):
                     with self.assertRaisesRegex(OSError, "simulated import failure"):

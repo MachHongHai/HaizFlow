@@ -16,17 +16,17 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtTest import QTest
 
-from haizflow.desktop.manual_edit_history import ManualEditHistory
-from haizflow.desktop.manual_preview_audio_controller import (
+from hflow.desktop.manual_edit_history import ManualEditHistory
+from hflow.desktop.manual_preview_audio_controller import (
     ManualPreviewAudioController,
     mix_frames,
     voice_segment_is_compatible,
 )
-from haizflow.desktop.manual_subtitle_model import ManualSubtitleModel, identify_segments
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.desktop.subtitle_overlay_renderer import export_events, rasterize
+from hflow.desktop.manual_subtitle_model import ManualSubtitleModel, identify_segments
+from hflow.desktop.qml_controller import HFlowController
+from hflow.desktop.subtitle_overlay_renderer import export_events, rasterize
 
-QML = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml"
+QML = Path(__file__).resolve().parents[1] / "src/hflow/desktop/qml"
 
 
 class ManualEditorSessionTests(unittest.TestCase):
@@ -43,9 +43,9 @@ class ManualEditorSessionTests(unittest.TestCase):
         saved = []
         model.saved.connect(lambda *args: saved.append(args))
         with tempfile.TemporaryDirectory() as directory, \
-             patch("haizflow.services.manual_artifacts.cache_root", return_value=Path(directory)), \
-             patch("haizflow.desktop.manual_subtitle_model.video_store.get_video", return_value=None), \
-             patch("haizflow.pipeline.manual_tools.publish_edited_subtitles") as publish:
+             patch("hflow.services.manual_artifacts.cache_root", return_value=Path(directory)), \
+             patch("hflow.desktop.manual_subtitle_model.video_store.get_video", return_value=None), \
+             patch("hflow.pipeline.manual_tools.publish_edited_subtitles") as publish:
             self.assertTrue(model.saveText(segment_id, text, 0, "r1"))
             model.load("video", original)
             self.assertEqual(model.segments[0]["text"], text)
@@ -80,14 +80,14 @@ class ManualEditorSessionTests(unittest.TestCase):
             previewMediaChanged=SimpleNamespace(emit=lambda: events.append("preview")),
         )
         with (
-            patch("haizflow.desktop.qml_controller.video_store.get_video", return_value=object()),
-            patch("haizflow.desktop.qml_controller.editor_documents.sync_subtitle_clips",
+            patch("hflow.desktop.qml_controller.video_store.get_video", return_value=object()),
+            patch("hflow.desktop.qml_controller.editor_documents.sync_subtitle_clips",
                   side_effect=lambda *_args: events.append("reconcile") or object()),
         ):
-            HaizFlowController._manual_subtitles_published(host, "video", 2, True)
+            HFlowController._manual_subtitles_published(host, "video", 2, True)
         self.assertEqual(events, ["reconcile", "document", "composition", "snapshot", "tool", "subtitle", "preview"])
         events.clear()
-        HaizFlowController._manual_subtitles_published(host, "other-video", 2, True)
+        HFlowController._manual_subtitles_published(host, "other-video", 2, True)
         self.assertEqual(events, [])
 
     def test_edit_history_is_per_video_and_separate_from_navigation(self):
@@ -96,9 +96,9 @@ class ManualEditorSessionTests(unittest.TestCase):
         model.load("video-a", [{"text": "ban đầu", "start": 0, "end": 1}])
         segment_id = model.segments[0]["segment_id"]
         with tempfile.TemporaryDirectory() as directory, \
-             patch("haizflow.services.manual_artifacts.cache_root", return_value=Path(directory)), \
-             patch("haizflow.desktop.manual_subtitle_model.video_store.get_video", return_value=None), \
-             patch("haizflow.pipeline.manual_tools.publish_edited_subtitles"):
+             patch("hflow.services.manual_artifacts.cache_root", return_value=Path(directory)), \
+             patch("hflow.desktop.manual_subtitle_model.video_store.get_video", return_value=None), \
+             patch("hflow.pipeline.manual_tools.publish_edited_subtitles"):
             self.assertTrue(model.saveText(segment_id, "đã sửa", 0, "edit"))
             self.assertTrue(history.canUndo)
             self.assertEqual(history.undoLabel, "subtitle_text")
@@ -148,10 +148,10 @@ class ManualEditorSessionTests(unittest.TestCase):
             _record_video_settings_change=Mock(),
         )
         with patch(
-            "haizflow.desktop.qml_controller.video_store.get_video",
+            "hflow.desktop.qml_controller.video_store.get_video",
             side_effect=[before_video, after_video],
         ):
-            self.assertTrue(HaizFlowController.persistVideoSettingsFor(host, "video-a"))
+            self.assertTrue(HFlowController.persistVideoSettingsFor(host, "video-a"))
         host._apply_config_to_video.assert_called_once_with(before_video, draft)
         host._record_video_settings_change.assert_called_once_with(
             "video-a",
@@ -162,7 +162,7 @@ class ManualEditorSessionTests(unittest.TestCase):
 
     def test_edit_history_covers_every_user_editable_video_setting(self):
         self.assertEqual(
-            set(HaizFlowController._EDITABLE_VIDEO_SETTING_FIELDS),
+            set(HFlowController._EDITABLE_VIDEO_SETTING_FIELDS),
             {
                 "target_language",
                 "speech_recognition_model",
@@ -229,7 +229,7 @@ class ManualEditorSessionTests(unittest.TestCase):
         engine.deleteLater()
 
     def test_overlay_never_displays_previous_phrase_on_cache_miss(self):
-        from haizflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
+        from hflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
         renderer = SubtitleOverlayRenderer()
         renderer._events = [{"start": 0, "end": 1, "body": "first"},
                             {"start": 1, "end": 2, "body": "second"}]
@@ -242,7 +242,7 @@ class ManualEditorSessionTests(unittest.TestCase):
         renderer.close()
 
     def test_overlay_configuration_clears_old_frame_and_cancels_queued_work(self):
-        from haizflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
+        from hflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
 
         class PendingFuture:
             def __init__(self):
@@ -276,7 +276,7 @@ class ManualEditorSessionTests(unittest.TestCase):
         renderer.close()
 
     def test_overlay_release_drops_editor_state_but_keeps_raster_cache(self):
-        from haizflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
+        from hflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
 
         renderer = SubtitleOverlayRenderer()
         renderer._key = "video-a"
@@ -331,8 +331,8 @@ class ManualEditorSessionTests(unittest.TestCase):
             audio.close()
 
     def test_preview_repairs_disabled_voice_clips_when_manifest_is_published(self):
-        from haizflow.schemas.editor import EditorClip, EditorDocument
-        from haizflow.services import editor_documents
+        from hflow.schemas.editor import EditorClip, EditorDocument
+        from hflow.services import editor_documents
 
         stale = EditorDocument(video_id="manual-video", clips=[EditorClip(
             clip_id="voice-a", track_id="voice", kind="voice",
@@ -349,7 +349,7 @@ class ManualEditorSessionTests(unittest.TestCase):
             with (
                 patch.object(editor_documents, "load", side_effect=[stale, repaired]),
                 patch.object(editor_documents, "ensure", return_value=repaired) as ensure,
-                patch("haizflow.pipeline.manual_tools.published_voice_record", return_value={
+                patch("hflow.pipeline.manual_tools.published_voice_record", return_value={
                     "signature": "published-voice", "resolved_outputs": {},
                 }),
                 patch.object(audio._executor, "submit") as submit,
@@ -377,7 +377,7 @@ class ManualEditorSessionTests(unittest.TestCase):
             {**source, "segment_id": "a"}, {**source, "segment_id": "b"}, True))
 
     def test_repeated_seeks_reuse_one_audio_output_and_release_it(self):
-        from haizflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
+        from hflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
         class Device:
             def write(self, data):
                 return len(data)
@@ -493,12 +493,12 @@ class ManualEditorSessionTests(unittest.TestCase):
         audio._executor.shutdown(wait=False, cancel_futures=True)
         executor = RecordingExecutor()
         audio._executor = executor
-        with patch("haizflow.pipeline.manual_tools.published_voice_record", return_value=published):
+        with patch("hflow.pipeline.manual_tools.published_voice_record", return_value=published):
             audio.request(video, segments)
             original_key = audio._key
             video.tts_voice = "vi-VN-HoaiMyNeural"
             audio.request(video, segments)
-            video.files["watermark"] = "HaizFlow"
+            video.files["watermark"] = "HFlow"
             video.files["ocr_region"] = "region.json"
             audio.request(video, segments)
 
@@ -541,7 +541,7 @@ class ManualEditorSessionTests(unittest.TestCase):
         audio._executor.shutdown(wait=False, cancel_futures=True)
         executor = RecordingExecutor()
         audio._executor = executor
-        with patch("haizflow.pipeline.manual_tools.published_voice_record", return_value=None):
+        with patch("hflow.pipeline.manual_tools.published_voice_record", return_value=None):
             audio.request(video, segments)
             first = executor.futures[0]
             video.files["background_music"] = "new-music.mp3"
@@ -557,7 +557,7 @@ class ManualEditorSessionTests(unittest.TestCase):
             _manual_audio=Mock(),
             _manual_subtitles=SimpleNamespace(video_id="manual-video", segments=[]),
         )
-        HaizFlowController.refreshManualPreviewAudio(host)
+        HFlowController.refreshManualPreviewAudio(host)
         host._selected_video.assert_not_called()
         host._manual_audio.request.assert_not_called()
 
@@ -577,8 +577,8 @@ class ManualEditorSessionTests(unittest.TestCase):
             refreshManualPreviewAudio=Mock(),
             _schedule_manual_cache_migration=Mock(),
         )
-        with patch("haizflow.desktop.qml_controller.QTimer.singleShot") as single_shot:
-            HaizFlowController.loadManualSubtitles(host)
+        with patch("hflow.desktop.qml_controller.QTimer.singleShot") as single_shot:
+            HFlowController.loadManualSubtitles(host)
         self.assertTrue(host._manual_editor_active)
         subtitles.load.assert_called_once_with("manual-video", host.reviewSegments)
         host.refreshManualPreviewAudio.assert_not_called()
@@ -618,19 +618,19 @@ class ManualEditorSessionTests(unittest.TestCase):
         )
 
         with (
-            patch("haizflow.desktop.qml_controller.video_store.migrate_legacy_project_data", return_value=[]),
-            patch("haizflow.desktop.qml_controller.video_store.recover_interrupted_videos", return_value=[]),
+            patch("hflow.desktop.qml_controller.video_store.migrate_legacy_project_data", return_value=[]),
+            patch("hflow.desktop.qml_controller.video_store.recover_interrupted_videos", return_value=[]),
             patch(
-                "haizflow.desktop.qml_controller.video_store.list_videos",
+                "hflow.desktop.qml_controller.video_store.list_videos",
                 return_value=[manual_a, download, legacy, manual_b],
             ),
-            patch("haizflow.pipeline.manual_tools.migrate_legacy_artifacts", return_value=False) as migrate,
+            patch("hflow.pipeline.manual_tools.migrate_legacy_artifacts", return_value=False) as migrate,
             patch(
-                "haizflow.pipeline.manual_tools.restore_cached_variants",
+                "hflow.pipeline.manual_tools.restore_cached_variants",
                 side_effect=lambda video_id, **_kwargs: [f"restored:{video_id}"],
             ) as restore,
         ):
-            HaizFlowController._run_startup_maintenance(host)
+            HFlowController._run_startup_maintenance(host)
 
         self.assertEqual([call.args[0] for call in migrate.call_args_list], ["manual-a", "manual-b"])
         self.assertEqual([call.args[0] for call in restore.call_args_list], ["manual-a", "manual-b"])
@@ -665,14 +665,14 @@ class ManualEditorSessionTests(unittest.TestCase):
         )
 
         with (
-            patch("haizflow.desktop.qml_controller.video_store.get_video", return_value=selected),
-            patch("haizflow.desktop.qml_controller.editor_documents.ensure", return_value=ensured_document) as ensure,
+            patch("hflow.desktop.qml_controller.video_store.get_video", return_value=selected),
+            patch("hflow.desktop.qml_controller.editor_documents.ensure", return_value=ensured_document) as ensure,
             patch(
-                "haizflow.desktop.qml_controller.editor_documents.sync_subtitle_clips",
+                "hflow.desktop.qml_controller.editor_documents.sync_subtitle_clips",
                 return_value=synced_document,
             ) as sync,
         ):
-            HaizFlowController._drain_manual_cache_events(host)
+            HFlowController._drain_manual_cache_events(host)
 
         self.assertIn("manual-a", host._manual_cache_indexed)
         subtitles.load.assert_called_once_with("manual-a", host.reviewSegments)

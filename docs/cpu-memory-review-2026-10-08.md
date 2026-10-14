@@ -31,7 +31,7 @@ memory limits when integer telemetry returned zero/unknown.
 
 ## 2. Files and logic changed
 
-| Files (under `src/haizflow/`) | Change |
+| Files (under `src/hflow/`) | Change |
 | --- | --- |
 | `core/memory.py` (new) | Typed live snapshots, Windows APIs, stage admission, memory-pressure policy and numeric diagnostics |
 | `core/hardware.py` | Installed-vs-usable eligibility, explicit unknown handling, GiB labels, constrained/live CPU profiles |

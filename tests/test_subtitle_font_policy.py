@@ -1,8 +1,8 @@
-from haizflow.schemas.video import SubtitleStyle
-from haizflow.schemas.editor import EditorClip, EditorDocument, EditorTextStyle
-from haizflow.services.editor_documents import resolved_text_style
-from haizflow.pipeline.render import _write_positioned_ass, resolve_subtitle_preview_layout
-from haizflow.schemas.video import CropSettings
+from hflow.schemas.video import SubtitleStyle
+from hflow.schemas.editor import EditorClip, EditorDocument, EditorTextStyle
+from hflow.services.editor_documents import resolved_text_style
+from hflow.pipeline.render import _write_positioned_ass, resolve_subtitle_preview_layout
+from hflow.schemas.video import CropSettings
 
 
 def test_legacy_subtitle_fonts_normalize_without_affecting_other_text():

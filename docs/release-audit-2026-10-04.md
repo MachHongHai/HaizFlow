@@ -267,7 +267,7 @@ phát sinh request bằng API key của người dùng để kiểm tra.
    không chứng nhận lại chất lượng âm thanh của các project đã có.
 
 Khi chạy test có cảnh báo TorchCodec từ Pyannote: DLL decoder tích hợp không
-nạp được trong môi trường hiện tại. Đường VAD của HaizFlow truyền waveform đã
+nạp được trong môi trường hiện tại. Đường VAD của HFlow truyền waveform đã
 nạp trong bộ nhớ, không dựa vào decoder đó. Vẫn cần kiểm chứng luồng frozen với
 media thực; không sửa cảnh báo bằng cách đổi FFmpeg/model hàng loạt.
 

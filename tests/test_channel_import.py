@@ -14,9 +14,9 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.schemas.channel_import import ChannelImportRequest, ChannelVideoCandidate
-from haizflow.desktop.channel_import import ChannelImportCoordinator
-from haizflow.services.channel_import import (
+from hflow.schemas.channel_import import ChannelImportRequest, ChannelVideoCandidate
+from hflow.desktop.channel_import import ChannelImportCoordinator
+from hflow.services.channel_import import (
     _extract_info_with_platform_retry,
     _hydrate_candidate,
     _is_non_video_metadata,
@@ -31,13 +31,13 @@ from haizflow.services.channel_import import (
     scan_channel,
     validate_channel_url,
 )
-from haizflow.services.douyin_channel_worker import (
+from hflow.services.douyin_channel_worker import (
     _candidate as douyin_candidate,
     _validated_douyin_url,
     inspect_profile as inspect_douyin_profile,
 )
-from haizflow.services import project_store
-from haizflow.services.video_download import DownloadCancelled
+from hflow.services import project_store
+from hflow.services.video_download import DownloadCancelled
 
 
 class ChannelUrlTests(unittest.TestCase):
@@ -59,14 +59,14 @@ class ChannelUrlTests(unittest.TestCase):
         rows = [ChannelVideoCandidate(remote_video_id=str(index),
                 source_url=f"https://www.douyin.com/video/{index}", title="Video", platform="Douyin", view_count=0)
                 for index in range(22)]
-        with patch("haizflow.services.channel_import._scan_douyin", return_value=("Creator", rows)):
+        with patch("hflow.services.channel_import._scan_douyin", return_value=("Creator", rows)):
             _, _, result = scan_channel(request)
         self.assertEqual(len(result), 22)
         self.assertIn("chưa thể xếp", result.warning)
         self.assertTrue(all(item.view_count == 0 for item in result))
 
     def test_partial_douyin_scan_preserves_warning_and_never_reports_complete(self):
-        from haizflow.services.douyin_adapter import ProfileCandidates
+        from hflow.services.douyin_adapter import ProfileCandidates
 
         rows = ProfileCandidates([
             {"remote_video_id": str(index), "source_url": f"https://www.douyin.com/video/{index}",
@@ -80,7 +80,7 @@ class ChannelUrlTests(unittest.TestCase):
         progress = Mock()
         request = ChannelImportRequest(url="https://www.douyin.com/user/creator", platform="douyin",
                                        ranking="popular", limit=50, scan_scope=300, duration_filter="all")
-        with patch("haizflow.services.douyin_adapter.get_douyin_adapter", return_value=adapter):
+        with patch("hflow.services.douyin_adapter.get_douyin_adapter", return_value=adapter):
             _, _, candidates = scan_channel(request, progress_callback=progress)
         self.assertEqual(len(candidates), 22)
         self.assertIn(rows.warning, candidates.warning)
@@ -97,7 +97,7 @@ class ChannelUrlTests(unittest.TestCase):
                     source_url=f"https://www.douyin.com/video/{index}", title="Video", platform="Douyin",
                     view_count=index + 1) for index in range(count)]
             progress = Mock()
-            with self.subTest(count=count), patch("haizflow.services.channel_import._scan_douyin",
+            with self.subTest(count=count), patch("hflow.services.channel_import._scan_douyin",
                                                   return_value=("Creator", rows)):
                 _, _, result = scan_channel(request, progress_callback=progress)
                 self.assertEqual(len(result), min(count, request.limit))
@@ -148,7 +148,7 @@ class ChannelUrlTests(unittest.TestCase):
         adapter.profile_posts.return_value = ("Creator", [{"remote_video_id": "123",
             "source_url": "https://www.douyin.com/video/123", "title": "Video", "platform": "Douyin"}])
         cancel = threading.Event()
-        with patch("haizflow.services.douyin_adapter.get_douyin_adapter", return_value=adapter):
+        with patch("hflow.services.douyin_adapter.get_douyin_adapter", return_value=adapter):
             name, candidates = _scan_douyin(request, None, cancel)
         self.assertEqual(name, "Creator")
         self.assertEqual([v.remote_video_id for v in candidates], ["123"])
@@ -238,7 +238,7 @@ class ChannelUrlTests(unittest.TestCase):
             platform="TikTok",
         )
         with patch(
-            "haizflow.services.channel_import._extract_info_with_platform_retry",
+            "hflow.services.channel_import._extract_info_with_platform_retry",
             return_value={
                 "images": [{"url": "https://example.com/photo.jpg"}],
                 "formats": [{"vcodec": "h264", "ext": "mp4"}],
@@ -258,8 +258,8 @@ class ChannelUrlTests(unittest.TestCase):
         fake_ytdlp = SimpleNamespace(YoutubeDL=Mock(side_effect=[first, second]))
 
         with (
-            patch("haizflow.services.channel_import._load_yt_dlp", return_value=fake_ytdlp),
-            patch("haizflow.services.channel_import._wait_for_retry") as wait_for_retry,
+            patch("hflow.services.channel_import._load_yt_dlp", return_value=fake_ytdlp),
+            patch("hflow.services.channel_import._wait_for_retry") as wait_for_retry,
         ):
             info = _extract_info_with_platform_retry(
                 "TikTok",
@@ -282,8 +282,8 @@ class ChannelUrlTests(unittest.TestCase):
         second.__exit__ = Mock(return_value=False)
         second.extract_info.return_value = {"entries": [{"id": "123"}]}
         fake = SimpleNamespace(YoutubeDL=Mock(side_effect=[first, second]))
-        with patch("haizflow.services.channel_import._load_yt_dlp", return_value=fake), \
-             patch("haizflow.services.channel_import._wait_for_retry"):
+        with patch("hflow.services.channel_import._load_yt_dlp", return_value=fake), \
+             patch("hflow.services.channel_import._wait_for_retry"):
             info = _extract_info_with_platform_retry("TikTok", {}, "https://www.tiktok.com/@creator")
         self.assertEqual(info["entries"], [{"id": "123"}])
         self.assertEqual(fake.YoutubeDL.call_count, 2)
@@ -295,8 +295,8 @@ class ChannelUrlTests(unittest.TestCase):
         downloader.extract_info.side_effect = [RuntimeError("Failed to parse JSON: Expecting value"),
                                                {"entries": [{"id": "123"}]}]
         fake = SimpleNamespace(YoutubeDL=Mock(return_value=downloader))
-        with patch("haizflow.services.channel_import._load_yt_dlp", return_value=fake), \
-             patch("haizflow.services.channel_import._wait_for_retry") as wait:
+        with patch("hflow.services.channel_import._load_yt_dlp", return_value=fake), \
+             patch("hflow.services.channel_import._wait_for_retry") as wait:
             info = _extract_info_with_platform_retry("TikTok", {}, "https://www.tiktok.com/@creator")
         self.assertEqual(info["entries"], [{"id": "123"}])
         self.assertEqual(fake.YoutubeDL.call_count, 2)
@@ -308,8 +308,8 @@ class ChannelUrlTests(unittest.TestCase):
         request = ChannelImportRequest(url="https://www.tiktok.com/@creator", platform="tiktok", limit=2)
         payload = {"uploader": "Creator", "entries": [{"id": "123", "url":
             "https://www.tiktok.com/@creator/video/123", "title": "Video"}]}
-        with patch("haizflow.services.channel_import._extract_info_with_platform_retry", return_value=payload), \
-             patch("haizflow.services.channel_import._hydrate_candidate", side_effect=RuntimeError("HTTP Error 403")):
+        with patch("hflow.services.channel_import._extract_info_with_platform_retry", return_value=payload), \
+             patch("hflow.services.channel_import._hydrate_candidate", side_effect=RuntimeError("HTTP Error 403")):
             with self.assertRaisesRegex(RuntimeError, "403"):
                 _scan_with_ytdlp(request, "TikTok", None, threading.Event())
 
@@ -327,9 +327,9 @@ class ChannelUrlTests(unittest.TestCase):
         fake_ytdlp = SimpleNamespace(YoutubeDL=Mock(side_effect=[first, second]))
 
         with (
-            patch("haizflow.services.channel_import._load_yt_dlp", return_value=fake_ytdlp),
-            patch("haizflow.services.channel_import._wait_for_retry") as wait_for_retry,
-            patch("haizflow.services.video_download.importlib.util.find_spec", return_value=object()),
+            patch("hflow.services.channel_import._load_yt_dlp", return_value=fake_ytdlp),
+            patch("hflow.services.channel_import._wait_for_retry") as wait_for_retry,
+            patch("hflow.services.video_download.importlib.util.find_spec", return_value=object()),
         ):
             info = _extract_info_with_platform_retry(
                 "YouTube",
@@ -351,7 +351,7 @@ class ChannelUrlTests(unittest.TestCase):
         downloader.extract_info.side_effect = RuntimeError("This channel is private")
         fake_ytdlp = SimpleNamespace(YoutubeDL=Mock(return_value=downloader))
 
-        with patch("haizflow.services.channel_import._load_yt_dlp", return_value=fake_ytdlp):
+        with patch("hflow.services.channel_import._load_yt_dlp", return_value=fake_ytdlp):
             with self.assertRaisesRegex(RuntimeError, "private"):
                 _extract_info_with_platform_retry(
                     "YouTube",
@@ -405,7 +405,7 @@ class ChannelUrlTests(unittest.TestCase):
     def test_douyin_newest_scan_uses_the_requested_count(self):
         adapter = Mock()
         adapter.profile_posts.return_value = ("Creator", [])
-        with patch("haizflow.services.douyin_adapter.get_douyin_adapter", return_value=adapter):
+        with patch("hflow.services.douyin_adapter.get_douyin_adapter", return_value=adapter):
             inspect_douyin_profile({"url": "https://www.douyin.com/user/creator-id", "limit": 20})
         adapter.profile_posts.assert_called_once_with("https://www.douyin.com/user/creator-id", limit=20,
                                                       count_videos=True)
@@ -441,7 +441,7 @@ class ChannelScanTests(unittest.TestCase):
         )
 
         with patch(
-            "haizflow.services.channel_import._scan_with_ytdlp",
+            "hflow.services.channel_import._scan_with_ytdlp",
             return_value=("Creator", candidates),
         ):
             platform, channel, result = scan_channel(
@@ -470,7 +470,7 @@ class ChannelScanTests(unittest.TestCase):
         )
 
         with patch(
-            "haizflow.services.channel_import._scan_with_ytdlp",
+            "hflow.services.channel_import._scan_with_ytdlp",
             return_value=("Creator", candidates),
         ):
             _platform, _channel, result = scan_channel(
@@ -496,7 +496,7 @@ class ChannelScanTests(unittest.TestCase):
         )
 
         with patch(
-            "haizflow.services.channel_import._scan_with_ytdlp",
+            "hflow.services.channel_import._scan_with_ytdlp",
             return_value=("Creator", candidates),
         ):
             _platform, _channel, result = scan_channel(request)
@@ -519,7 +519,7 @@ class ChannelScanTests(unittest.TestCase):
         )
 
         with patch(
-            "haizflow.services.channel_import._scan_with_ytdlp",
+            "hflow.services.channel_import._scan_with_ytdlp",
             return_value=("Creator", candidates),
         ):
             _platform, _channel, result = scan_channel(request)
@@ -552,7 +552,7 @@ class ChannelScanTests(unittest.TestCase):
         )
 
         with patch(
-            "haizflow.services.channel_import._scan_with_ytdlp",
+            "hflow.services.channel_import._scan_with_ytdlp",
             return_value=("Artist", candidates),
         ):
             _platform, _channel, result = scan_channel(request)
@@ -593,7 +593,7 @@ class ChannelScanTests(unittest.TestCase):
             duration_filter="long",
         )
         fake_ytdlp = type("FakeYtDlp", (), {"YoutubeDL": FakeDownloader})
-        with patch("haizflow.services.channel_import._load_yt_dlp", return_value=fake_ytdlp):
+        with patch("hflow.services.channel_import._load_yt_dlp", return_value=fake_ytdlp):
             _channel, candidates = _scan_with_ytdlp(request, "YouTube", None, threading.Event())
 
         self.assertEqual(requested_urls, [("https://www.youtube.com/@artist/videos", False)])
@@ -642,8 +642,8 @@ class ChannelScanTests(unittest.TestCase):
         )
         fake_ytdlp = type("FakeYtDlp", (), {"YoutubeDL": FakeDownloader})
         with (
-            patch("haizflow.services.channel_import._load_yt_dlp", return_value=fake_ytdlp),
-            patch("haizflow.services.channel_import._needs_hydration", return_value=False),
+            patch("hflow.services.channel_import._load_yt_dlp", return_value=fake_ytdlp),
+            patch("hflow.services.channel_import._needs_hydration", return_value=False),
         ):
             _channel, candidates = _scan_with_ytdlp(request, "TikTok", None, threading.Event())
 
@@ -679,11 +679,11 @@ class ChannelScanTests(unittest.TestCase):
         try:
             with (
                 patch(
-                    "haizflow.services.channel_import._extract_info_with_platform_retry",
+                    "hflow.services.channel_import._extract_info_with_platform_retry",
                     return_value=playlist,
                 ),
                 patch(
-                    "haizflow.services.channel_import._hydrate_candidate",
+                    "hflow.services.channel_import._hydrate_candidate",
                     side_effect=blocked_hydration,
                 ),
             ):

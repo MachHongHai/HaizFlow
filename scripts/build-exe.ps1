@@ -16,15 +16,15 @@ $Root = Split-Path -Parent $PSScriptRoot
 $Python = if ($PythonExecutable) { [System.IO.Path]::GetFullPath($PythonExecutable) } else { Join-Path $Root ".venv\Scripts\python.exe" }
 $BuildEnvironment = Split-Path -Parent (Split-Path -Parent $Python)
 $DistRoot = [System.IO.Path]::GetFullPath((Join-Path $Root "dist"))
-$ArtifactName = if ($CoreLayout) { "HaizFlowCore" } else { "HaizFlow" }
+$ArtifactName = if ($CoreLayout) { "HFlowCore" } else { "HFlow" }
 $ArtifactPath = [System.IO.Path]::GetFullPath((Join-Path $DistRoot $ArtifactName))
 $PyInstallerRoot = [System.IO.Path]::GetFullPath((Join-Path $Root "build\pyinstaller"))
 $PyInstallerWorkPath = Join-Path $PyInstallerRoot "work"
 $PyInstallerSpecPath = Join-Path $PyInstallerRoot "spec"
 $PyInstallerConfigPath = [System.IO.Path]::GetFullPath((Join-Path $Root "build\pyinstaller-config"))
 $BuildMetadataPath = [System.IO.Path]::GetFullPath((Join-Path $Root "build\release-metadata"))
-$IconPath = Join-Path $Root "src\haizflow\desktop\assets\branding\haizflow.ico"
-$VersionResourcePath = Join-Path $BuildMetadataPath "HaizFlow-version.txt"
+$IconPath = Join-Path $Root "src\hflow\desktop\assets\branding\hflow.ico"
+$VersionResourcePath = Join-Path $BuildMetadataPath "HFlow-version.txt"
 $CompliancePath = [System.IO.Path]::GetFullPath((Join-Path $Root "build\release-compliance"))
 $FfmpegCompliancePath = [System.IO.Path]::GetFullPath((Join-Path $Root "runtime\compliance\ffmpeg"))
 $FfmpegManifestPath = [System.IO.Path]::GetFullPath((Join-Path $Root "runtime\ffmpeg-manifest.json"))
@@ -177,7 +177,7 @@ $ArgsList = @(
   "--icon", $IconPath,
   "--version-file", $VersionResourcePath,
   "--paths", (Join-Path $Root "src"),
-  (Join-Path $Root "haizflow_desktop.py")
+  (Join-Path $Root "hflow_desktop.py")
 )
 
 $ExcludedModules = @(
@@ -241,38 +241,38 @@ if (Test-Path $BinPath) {
   $ArgsList += @("--add-data", "$BinPath;bin")
 }
 
-$QmlPath = Join-Path $Root "src\haizflow\desktop\qml"
+$QmlPath = Join-Path $Root "src\hflow\desktop\qml"
 if (Test-Path $QmlPath) {
-  $ArgsList += @("--add-data", "$QmlPath;haizflow\desktop\qml")
+  $ArgsList += @("--add-data", "$QmlPath;hflow\desktop\qml")
 }
 
-$TranslationsPath = Join-Path $Root "src\haizflow\desktop\translations"
-$EnglishCatalogPath = Join-Path $TranslationsPath "haizflow_en.qm"
+$TranslationsPath = Join-Path $Root "src\hflow\desktop\translations"
+$EnglishCatalogPath = Join-Path $TranslationsPath "hflow_en.qm"
 if (!(Test-Path -LiteralPath $EnglishCatalogPath -PathType Leaf)) {
   throw "Translation catalog is missing: $EnglishCatalogPath"
 }
-$ArgsList += @("--add-data", "$TranslationsPath;haizflow\desktop\translations")
+$ArgsList += @("--add-data", "$TranslationsPath;hflow\desktop\translations")
 
-$BrandingAssetsPath = Join-Path $Root "src\haizflow\desktop\assets\branding"
-foreach ($BrandingAsset in ("haizflow-mark.png", "haizflow.ico")) {
+$BrandingAssetsPath = Join-Path $Root "src\hflow\desktop\assets\branding"
+foreach ($BrandingAsset in ("hflow-mark.png", "hflow.ico")) {
   $BrandingAssetPath = Join-Path $BrandingAssetsPath $BrandingAsset
   if (!(Test-Path -LiteralPath $BrandingAssetPath -PathType Leaf)) {
     throw "Branding asset is missing: $BrandingAssetPath"
   }
-  $ArgsList += @("--add-data", "$BrandingAssetPath;haizflow\desktop\assets\branding")
+  $ArgsList += @("--add-data", "$BrandingAssetPath;hflow\desktop\assets\branding")
 }
 
-$VoiceSamplesPath = Join-Path $Root "src\haizflow\desktop\assets\voice_samples"
+$VoiceSamplesPath = Join-Path $Root "src\hflow\desktop\assets\voice_samples"
 if (Test-Path -LiteralPath $VoiceSamplesPath -PathType Container) {
-  $ArgsList += @("--add-data", "$VoiceSamplesPath;haizflow\desktop\assets\voice_samples")
+  $ArgsList += @("--add-data", "$VoiceSamplesPath;hflow\desktop\assets\voice_samples")
 }
 
-$SubtitleFontsPath = Join-Path $Root "src\haizflow\assets\fonts"
+$SubtitleFontsPath = Join-Path $Root "src\hflow\assets\fonts"
 $SubtitleFontPath = Join-Path $SubtitleFontsPath "Bangers-Regular.ttf"
 if (!(Test-Path -LiteralPath $SubtitleFontPath -PathType Leaf)) {
   throw "Subtitle font is missing: $SubtitleFontPath"
 }
-$ArgsList += @("--add-data", "$SubtitleFontsPath;haizflow\assets\fonts")
+$ArgsList += @("--add-data", "$SubtitleFontsPath;hflow\assets\fonts")
 
 $ArgsList += @("--collect-all", "yt_dlp")
 $ArgsList += @("--collect-data", "certifi")
@@ -287,11 +287,11 @@ Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "prepare-bundled-voic
   $BundledVoiceProfileFile = Join-Path $BundledModelsPath "ecapa_voice_profile_q8.onnx"
   $ArgsList += @("--add-data", "$BundledVoiceProfileFile;models\speaker-identification")
 $ArgsList += @("--collect-binaries", "onnxruntime")
-$ArgsList += @("--hidden-import", "onnxruntime", "--hidden-import", "haizflow.engine.main")
-$ArgsList += @("--hidden-import", "haizflow.pipeline.speaker_identity", "--hidden-import", "haizflow.pipeline.speaker_runtime")
-$ArgsList += @("--hidden-import", "haizflow.pipeline.omnivoice_tts")
-$ArgsList += @("--hidden-import", "haizflow.services.douyin_channel_worker")
-$ArgsList += @("--hidden-import", "haizflow.vendor.douyin_abogus", "--hidden-import", "haizflow.vendor.douyin_sm3")
+$ArgsList += @("--hidden-import", "onnxruntime", "--hidden-import", "hflow.engine.main")
+$ArgsList += @("--hidden-import", "hflow.pipeline.speaker_identity", "--hidden-import", "hflow.pipeline.speaker_runtime")
+$ArgsList += @("--hidden-import", "hflow.pipeline.omnivoice_tts")
+$ArgsList += @("--hidden-import", "hflow.services.douyin_channel_worker")
+$ArgsList += @("--hidden-import", "hflow.vendor.douyin_abogus", "--hidden-import", "hflow.vendor.douyin_sm3")
 $ArgsList += @("--add-data", "$ResourcePackManifestPath;.")
 
 $PythonBase = (& $Python -c "import sys; print(sys.base_prefix)").Trim()
@@ -322,7 +322,7 @@ if (!(Test-Path -LiteralPath (Join-Path $ArtifactPath "$ArtifactName.exe") -Path
 }
 
 # PyInstaller's generic QtQml hook copies every QML module installed beside
-# PySide, including WebEngine, Quick3D and charting stacks that HaizFlow never
+# PySide, including WebEngine, Quick3D and charting stacks that HFlow never
 # imports. Prune only the explicitly unsupported modules before measuring or
 # signing the immutable Core artifact. The frozen smoke test below catches an
 # accidental dependency on anything in this allowlist-based removal.

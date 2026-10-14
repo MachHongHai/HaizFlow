@@ -43,7 +43,7 @@ def main(argv=None) -> int:
 
     temporary_root = ROOT / "build" / "ffmpeg-regression"
     temporary_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="haizflow-ffmpeg-", dir=temporary_root) as temporary:
+    with tempfile.TemporaryDirectory(prefix="hflow-ffmpeg-", dir=temporary_root) as temporary:
         work = Path(temporary)
         source = work / "source.mp4"
         voice = work / "voice.wav"
@@ -56,7 +56,7 @@ def main(argv=None) -> int:
             "Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
             "Style: Default,Bangers,28,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,20,1\n"
             "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
-            "Dialogue: 0,0:00:00.20,0:00:01.50,Default,,0,0,0,,HaizFlow FFmpeg test\n",
+            "Dialogue: 0,0:00:00.20,0:00:01.50,Default,,0,0,0,,HFlow FFmpeg test\n",
             encoding="utf-8",
         )
 
@@ -78,7 +78,7 @@ def main(argv=None) -> int:
         if not any(stream.get("codec_name") == "mp3" for stream in mp3.get("streams", [])):
             raise RuntimeError("Narration MP3 encoding failed.")
         ass_path = subtitle.as_posix().replace(":", r"\:").replace("'", r"\'")
-        fonts_path = (ROOT / "src/haizflow/assets/fonts").as_posix().replace(":", r"\:")
+        fonts_path = (ROOT / "src/hflow/assets/fonts").as_posix().replace(":", r"\:")
         _run(
             str(FFMPEG), "-y", "-v", "error", "-i", str(source), "-i", str(voice),
             "-filter_complex", f"[0:a][1:a]amix=inputs=2:duration=first[a];[0:v]ass='{ass_path}':fontsdir='{fonts_path}'[v]",
@@ -102,9 +102,9 @@ def main(argv=None) -> int:
         # Exercise production features that a minimal replacement can omit.
         _run(str(FFMPEG), "-v", "error", "-i", str(source), "-vn",
              "-af", "rubberband=tempo=1.1", "-f", "null", "-")
-        font_file = (ROOT / "src/haizflow/assets/fonts/Bangers-Regular.ttf").as_posix().replace(":", r"\:")
+        font_file = (ROOT / "src/hflow/assets/fonts/Bangers-Regular.ttf").as_posix().replace(":", r"\:")
         _run(str(FFMPEG), "-v", "error", "-i", str(source), "-an",
-             "-vf", f"gblur=sigma=2,drawtext=fontfile='{font_file}':text='HaizFlow':fontsize=24",
+             "-vf", f"gblur=sigma=2,drawtext=fontfile='{font_file}':text='HFlow':fontsize=24",
              "-f", "null", "-")
         # Modern downloaded video can be AV1 even on CPU-only computers.
         # This tiny synthetic fixture requires no network or user media.

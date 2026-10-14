@@ -7,12 +7,12 @@ from unittest.mock import Mock
 import pytest
 import srt
 
-from haizflow.desktop.project_commands_controller import ProjectCommandsController
-from haizflow.pipeline import manual_tools
-from haizflow.pipeline.process_video import foreground_capability
-from haizflow.schemas.editor import EditorDocument, EditorSequence, SourceEditDecision
-from haizflow.schemas.video import VideoConfig, VideoInfo
-from haizflow.services import editor_documents, manual_artifacts, subtitle_export, subtitle_import, video_store
+from hflow.desktop.project_commands_controller import ProjectCommandsController
+from hflow.pipeline import manual_tools
+from hflow.pipeline.process_video import foreground_capability
+from hflow.schemas.editor import EditorDocument, EditorSequence, SourceEditDecision
+from hflow.schemas.video import VideoConfig, VideoInfo
+from hflow.services import editor_documents, manual_artifacts, subtitle_export, subtitle_import, video_store
 
 SRT = "1\n00:00:01,234 --> 00:00:02,345\nHello world\nSecond line\n\n2\n00:00:03,000 --> 00:00:04,999\n你好\n"
 
@@ -94,8 +94,8 @@ def test_imported_translation_never_calls_whisper_or_demucs_and_reuses_timestamp
     monkeypatch.setattr(manual_tools, "transcribe", Mock(side_effect=AssertionError("Whisper must not run")))
     monkeypatch.setattr(manual_tools, "separate_audio", Mock(side_effect=AssertionError("Demucs must not run")))
     monkeypatch.setattr(manual_tools, "_release_recognition_runtime", Mock())
-    monkeypatch.setattr("haizflow.pipeline.omnivoice_tts.clear_runtime", Mock())
-    monkeypatch.setattr("haizflow.services.external_engine.shared_external_engine_pool", lambda: SimpleNamespace(release=Mock()))
+    monkeypatch.setattr("hflow.pipeline.omnivoice_tts.clear_runtime", Mock())
+    monkeypatch.setattr("hflow.services.external_engine.shared_external_engine_pool", lambda: SimpleNamespace(release=Mock()))
     captured = []
 
     def translate(source, target, *_args, **kwargs):
@@ -185,7 +185,7 @@ def test_import_busy_or_picker_cancel_leaves_project_unchanged(project, monkeypa
     video, path = project
     host = SimpleNamespace(isProcessing=True, appAlertRequested=SimpleNamespace(emit=Mock()), _selected_video=Mock())
     picker = Mock(return_value=("", ""))
-    monkeypatch.setattr("haizflow.desktop.project_commands_controller.QFileDialog.getOpenFileName", picker)
+    monkeypatch.setattr("hflow.desktop.project_commands_controller.QFileDialog.getOpenFileName", picker)
     controller = ProjectCommandsController(host)
     assert not controller.import_selected_srt()
     host._selected_video.assert_not_called()
@@ -198,7 +198,7 @@ def test_import_busy_or_picker_cancel_leaves_project_unchanged(project, monkeypa
 
 
 def test_manual_preflight_needs_translation_pack_but_not_whisper_pack(project, monkeypatch):
-    from haizflow.desktop.qml_controller import HaizFlowController
+    from hflow.desktop.qml_controller import HFlowController
 
     video, path = project
     subtitle_import.import_srt(video.video_id, str(path))
@@ -210,7 +210,7 @@ def test_manual_preflight_needs_translation_pack_but_not_whisper_pack(project, m
     host = SimpleNamespace(_selected_video=lambda: video, _project_type="manual",
         _settings_processing_device="cpu", _settings_language="vi", appAlertRequested=Mock(),
         _resource_packs=SimpleNamespace(manager=manager, _hardware_compatibility=lambda _pack: (True, "")))
-    assert not HaizFlowController.runManualTool(host, "translation")
+    assert not HFlowController.runManualTool(host, "translation")
     assert [call.args[0] for call in manager.required_packs.call_args_list] == ["translation"]
     host.appAlertRequested.emit.assert_called_once()
 
@@ -236,7 +236,7 @@ def test_translation_publication_detaches_old_voice_and_keeps_ocr_music_and_orig
 
 
 def test_actual_source_replacement_clears_import_and_does_not_reuse_its_cues(tmp_path, monkeypatch):
-    from haizflow.services import project_store
+    from hflow.services import project_store
 
     monkeypatch.setattr(project_store, "PROJECT_INDEX_PATH", str(tmp_path / "projects.json"))
     monkeypatch.setattr(video_store, "LEGACY_VIDEO_WORKSPACES_DIR", str(tmp_path / "legacy"))
@@ -384,7 +384,7 @@ def test_import_maps_source_cues_through_current_cuts(project):
 
 @pytest.mark.parametrize("cancel,busy,stale", [(True, False, False), (False, True, False), (False, False, True), (False, False, False)])
 def test_remove_controller_confirms_guards_and_refreshes(project, monkeypatch, cancel, busy, stale):
-    from haizflow.desktop.localization import QMessageBox
+    from hflow.desktop.localization import QMessageBox
     video, path = project
     subtitle_import.import_srt(video.video_id, str(path))
     host = SimpleNamespace(isProcessing=busy, _selected_video=lambda: video,
@@ -417,10 +417,10 @@ def test_remove_never_deletes_external_or_other_project_files(project):
 
 
 def test_remove_action_workspace_order_and_not_a_pipeline_stage():
-    qml = Path("src/haizflow/desktop/qml/ManualWorkspace.qml").read_text(encoding="utf-8")
+    qml = Path("src/hflow/desktop/qml/ManualWorkspace.qml").read_text(encoding="utf-8")
     assert qml.index('label: qsTr("Nhập SRT")') < qml.index('label: qsTr("Xóa SRT")') < qml.index('label: qsTr("Xuất SRT")')
     assert 'else if (index === 10)' in qml and 'AppController.removeSelectedSrt(AppController.selectedVideoId)' in qml
-    assert 'qsTr("Xóa SRT")' not in Path("src/haizflow/desktop/qml/SrtImportDialog.qml").read_text(encoding="utf-8")
+    assert 'qsTr("Xóa SRT")' not in Path("src/hflow/desktop/qml/SrtImportDialog.qml").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("provider,fallback", [("vieneu", "omnivoice"), ("vieneu-gpu", "omnivoice-gpu")])

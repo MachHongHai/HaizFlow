@@ -1,0 +1,223 @@
+import os
+import json
+import sys
+from pathlib import Path
+
+APP_NAME = "HFlow"
+
+
+def is_frozen() -> bool:
+    return bool(getattr(sys, "frozen", False))
+
+
+def runtime_overrides_allowed() -> bool:
+    """Whether test/source runs may redirect HFlow-owned runtime paths.
+
+    A released executable is portable: the folder containing ``HFlow.exe``
+    is the only root it may use for mutable data. Inherited machine variables
+    must not redirect it back to ``C:\\Users\\...`` after a user selected a
+    different installation drive. Frozen smoke tests deliberately opt out so
+    they can use an isolated temporary directory.
+    """
+    return not is_frozen() or os.getenv("HFLOW_SMOKE_TEST") == "1"
+
+
+def bundle_root() -> Path:
+    if is_frozen():
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    return project_root()
+
+
+def package_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def source_root() -> Path:
+    return package_root().parent
+
+
+def project_root() -> Path:
+    if is_frozen():
+        return Path(sys.executable).resolve().parent
+    return source_root().parent
+
+
+def install_root() -> Path:
+    """Directory selected for the application installation.
+
+    Source builds and frozen smoke tests may use an explicit override. A real
+    frozen release always uses the directory containing the executable, which
+    is the folder selected in the installer.
+    """
+    override = os.getenv("HFLOW_INSTALL_ROOT")
+    if override and runtime_overrides_allowed():
+        return Path(override).expanduser().resolve()
+    if is_frozen():
+        core = Path(sys.executable).absolute().parent
+        if Path(sys.executable).name == "HFlowEngine.exe" and not runtime_overrides_allowed():
+            # Optional engines may live on a different resource drive. Core
+            # explicitly supplies its provisioned app root; never infer mutable
+            # data from the immutable engine executable directory.
+            value = os.getenv("HFLOW_ENGINE_APP_ROOT", "")
+            root = Path(value)
+            if not value or not root.is_absolute() or str(root).startswith("\\\\"):
+                raise ValueError("Hãy chạy bộ xử lý từ HFlow, không mở EXE của gói tài nguyên trực tiếp.")
+            from hflow.update.state import Layout
+
+            return Layout(root).root
+        # Infer from the executable, never trust an inherited install-root
+        # environment variable. Provisioning marker and no-reparse checks are
+        # required before using the persistent root.
+        if core.parent.name == "versions" and Path(sys.executable).name == "HFlowCore.exe":
+            from hflow.update.filesystem import version
+            from hflow.update.state import Layout
+            version(core.name)
+            return Layout(core.parent.parent).root
+    return project_root()
+
+
+def core_root() -> Path:
+    return project_root()
+
+
+def engine_environment() -> dict[str, str]:
+    """Give child engines the actual Core installation, not machine overrides."""
+    environment = os.environ.copy()
+    if is_frozen() and not runtime_overrides_allowed():
+        root = install_root()
+        for name in ("HFLOW_HOME", "APP_DATA_DIR", "RUNTIME_DATA_DIR", "MODELS_DIR",
+                     "HFLOW_INSTALL_ROOT", "HFLOW_RESOURCE_ROOT", "HFLOW_SMOKE_TEST"):
+            environment.pop(name, None)
+        environment["HFLOW_ENGINE_APP_ROOT"] = str(root)
+    return environment
+
+
+def update_state_dir() -> Path:
+    return install_root() / "update-state"
+
+
+def app_data_dir() -> Path:
+    if not runtime_overrides_allowed():
+        return install_root() / "runtime"
+    override = os.getenv("HFLOW_HOME") or os.getenv("APP_DATA_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
+    # Portable-by-default layout: installer location determines where every
+    # HFlow-owned mutable file is written. This also prevents silent writes
+    # to the Windows system drive when the user installs on another drive.
+    return install_root() / "runtime"
+
+
+def runtime_data_dir() -> Path:
+    """Durable app data: settings, diagnostics, logs, and the project index."""
+    if not runtime_overrides_allowed():
+        return app_data_dir() / "data"
+    override = os.getenv("RUNTIME_DATA_DIR")
+    if override:
+        path = Path(override).expanduser()
+        candidate = path.resolve() if path.is_absolute() else (app_data_dir() / path).resolve()
+        home_override = os.getenv("HFLOW_HOME")
+        if (
+            home_override
+            and os.getenv("HFLOW_SMOKE_TEST") != "1"
+            and not candidate.is_relative_to(Path(home_override).expanduser().resolve())
+        ):
+            return app_data_dir() / "data"
+        return candidate
+    return app_data_dir() / "data"
+
+
+def legacy_runtime_data_dir() -> Path:
+    """Source-mode data directory used by versions before offline storage separation."""
+    return project_root() / "data"
+
+
+def models_dir() -> Path:
+    override = os.getenv("MODELS_DIR")
+    if override and runtime_overrides_allowed():
+        path = Path(override).expanduser()
+        candidate = path.resolve() if path.is_absolute() else (app_data_dir() / path).resolve()
+        home_override = os.getenv("HFLOW_HOME")
+        if home_override and not candidate.is_relative_to(Path(home_override).expanduser().resolve()):
+            return app_data_dir() / "models"
+        return candidate
+    return resource_storage_dir() / "models"
+
+
+def resource_storage_pointer_path() -> Path:
+    return runtime_data_dir() / "resource-storage.json"
+
+
+def resource_storage_dir() -> Path:
+    """Return the local root that owns optional engines and model packs.
+
+    The pointer lives with durable application settings, while the payload can
+    be moved to another local drive. Invalid, missing, relative, and UNC paths
+    safely fall back to the installation runtime directory.
+    """
+    override = os.getenv("HFLOW_RESOURCE_ROOT")
+    if override and runtime_overrides_allowed():
+        candidate = Path(override).expanduser()
+        if candidate.is_absolute() and not str(candidate).startswith("\\\\"):
+            return candidate.resolve()
+    try:
+        payload = json.loads(resource_storage_pointer_path().read_text(encoding="utf-8"))
+        candidate = Path(str(payload.get("path") or "")).expanduser()
+        if candidate.is_absolute() and not str(candidate).startswith("\\\\"):
+            return candidate.resolve()
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        pass
+    return app_data_dir()
+
+
+def engines_dir() -> Path:
+    return resource_storage_dir() / "engines"
+
+
+def resource_packages_dir() -> Path:
+    return resource_storage_dir() / "packages"
+
+
+def storage_dir() -> Path:
+    """Legacy pre-project-first video workspace location, retained for migration."""
+    # Historical releases called processing records "jobs" and stored them in
+    # this directory. The literal path must remain readable until migration.
+    return runtime_data_dir() / "jobs"
+
+
+def cache_dir() -> Path:
+    # Caches are disposable runtime state, not user/project data. Keep them as
+    # a sibling of ``data`` and ``models`` so a frozen install has one clear,
+    # portable layout:
+    #
+    #   <install>/runtime/{data,models,cache,tmp}
+    #
+    # Source deployments that explicitly override RUNTIME_DATA_DIR retain the
+    # old location for compatibility with their existing development cache.
+    if os.getenv("RUNTIME_DATA_DIR") and runtime_overrides_allowed():
+        return runtime_data_dir() / "cache"
+    return app_data_dir() / "cache"
+
+
+def logs_dir() -> Path:
+    return runtime_data_dir() / "logs"
+
+
+def bin_dir() -> Path:
+    if not runtime_overrides_allowed():
+        # Bundled binaries are immutable release payload, beside the selected
+        # installation directory. Do not prefer a machine-wide BIN_DIR value.
+        return (bundle_root() / "bin").resolve()
+    override = os.getenv("BIN_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
+
+    candidates = [
+        project_root() / "runtime" / "bin",
+        project_root() / "bin",
+        bundle_root() / "bin",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.resolve()
+    return candidates[0].resolve()

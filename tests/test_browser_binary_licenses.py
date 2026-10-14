@@ -32,7 +32,7 @@ def test_packaging_retains_notices_and_excludes_browser_binaries():
 
 
 def test_backend_uses_explicit_pack_and_locked_driver():
-    backend = (ROOT / "src/haizflow/services/douyin_browser.py").read_text(encoding="utf-8")
+    backend = (ROOT / "src/hflow/services/douyin_browser.py").read_text(encoding="utf-8")
     project = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert "cloakbrowser" not in backend.lower()
     assert "cloakbrowser" not in project.lower()

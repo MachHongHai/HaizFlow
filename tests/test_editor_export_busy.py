@@ -11,9 +11,9 @@ from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QSignalSpy, QTest
 
-from haizflow.desktop.qml_controller import HaizFlowController
+from hflow.desktop.qml_controller import HFlowController
 
-QML_DIR = Path(__file__).parents[1] / "src/haizflow/desktop/qml"
+QML_DIR = Path(__file__).parents[1] / "src/hflow/desktop/qml"
 
 
 @pytest.mark.parametrize("has_video,processing,queued,exporting,expected", [
@@ -29,7 +29,7 @@ def test_backend_does_not_open_export_dialog_during_processing(has_video, proces
     host = SimpleNamespace(hasSelectedVideo=has_video, videoExportBusy=exporting,
                            isSelectedVideoProcessing=processing, isSelectedVideoQueued=queued,
                            videoExportRequested=signal)
-    HaizFlowController.requestVideoExport(host)
+    HFlowController.requestVideoExport(host)
     assert signal.emit.call_count == int(expected)
 
 
@@ -108,7 +108,7 @@ def test_export_opens_dialog_without_replacing_the_current_editor_panel():
 def test_progress_request_only_opens_existing_export_without_starting_another(busy):
     host = SimpleNamespace(videoExportBusy=busy, videoExportProgressRequested=Mock(),
                            videoExportRequested=Mock(), videoExportStarted=Mock())
-    HaizFlowController.requestVideoExportProgress(host)
+    HFlowController.requestVideoExportProgress(host)
     assert host.videoExportProgressRequested.emit.call_count == int(busy)
     host.videoExportRequested.emit.assert_not_called()
     host.videoExportStarted.emit.assert_not_called()

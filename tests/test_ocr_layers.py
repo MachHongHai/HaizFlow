@@ -7,13 +7,13 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 
-from haizflow.desktop.manual_edit_history import AppEditHistory
-from haizflow.desktop.editor_preview_controller import EditorPreviewController
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.pipeline.render import _ordered_subtitle_removal_prefix
-from haizflow.schemas.editor import EditorDocument, EditorSequence
-from haizflow.services import editor_documents, ocr_layers, translation
-from haizflow.utils.ffmpeg import _binary
+from hflow.desktop.manual_edit_history import AppEditHistory
+from hflow.desktop.editor_preview_controller import EditorPreviewController
+from hflow.desktop.qml_controller import HFlowController
+from hflow.pipeline.render import _ordered_subtitle_removal_prefix
+from hflow.schemas.editor import EditorDocument, EditorSequence
+from hflow.services import editor_documents, ocr_layers, translation
+from hflow.utils.ffmpeg import _binary
 
 
 REGION = dict(x_percent=20, y_percent=60, width_percent=60, height_percent=20)
@@ -61,13 +61,13 @@ def host_for(value):
 
 def test_add_multiple_layers_delete_and_undo_without_removing_detected_region():
     host, history = host_for(document())
-    first = HaizFlowController.addOcrLayer(host)
-    second = HaizFlowController.addOcrLayer(host)
+    first = HFlowController.addOcrLayer(host)
+    second = HFlowController.addOcrLayer(host)
     assert first and second and first != second
     value = host._manual_editor_document.document_object
     assert [clip.name for clip in value.clips] == ["Vùng nhận diện", "Lớp che 1", "Lớp che 2"]
-    assert not HaizFlowController.removeClips(host, [ocr_layers.PRIMARY_CLIP])
-    assert HaizFlowController.removeClips(host, [first])
+    assert not HFlowController.removeClips(host, [ocr_layers.PRIMARY_CLIP])
+    assert HFlowController.removeClips(host, [first])
     assert {clip.clip_id for clip in value.clips} == {ocr_layers.PRIMARY_CLIP, second}
     assert not any(track.track_id == first for track in value.tracks)
     assert history.undo()
@@ -79,11 +79,11 @@ def test_add_multiple_layers_delete_and_undo_without_removing_detected_region():
 
 def test_layers_have_independent_geometry_modes_and_timing_and_survive_save(tmp_path):
     host, _ = host_for(document())
-    first, second = HaizFlowController.addOcrLayer(host), HaizFlowController.addOcrLayer(host)
-    assert HaizFlowController.updateOcrLayer(host, first, REGION, "patch")
-    assert HaizFlowController.setOcrLayerRange(host, first, 500, 1500)
-    assert HaizFlowController.moveClip(host, first, 700, second)
-    assert HaizFlowController.trimClip(host, first, "right", 1900)
+    first, second = HFlowController.addOcrLayer(host), HFlowController.addOcrLayer(host)
+    assert HFlowController.updateOcrLayer(host, first, REGION, "patch")
+    assert HFlowController.setOcrLayerRange(host, first, 500, 1500)
+    assert HFlowController.moveClip(host, first, 700, second)
+    assert HFlowController.trimClip(host, first, "right", 1900)
     value = host._manual_editor_document.document_object
     first_clip = editor_documents.clip_by_id(value, first)
     assert first_clip.track_id == first
@@ -101,8 +101,8 @@ def test_layers_have_independent_geometry_modes_and_timing_and_survive_save(tmp_
 
 def test_restore_primary_preserves_added_layers_and_keep_only_disables_primary():
     host, _ = host_for(document())
-    extra = HaizFlowController.addOcrLayer(host)
-    assert HaizFlowController.updateOcrLayer(host, extra, REGION, "patch")
+    extra = HFlowController.addOcrLayer(host)
+    assert HFlowController.updateOcrLayer(host, extra, REGION, "patch")
     value = host._manual_editor_document.document_object
     video = SimpleNamespace(video_id=value.video_id, project_type="manual",
         remove_original_subtitles=True, original_subtitle_removal_mode="blur",
@@ -123,12 +123,12 @@ def test_restore_primary_preserves_added_layers_and_keep_only_disables_primary()
 
 def test_invalid_regions_and_methods_do_not_mutate_document():
     host, _ = host_for(document())
-    clip_id = HaizFlowController.addOcrLayer(host)
+    clip_id = HFlowController.addOcrLayer(host)
     before = host._manual_editor_document.document_object.model_dump()
-    assert not HaizFlowController.updateOcrLayer(host, clip_id, dict(REGION, width_percent=120), "blur")
-    assert not HaizFlowController.updateOcrLayer(host, clip_id, REGION, "unknown")
-    assert not HaizFlowController.updateOcrLayer(host, ocr_layers.PRIMARY_CLIP, REGION, "blur")
-    assert not HaizFlowController.setOcrLayerRange(host, clip_id, 1000, 1020)
+    assert not HFlowController.updateOcrLayer(host, clip_id, dict(REGION, width_percent=120), "blur")
+    assert not HFlowController.updateOcrLayer(host, clip_id, REGION, "unknown")
+    assert not HFlowController.updateOcrLayer(host, ocr_layers.PRIMARY_CLIP, REGION, "blur")
+    assert not HFlowController.setOcrLayerRange(host, clip_id, 1000, 1020)
     assert host._manual_editor_document.document_object.model_dump() == before
 
 
@@ -138,7 +138,7 @@ def test_reapplying_a_moved_region_replaces_the_old_mask_and_cache_key(tmp_path,
     video = SimpleNamespace(video_id="layer-test", project_type="manual",
         remove_original_subtitles=primary, original_subtitle_removal_mode="blur",
         original_subtitle_region_override={})
-    clip_id = ocr_layers.PRIMARY_CLIP if primary else HaizFlowController.addOcrLayer(host)
+    clip_id = ocr_layers.PRIMARY_CLIP if primary else HFlowController.addOcrLayer(host)
     old = dict(x_percent=10, y_percent=10, width_percent=30, height_percent=20)
     moved = dict(old, y_percent=65)
     payloads = []
@@ -146,7 +146,7 @@ def test_reapplying_a_moved_region_replaces_the_old_mask_and_cache_key(tmp_path,
         if primary:
             video.original_subtitle_region_override = region
         else:
-            assert HaizFlowController.updateOcrLayer(host, clip_id, region, "blur")
+            assert HFlowController.updateOcrLayer(host, clip_id, region, "blur")
         with patch.object(editor_documents, "load", return_value=host._manual_editor_document.document_object):
             payloads.append(ocr_layers.render_region(video, old))
     for payload, region in zip(payloads, [old, moved], strict=True):
@@ -186,16 +186,16 @@ def test_reapplying_a_moved_region_replaces_the_old_mask_and_cache_key(tmp_path,
 
 def test_queued_video_blocks_all_ocr_layer_edits():
     host, _ = host_for(document())
-    clip_id = HaizFlowController.addOcrLayer(host)
+    clip_id = HFlowController.addOcrLayer(host)
     host._processing_queue.contains.return_value = True
     before = host._manual_editor_document.document_object.model_dump()
-    assert not HaizFlowController.addOcrLayer(host)
-    assert not HaizFlowController.updateOcrLayer(host, clip_id, REGION, "patch")
-    assert not HaizFlowController.setOcrLayerRange(host, clip_id, 500, 1500)
-    assert not HaizFlowController.moveClip(host, clip_id, 500)
-    assert not HaizFlowController.trimClip(host, clip_id, "right", 1000)
-    assert not HaizFlowController.removeClips(host, [clip_id])
-    assert not HaizFlowController.setTrackState(host, clip_id, "visible", False)
+    assert not HFlowController.addOcrLayer(host)
+    assert not HFlowController.updateOcrLayer(host, clip_id, REGION, "patch")
+    assert not HFlowController.setOcrLayerRange(host, clip_id, 500, 1500)
+    assert not HFlowController.moveClip(host, clip_id, 500)
+    assert not HFlowController.trimClip(host, clip_id, "right", 1000)
+    assert not HFlowController.removeClips(host, [clip_id])
+    assert not HFlowController.setTrackState(host, clip_id, "visible", False)
     assert host._manual_editor_document.document_object.model_dump() == before
 
 
@@ -275,12 +275,12 @@ def test_auto_blocks_corrupt_text_without_overwriting_previous_output(tmp_path):
 def test_layer_order_commands_are_not_exposed_in_ui():
     from pathlib import Path
 
-    directory = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml"
+    directory = Path(__file__).resolve().parents[1] / "src/hflow/desktop/qml"
     for filename in ("OcrLayerList.qml", "SubtitleTimeline.qml", "TrackHeader.qml", "ManualWorkspace.qml"):
         text = (directory / filename).read_text(encoding="utf-8")
         assert "moveOcrLayer" not in text
         assert "layerOrderRequested" not in text
-    assert not hasattr(HaizFlowController, "moveOcrLayer")
+    assert not hasattr(HFlowController, "moveOcrLayer")
 
 
 def test_new_layer_is_a_draft_until_apply_and_does_not_change_render_request():
@@ -290,11 +290,11 @@ def test_new_layer_is_a_draft_until_apply_and_does_not_change_render_request():
     host, _ = host_for(value)
     with patch.object(editor_documents, "load", return_value=value):
         before = ocr_layers.render_region(video, REGION)
-        clip_id = HaizFlowController.addOcrLayer(host)
+        clip_id = HFlowController.addOcrLayer(host)
         assert ocr_layers.render_region(video, REGION) == before
         row = next(layer for layer in ocr_layers.layers(video, value, REGION) if layer["clip_id"] == clip_id)
         assert row["pending"] and not row["enabled"]
-        assert HaizFlowController.updateOcrLayer(host, clip_id, row["region"], row["mode"])
+        assert HFlowController.updateOcrLayer(host, clip_id, row["region"], row["mode"])
         assert ocr_layers.render_region(video, REGION) != before
         row = next(layer for layer in ocr_layers.layers(video, value, REGION) if layer["clip_id"] == clip_id)
         assert not row["pending"] and row["enabled"]
@@ -303,15 +303,15 @@ def test_new_layer_is_a_draft_until_apply_and_does_not_change_render_request():
 def test_layer_timing_cannot_extend_sequence_or_shift_audio_clock():
     value = document()
     host, _ = host_for(value)
-    clip_id = HaizFlowController.addOcrLayer(host)
-    assert HaizFlowController.setOcrLayerRange(host, clip_id, 500, 1500)
-    assert not HaizFlowController.setOcrLayerRange(host, clip_id, 500, 5000)
-    assert HaizFlowController.moveClip(host, clip_id, 3500)
+    clip_id = HFlowController.addOcrLayer(host)
+    assert HFlowController.setOcrLayerRange(host, clip_id, 500, 1500)
+    assert not HFlowController.setOcrLayerRange(host, clip_id, 500, 5000)
+    assert HFlowController.moveClip(host, clip_id, 3500)
     clip = editor_documents.clip_by_id(value, clip_id)
     assert (clip.start_ms, clip.duration_ms) == (3000, 1000)
-    assert HaizFlowController.trimClip(host, clip_id, "left", 1000)
+    assert HFlowController.trimClip(host, clip_id, "left", 1000)
     assert clip.start_ms == 1000
-    assert not HaizFlowController.trimClip(host, clip_id, "right", 6000)
+    assert not HFlowController.trimClip(host, clip_id, "right", 6000)
     assert value.sequence.duration_ms == 4000
 
 

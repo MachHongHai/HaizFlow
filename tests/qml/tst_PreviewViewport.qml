@@ -1,7 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtTest
-import "../../src/haizflow/desktop/qml"
+import "../../src/hflow/desktop/qml"
 
 Item {
     id: root
@@ -67,7 +67,7 @@ Item {
                 backgroundDismissEnabled: false
                 anchors.fill: parent
                 videoRect: Qt.rect(0, 0, 500, 300)
-                watermarkText: qsTr("HaizFlow")
+                watermarkText: qsTr("HFlow")
                 interactive: true
                 editing: true
                 onEditingDismissed: parent.parent.dismissals++

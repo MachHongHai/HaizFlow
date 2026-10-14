@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 $DevRoot = Split-Path -Parent $PSScriptRoot
 $DevPython = Join-Path $DevRoot ".venv\Scripts\python.exe"
 if (!(Test-Path -LiteralPath $DevPython)) { throw "Project .venv is missing." }
-$DevEnvironment = & $DevPython -c "import json; from haizflow.config import _RUNTIME_ENVIRONMENT, NATIVE_WINDOWS_USERPROFILE; print(json.dumps(dict(_RUNTIME_ENVIRONMENT, HAIZFLOW_NATIVE_WINDOWS_USERPROFILE=NATIVE_WINDOWS_USERPROFILE)))"
+$DevEnvironment = & $DevPython -c "import json; from hflow.config import _RUNTIME_ENVIRONMENT, NATIVE_WINDOWS_USERPROFILE; print(json.dumps(dict(_RUNTIME_ENVIRONMENT, HFLOW_NATIVE_WINDOWS_USERPROFILE=NATIVE_WINDOWS_USERPROFILE)))"
 if ($LASTEXITCODE -ne 0) { throw "Cannot resolve development storage." }
 $DevValues = $DevEnvironment | ConvertFrom-Json
 $PreviousDevValues = @{}

@@ -5,8 +5,8 @@ from unittest.mock import patch
 import pytest
 import shutil
 
-from haizflow.pipeline import sequence_compiler as compiler
-from haizflow.utils.ffmpeg import _binary
+from hflow.pipeline import sequence_compiler as compiler
+from hflow.utils.ffmpeg import _binary
 
 
 def test_video_copy_reports_real_bytes_and_cancellation(tmp_path):
@@ -38,7 +38,7 @@ def test_encoder_stage_reports_measured_work_and_removes_monitor_file(tmp_path):
 
 
 def test_preparation_uses_busy_indicator_not_a_stalled_five_percent_label():
-    qml = (Path(__file__).parents[1] / "src/haizflow/desktop/qml/ManualToolProgress.qml").read_text(encoding="utf-8")
+    qml = (Path(__file__).parents[1] / "src/hflow/desktop/qml/ManualToolProgress.qml").read_text(encoding="utf-8")
     assert 'stepId === "manual_export_preparing"' in qml
     assert "indeterminate: !root.measured" in qml
     assert 'stepId === "manual_export_preparing" ? I18n.progressDetail(detail)' in qml

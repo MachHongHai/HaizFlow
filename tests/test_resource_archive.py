@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 import pytest
 
-from haizflow.core.resource_archive import ArchivePart, archive_matches, join_archive_parts, parse_archive_parts
-from haizflow.services.resource_packs import ResourcePackDefinition, ResourcePackManager
+from hflow.core.resource_archive import ArchivePart, archive_matches, join_archive_parts, parse_archive_parts
+from hflow.services.resource_packs import ResourcePackDefinition, ResourcePackManager
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -113,10 +113,10 @@ def test_multipart_disk_reserve_and_resumed_download_are_counted(tmp_path):
     manager = ResourcePackManager((definition,))
     (tmp_path / "engine-test-1.zip.001").write_bytes(b"12345678")
     (tmp_path / "engine-test-1.zip.002.part").write_bytes(b"abc")
-    with (patch("haizflow.services.resource_packs.resource_packages_dir", return_value=tmp_path),
+    with (patch("hflow.services.resource_packs.resource_packages_dir", return_value=tmp_path),
           patch.object(manager, "status", return_value="missing"),
           patch.object(manager, "installed_bytes", return_value=0),
-          patch("haizflow.services.resource_packs.shutil.disk_usage", return_value=SimpleNamespace(free=10**12))):
+          patch("hflow.services.resource_packs.shutil.disk_usage", return_value=SimpleNamespace(free=10**12))):
         assert manager.download_bytes("engine-test") == 5
         summary = manager.requirement_summary(("engine-test",))
     assert summary["downloadBytes"] == 5
@@ -156,11 +156,11 @@ def test_multipart_install_extracts_only_after_verification_and_reuses_zip(tmp_p
         for asset, row in zip(assets, part_index["parts"]):
             (root / asset.relative_path).write_bytes((tmp_path / "parts" / row["file"]).read_bytes())
 
-    with (patch("haizflow.services.resource_packs.resource_packages_dir", return_value=packages),
-          patch("haizflow.services.resource_packs.engines_dir", return_value=tmp_path / "engines"),
+    with (patch("hflow.services.resource_packs.resource_packages_dir", return_value=packages),
+          patch("hflow.services.resource_packs.engines_dir", return_value=tmp_path / "engines"),
           patch.object(manager, "requirement_summary", return_value=dict(freeBytes=10**12, requiredBytes=1)),
           patch.object(manager, "_verify_engine_staging") as verify,
-          patch("haizflow.services.resource_packs.install_model_assets", side_effect=fake_download) as download):
+          patch("hflow.services.resource_packs.install_model_assets", side_effect=fake_download) as download):
         manager.install("engine-test", lambda *_args: None)
         assert download.call_count == 1
         assert verify.call_count == 1
@@ -188,14 +188,14 @@ def test_engine_install_smoke_uses_isolated_writable_paths(tmp_path):
 
     def fake_run(*_args, **kwargs):
         environment = kwargs["env"]
-        path = Path(environment["HAIZFLOW_HOME"])
+        path = Path(environment["HFLOW_HOME"])
         assert path.parent == staging.parent and path != staging
-        assert environment["HAIZFLOW_SMOKE_TEST"] == "1"
+        assert environment["HFLOW_SMOKE_TEST"] == "1"
         (path / "temporary-cache").write_bytes(b"isolated")
         smoke_paths.append(path)
         return SimpleNamespace(returncode=0, communicate=lambda **_kwargs: ("", ""), poll=lambda: 0)
 
-    with patch("haizflow.services.resource_packs.subprocess.Popen", side_effect=fake_run):
+    with patch("hflow.services.resource_packs.subprocess.Popen", side_effect=fake_run):
         manager._verify_engine_staging(definition, staging)
     assert not (staging / "runtime").exists()
     assert all(not path.exists() for path in smoke_paths)
@@ -206,8 +206,8 @@ def test_engine_install_failure_preserves_previous_engine(tmp_path, failure):
     import os
     import zipfile
 
-    from haizflow.services.model_bootstrap import ModelBootstrapCancelled
-    from haizflow.services.resource_packs import ResourcePackError
+    from hflow.services.model_bootstrap import ModelBootstrapCancelled
+    from hflow.services.resource_packs import ResourcePackError
 
     packages = tmp_path / "packages"
     packages.mkdir()
@@ -235,12 +235,12 @@ def test_engine_install_failure_preserves_previous_engine(tmp_path, failure):
         return replace(source, destination)
 
     expected = {"promotion": PermissionError, "cancel": ModelBootstrapCancelled, "smoke": ResourcePackError}[failure]
-    with (patch("haizflow.services.resource_packs.resource_packages_dir", return_value=packages),
-          patch("haizflow.services.resource_packs.engines_dir", return_value=tmp_path / "engines"),
+    with (patch("hflow.services.resource_packs.resource_packages_dir", return_value=packages),
+          patch("hflow.services.resource_packs.engines_dir", return_value=tmp_path / "engines"),
           patch.object(manager, "requirement_summary", return_value=dict(freeBytes=10**12, requiredBytes=1)),
           patch.object(manager, "_verify_engine_staging", side_effect=verify),
-          patch("haizflow.services.resource_packs.install_model_assets"),
-          patch("haizflow.services.resource_packs.os.replace", side_effect=promotion)):
+          patch("hflow.services.resource_packs.install_model_assets"),
+          patch("hflow.services.resource_packs.os.replace", side_effect=promotion)):
         with pytest.raises(expected):
             manager.install("engine-test", lambda *_args: None)
         assert (target / "engine.exe").read_bytes() == b"PREVIOUS ENGINE"

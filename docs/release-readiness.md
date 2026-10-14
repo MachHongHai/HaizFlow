@@ -1,6 +1,6 @@
 # Release readiness
 
-Current owned-source license is HaizFlow Source-Available 1.0, approved by the
+Current owned-source license is HFlow Source-Available 1.0, approved by the
 owner on 2026-10-01; application/CLA/brand terms remain drafts. [Licensing review](licensing-review.md) records
 scoped technical evidence for rights scope, OmniVoice NonCommercial
 models/samples, FFmpeg source closure and Qt LGPL obligations. Run
@@ -37,7 +37,7 @@ This is the authoritative checklist for a public Windows build. A source checkou
 | 11 | Offline/privacy claims | Complete | UI and documentation distinguish local processing from model download, optional Gemini translation, URL import, and social publishing. |
 | 12 | Diagnostics | Complete | Rotating logs, build ID, Python/thread/Qt capture, redacted bounded diagnostic export excluding project media. |
 | 13 | Shutdown and recovery | Complete | Confirmation, pause/cancel, bounded worker wait, child-process containment, and interrupted-video recovery. |
-| 14 | Runtime containment | Complete | Frozen mutable data below the chosen local install root; source mode supports `HAIZFLOW_HOME`. |
+| 14 | Runtime containment | Complete | Frozen mutable data below the chosen local install root; source mode supports `HFLOW_HOME`. |
 | 15 | Source hygiene | **Release blocker until clean build** | No obsolete source/build output, documentation matches architecture, and `git status --porcelain` is empty. |
 | 16 | Vulnerability audit | Complete with controlled exceptions | Audit gate passes with only the reviewed exceptions in [dependency-security.md](dependency-security.md). |
 | 17 | Zernio publishing | Production follow-up | Real-account end-to-end validation for each platform, quotas, failure recovery, consent, and current third-party terms. |
@@ -66,7 +66,7 @@ BUILD-INFO.json
 SHA256SUMS.txt
 ```
 
-`scripts/generate-third-party-notices.py --strict` must pass. The HaizFlow source license does not override a model, font, codec, or dependency license. In particular, the OmniVoice SDK and checkpoint require separate analysis, and an upstream FFmpeg source archive alone does not prove that all corresponding-source obligations of statically linked GPL components are satisfied.
+`scripts/generate-third-party-notices.py --strict` must pass. The HFlow source license does not override a model, font, codec, or dependency license. In particular, the OmniVoice SDK and checkpoint require separate analysis, and an upstream FFmpeg source archive alone does not prove that all corresponding-source obligations of statically linked GPL components are satisfied.
 
 ## Source verification gate
 
@@ -116,7 +116,7 @@ Large AI engines/models are optional resource packs and must not be folded into 
 Build an installer only from a verified frozen artifact:
 
 ```powershell
-.\scripts\build-installer.ps1 -ArtifactPath .\dist\HaizFlow-public -UnsignedRelease
+.\scripts\build-installer.ps1 -ArtifactPath .\dist\HFlow-public -UnsignedRelease
 ```
 
 The installer must use an artifact-derived disk estimate, permit a writable local drive, reject network destinations, preserve mutable runtime data during ordinary upgrades, and delete runtime data only after a separate explicit uninstall choice. Silent uninstall retains runtime data.
@@ -128,13 +128,13 @@ Public distribution may be unsigned through the explicit `-UnsignedRelease` path
 An internal installer may be produced from explicitly engineering-provenance artifacts:
 
 ```powershell
-.\scripts\build-installer.ps1 -ArtifactPath .\dist\HaizFlow-development -AllowUnsigned -EngineeringBuild
+.\scripts\build-installer.ps1 -ArtifactPath .\dist\HFlow-development -AllowUnsigned -EngineeringBuild
 ```
 
-Internal filenames contain `DEVELOPMENT`. The public installer is named `HaizFlow-<version>-Setup.exe`; signing status is documented separately. For a public unsigned candidate, run this only on a clean VM:
+Internal filenames contain `DEVELOPMENT`. The public installer is named `HFlow-<version>-Setup.exe`; signing status is documented separately. For a public unsigned candidate, run this only on a clean VM:
 
 ```powershell
-.\scripts\test-installer.ps1 -InstallerPath .\dist\installer\HaizFlow-<version>-Setup.exe -AllowRegisteredInstall
+.\scripts\test-installer.ps1 -InstallerPath .\dist\installer\HFlow-<version>-Setup.exe -AllowRegisteredInstall
 ```
 
 ## Windows acceptance matrix

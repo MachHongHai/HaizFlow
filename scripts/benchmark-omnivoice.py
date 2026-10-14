@@ -22,8 +22,8 @@ def main() -> int:
     parser.add_argument("--pipeline", action="store_true", help="Also verify production batching and model-release/reload timings.")
     parser.add_argument("--gpu-limit-gib", type=float, help="Cap the PyTorch CUDA allocator for a low-VRAM smoke test.")
     args = parser.parse_args()
-    from haizflow.config import MODELS_DIR
-    from haizflow.pipeline.omnivoice_tts import _encode_voice_reference, _prepare_isolated_runtime, _preset_reference, _worker_environment
+    from hflow.config import MODELS_DIR
+    from hflow.pipeline.omnivoice_tts import _encode_voice_reference, _prepare_isolated_runtime, _preset_reference, _worker_environment
 
     os.environ.update(_worker_environment())
     sdk = _prepare_isolated_runtime()
@@ -132,7 +132,7 @@ def main() -> int:
             save()
         print(json.dumps(report["results"][-1]), flush=True)
     if args.pipeline:
-        from haizflow.pipeline.omnivoice_tts import _worker_main
+        from hflow.pipeline.omnivoice_tts import _worker_main
 
         output_root = args.report.with_suffix("")
         output_root.mkdir(parents=True, exist_ok=True)

@@ -10,8 +10,8 @@ from unittest.mock import Mock, patch
 import pytest
 from PySide6.QtCore import QUrl
 
-from haizflow.desktop.editor_preview_controller import EditorPreviewController
-from haizflow.schemas.video import CropSettings
+from hflow.desktop.editor_preview_controller import EditorPreviewController
+from hflow.schemas.video import CropSettings
 
 
 def fingerprint(settings):
@@ -68,7 +68,7 @@ def test_old_full_source_primary_ocr_hydrates_after_each_app_restart_without_wor
     before = {path.relative_to(tmp_path): path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
     for _restart in range(2):
         controller = EditorPreviewController(SimpleNamespace())
-        with patch("haizflow.desktop.editor_preview_controller.get_video_duration",
+        with patch("hflow.desktop.editor_preview_controller.get_video_duration",
                    side_effect=AssertionError("No probe or render on migration hit")):
             controller._restore_manual_disk_cache(tmp_path, fingerprint(new), new)
         completed = controller._completed_requests[fingerprint(new)]
@@ -135,8 +135,8 @@ def test_incomplete_legacy_cache_is_not_published(tmp_path, problem):
 
 
 def test_reopening_legacy_project_completes_request_without_progress_or_worker(tmp_path):
-    from haizflow.schemas.editor import EditorDocument, EditorSequence
-    from haizflow.services import editor_documents, manual_artifacts, ocr_layers, video_store
+    from hflow.schemas.editor import EditorDocument, EditorSequence
+    from hflow.services import editor_documents, manual_artifacts, ocr_layers, video_store
 
     old, _ = old_and_layered_settings()
     source = tmp_path / "source.mp4"
@@ -163,7 +163,7 @@ def test_reopening_legacy_project_completes_request_without_progress_or_worker(t
               patch.object(EditorPreviewController, "_ocr_region", return_value=old["ocr_region"]),
               patch.object(EditorPreviewController, "_source_subtitle_intervals",
                            return_value=old["original_subtitle_intervals"]),
-              patch("haizflow.desktop.editor_preview_controller.threading.Thread") as worker):
+              patch("hflow.desktop.editor_preview_controller.threading.Thread") as worker):
             assert controller.request("[]", 10)
             assert controller.request("[]", 100, cache_only=True)
             worker.assert_not_called()

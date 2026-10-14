@@ -6,8 +6,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.services import social_channel as social
-from haizflow.services.video_download import DownloadCancelled
+from hflow.services import social_channel as social
+from hflow.services.video_download import DownloadCancelled
 
 
 def response(body, url="https://www.instagram.com/api/v1/", status=200):

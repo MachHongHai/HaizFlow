@@ -13,7 +13,7 @@ from PySide6.QtTest import QTest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-QML_DIR = ROOT / "src" / "haizflow" / "desktop" / "qml"
+QML_DIR = ROOT / "src" / "hflow" / "desktop" / "qml"
 
 
 class QmlMenuTests(unittest.TestCase):
@@ -243,7 +243,7 @@ class QmlMenuTests(unittest.TestCase):
             self.app.processEvents()
 
     def test_home_search_loses_focus_outside_without_swallowing_buttons(self):
-        from haizflow.desktop.models import ProjectBrowserProxyModel, ProjectListModel
+        from hflow.desktop.models import ProjectBrowserProxyModel, ProjectListModel
 
         source = ProjectListModel()
         source.set_projects([dict(
@@ -634,7 +634,7 @@ ApplicationWindow {{
         self.assertIn('text: qsTr("Dự án")', title_bar)
         self.assertIn('text: qsTr("Cài đặt")', title_bar)
         self.assertIn('text: qsTr("Gói tài nguyên")', title_bar)
-        self.assertIn('toolTipText: qsTr("Thông tin HaizFlow")', title_bar)
+        self.assertIn('toolTipText: qsTr("Thông tin HFlow")', title_bar)
         self.assertNotIn('text: I18n.t("Single projects")', title_bar)
         self.assertNotIn('text: I18n.t("Batch projects")', title_bar)
         self.assertNotIn('text: I18n.t("Download projects")', title_bar)
@@ -837,7 +837,7 @@ ApplicationWindow {{
         self.assertNotIn("CaptionButton", title_bar)
 
     def test_desktop_launcher_sets_native_window_icons_and_uses_windowed_maximize(self):
-        main_py = (ROOT / "src" / "haizflow" / "desktop" / "main.py").read_text(encoding="utf-8")
+        main_py = (ROOT / "src" / "hflow" / "desktop" / "main.py").read_text(encoding="utf-8")
 
         self.assertIn("LoadImageW", main_py)
         self.assertIn("wm_seticon = 0x0080", main_py)
@@ -1331,10 +1331,10 @@ ApplicationWindow {{
         main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
         route_host = (QML_DIR / "RouteHost.qml").read_text(encoding="utf-8")
         page = (QML_DIR / "SocialPublishPage.qml").read_text(encoding="utf-8")
-        controller = (ROOT / "src" / "haizflow" / "desktop" / "social_publish_controller.py").read_text(
+        controller = (ROOT / "src" / "hflow" / "desktop" / "social_publish_controller.py").read_text(
             encoding="utf-8"
         )
-        service = (ROOT / "src" / "haizflow" / "services" / "zernio.py").read_text(encoding="utf-8")
+        service = (ROOT / "src" / "hflow" / "services" / "zernio.py").read_text(encoding="utf-8")
         connection_bar = (QML_DIR / "SocialConnectionBar.qml").read_text(encoding="utf-8")
         post_options = (QML_DIR / "ZernioPostOptionsDialog.qml").read_text(encoding="utf-8")
         row = (QML_DIR / "SocialPublishRow.qml").read_text(encoding="utf-8")
@@ -1409,7 +1409,7 @@ ApplicationWindow {{
         self.assertNotIn("apiKeyDialogLoader", page)
         self.assertNotIn("clearZernioApiKey", page)
         self.assertNotIn("clearZernioApiKey", connection_bar)
-        credential_store = (ROOT / "src" / "haizflow" / "services" / "zernio_keys.py").read_text(encoding="utf-8")
+        credential_store = (ROOT / "src" / "hflow" / "services" / "zernio_keys.py").read_text(encoding="utf-8")
         self.assertIn("zernio_keys.add_named_key", controller)
         self.assertIn("secure_credentials.write_secret", credential_store)
         self.assertNotIn('I18n.t("Open published post")', row)
@@ -1444,7 +1444,7 @@ ApplicationWindow {{
         self.assertNotIn("AppController.setKeepModelsWarm", settings)
 
     def test_language_labels_are_names_without_codes(self):
-        from haizflow.desktop.presenters import language_label
+        from hflow.desktop.presenters import language_label
 
         self.assertEqual(language_label("vi", "vi"), "Tiếng Việt")
         self.assertEqual(language_label("en", "en"), "English")
@@ -1491,7 +1491,7 @@ ApplicationWindow {{
 
     def test_voice_clone_uses_an_audio_sample_and_supports_in_app_recording(self):
         dialog = (QML_DIR / "VoiceCloneDialog.qml").read_text(encoding="utf-8")
-        controller = (ROOT / "src" / "haizflow" / "desktop" / "qml_controller.py").read_text(encoding="utf-8")
+        controller = (ROOT / "src" / "hflow" / "desktop" / "qml_controller.py").read_text(encoding="utf-8")
 
         self.assertIn("startVoiceCloneRecording", dialog)
         self.assertIn("finishVoiceCloneRecording", dialog)

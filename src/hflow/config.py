@@ -1,0 +1,212 @@
+import os
+import tempfile
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+from hflow.core.model_integrity import (
+    HYMT2_CPU_FILE,
+    HYMT2_CPU_REPO,
+    HYMT2_CPU_REVISION,
+    HYMT2_GPU_REPO,
+    HYMT2_GPU_REVISION,
+    WHISPER_REPO,
+    WHISPER_REVISION,
+)
+from hflow.core.paths import (
+    app_data_dir,
+    bin_dir,
+    cache_dir,
+    install_root,
+    logs_dir,
+    models_dir,
+    package_root,
+    project_root,
+    runtime_data_dir,
+    is_frozen,
+    storage_dir,
+)
+
+# Keep the Windows profile only as a read-only navigation hint for native file
+# pickers.  Runtime caches are still redirected below before any heavy library
+# is imported.
+NATIVE_WINDOWS_USERPROFILE = os.environ.get("HFLOW_NATIVE_WINDOWS_USERPROFILE") or os.environ.get("USERPROFILE", "")
+
+BASE_DIR = str(package_root())
+PROJECT_ROOT = str(project_root())
+_SMOKE_TEST = os.getenv("HFLOW_SMOKE_TEST") == "1"
+
+load_dotenv(dotenv_path=os.path.join(PROJECT_ROOT, ".env"), override=not _SMOKE_TEST)
+APP_DATA_DIR = str(app_data_dir())
+load_dotenv(dotenv_path=os.path.join(APP_DATA_DIR, ".env"), override=not _SMOKE_TEST)
+APP_DATA_DIR = str(app_data_dir())
+
+INSTALL_ROOT = str(install_root())
+RUNTIME_DATA_DIR = str(runtime_data_dir())
+STORAGE_DIR = str(storage_dir())
+CACHE_DIR = str(cache_dir())
+LOGS_DIR = str(logs_dir())
+MODELS_DIR = str(models_dir())
+
+PORT = int(os.getenv("PORT", 8000))
+BIN_DIR = str(bin_dir())
+if os.path.exists(BIN_DIR):
+    os.environ["PATH"] = BIN_DIR + os.path.pathsep + os.environ["PATH"]
+
+WHISPER_MODEL_REPO = WHISPER_REPO
+WHISPER_MODEL_REVISION = WHISPER_REVISION
+WHISPER_MODELS_DIR = os.path.join(MODELS_DIR, "whisper")
+
+
+def refresh_resource_paths() -> None:
+    """Refresh already-loaded inference aliases after a quiesced storage move.
+
+    Workers must be released by the caller first. Do not import AI runtimes
+    just to update paths; optional modules remain lazy.
+    """
+    import sys
+
+    global MODELS_DIR, WHISPER_MODELS_DIR
+    previous = MODELS_DIR
+    MODELS_DIR = str(models_dir())
+    WHISPER_MODELS_DIR = os.path.join(MODELS_DIR, "whisper")
+    for name in (
+        "hflow.pipeline.audio_separation", "hflow.pipeline.omnivoice_tts",
+        "hflow.pipeline.speaker_identity", "hflow.pipeline.voice_reference",
+        "hflow.pipeline.transcribe", "hflow.pipeline.subtitle_ocr",
+    ):
+        module = sys.modules.get(name)
+        if module is not None and getattr(module, "MODELS_DIR", None) == previous:
+            module.MODELS_DIR = MODELS_DIR
+
+
+HYMT2_MODEL = HYMT2_GPU_REPO
+HYMT2_MODEL_REVISION = HYMT2_GPU_REVISION
+HYMT2_CPU_MODEL_REPO = HYMT2_CPU_REPO
+HYMT2_CPU_MODEL_REVISION = HYMT2_CPU_REVISION
+HYMT2_CPU_MODEL_FILE = HYMT2_CPU_FILE
+# Keep local voice generation sequential to bound model memory consumption.
+TTS_MAX_CONCURRENCY = max(1, min(4, int(os.getenv("TTS_MAX_CONCURRENCY", "1"))))
+
+
+def _bounded_seconds(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+# These are inactivity limits. Long CPU inference remains valid while the
+# worker continues to emit progress or model-loading status events.
+HYMT2_WARM_TIMEOUT_SECONDS = _bounded_seconds("HYMT2_WARM_TIMEOUT_SECONDS", 1800, 300, 7200)
+HYMT2_REQUEST_TIMEOUT_SECONDS = _bounded_seconds("HYMT2_REQUEST_TIMEOUT_SECONDS", 3600, 600, 14400)
+# A stalled FFmpeg/Demucs process used to wait forever.  Keep the default
+# generous for long local videos while still giving the user a deterministic
+# failure instead of a permanently stuck pipeline.
+MEDIA_PROCESS_TIMEOUT_SECONDS = _bounded_seconds("MEDIA_PROCESS_TIMEOUT_SECONDS", 7200, 60, 86400)
+
+
+def _resolve_runtime_path(value: str | None, default: str) -> str:
+    if not value:
+        return default
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        return str(path.resolve())
+    parts = path.parts
+    if parts and parts[0].lower() == "data":
+        path = Path(*parts[1:])
+    return str((Path(RUNTIME_DATA_DIR) / path).resolve())
+
+
+_PORTABLE_HOME_SELECTED = is_frozen() or bool(os.getenv("HFLOW_HOME"))
+
+
+def _cache_override(name: str) -> str | None:
+    # A selected application home is a hard containment boundary. Ignore
+    # machine-wide cache variables that may point back to the system drive.
+    return None if _PORTABLE_HOME_SELECTED else os.getenv(name)
+
+
+HF_HOME = _resolve_runtime_path(_cache_override("HF_HOME"), os.path.join(CACHE_DIR, "huggingface"))
+TORCH_HOME = _resolve_runtime_path(_cache_override("TORCH_HOME"), os.path.join(CACHE_DIR, "torch"))
+PIP_CACHE_DIR = _resolve_runtime_path(_cache_override("PIP_CACHE_DIR"), os.path.join(CACHE_DIR, "pip"))
+UV_CACHE_DIR = _resolve_runtime_path(_cache_override("UV_CACHE_DIR"), os.path.join(CACHE_DIR, "uv"))
+TMP_DIR = _resolve_runtime_path(_cache_override("HFLOW_TMP_DIR"), os.path.join(APP_DATA_DIR, "tmp"))
+PORTABLE_PROFILE_DIR = os.path.join(APP_DATA_DIR, "home")
+# Qt's native Windows dialogs and a few command-line dependencies resolve
+# standard user folders relative to USERPROFILE.  The portable profile is
+# deliberately kept under the HFlow runtime, so materialize its shell
+# folders instead of letting a file dialog fall back to (or error on) C:.
+PORTABLE_PROFILE_SHELL_DIRS = tuple(
+    os.path.join(PORTABLE_PROFILE_DIR, name)
+    for name in ("Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos")
+)
+
+# Third-party libraries otherwise scatter caches under %LOCALAPPDATA%,
+# %APPDATA%, %USERPROFILE%\.cache, and the system temporary directory. Set
+# these before Qt/Torch/WhisperX are imported so one installer-selected root
+# owns every HFlow runtime artifact.
+_RUNTIME_ENVIRONMENT = {
+    "HF_HOME": HF_HOME,
+    "HF_HUB_CACHE": os.path.join(HF_HOME, "hub"),
+    "HF_ASSETS_CACHE": os.path.join(HF_HOME, "assets"),
+    "HF_DATASETS_CACHE": os.path.join(HF_HOME, "datasets"),
+    "TORCH_HOME": TORCH_HOME,
+    "TORCH_EXTENSIONS_DIR": os.path.join(TORCH_HOME, "extensions"),
+    "TORCHINDUCTOR_CACHE_DIR": os.path.join(TORCH_HOME, "inductor"),
+    "PYTORCH_KERNEL_CACHE_PATH": os.path.join(TORCH_HOME, "kernels"),
+    "PIP_CACHE_DIR": PIP_CACHE_DIR,
+    "UV_CACHE_DIR": UV_CACHE_DIR,
+    "XDG_CACHE_HOME": CACHE_DIR,
+    "XDG_DATA_HOME": os.path.join(APP_DATA_DIR, "data", "xdg"),
+    "XDG_CONFIG_HOME": os.path.join(APP_DATA_DIR, "config", "xdg"),
+    "NUMBA_CACHE_DIR": os.path.join(CACHE_DIR, "numba"),
+    "NLTK_DATA": os.path.join(CACHE_DIR, "nltk"),
+    "MPLCONFIGDIR": os.path.join(CACHE_DIR, "matplotlib"),
+    # Optional/legacy OCR and model helpers use home-directory defaults even
+    # when the active pipeline supplies explicit local model paths. Contain
+    # those fallbacks too, so installing on D: can never recreate model caches
+    # under C:\\Users.
+    "EASYOCR_MODULE_PATH": os.path.join(CACHE_DIR, "easyocr"),
+    "PADDLE_HOME": os.path.join(CACHE_DIR, "paddle"),
+    "PADDLEX_HOME": os.path.join(CACHE_DIR, "paddlex"),
+    "KAGGLEHUB_CACHE": os.path.join(CACHE_DIR, "kagglehub"),
+    "CUDA_CACHE_PATH": os.path.join(CACHE_DIR, "nvidia", "compute-cache"),
+    "TRITON_CACHE_DIR": os.path.join(CACHE_DIR, "triton"),
+    "QML_DISK_CACHE_PATH": os.path.join(CACHE_DIR, "qt", "qmlcache"),
+    "LOCALAPPDATA": os.path.join(CACHE_DIR, "windows", "local"),
+    "APPDATA": os.path.join(APP_DATA_DIR, "config", "roaming"),
+    # Some Python/CLI dependencies ignore their dedicated cache variables and
+    # fall back to the current user's home directory. Keep that fallback under
+    # the portable runtime as well, rather than silently using C:\\Users.
+    "HOME": PORTABLE_PROFILE_DIR,
+    "USERPROFILE": PORTABLE_PROFILE_DIR,
+    "TMP": TMP_DIR,
+    "TEMP": TMP_DIR,
+}
+os.environ.update(_RUNTIME_ENVIRONMENT)
+
+# Project-owned data is created inside the selected project. This global path
+# remains only as a read-once migration location for older installations.
+for directory in (
+    RUNTIME_DATA_DIR,
+    CACHE_DIR,
+    LOGS_DIR,
+    MODELS_DIR,
+    WHISPER_MODELS_DIR,
+    HF_HOME,
+    TORCH_HOME,
+    PIP_CACHE_DIR,
+    UV_CACHE_DIR,
+    TMP_DIR,
+    *_RUNTIME_ENVIRONMENT.values(),
+    *PORTABLE_PROFILE_SHELL_DIRS,
+):
+    os.makedirs(directory, exist_ok=True)
+
+LEGACY_VIDEO_WORKSPACES_DIR = STORAGE_DIR
+
+# tempfile memoizes its first directory independently of TMP/TEMP. Qt/test
+# imports may have queried it before configuration redirected the environment.
+tempfile.tempdir = TMP_DIR

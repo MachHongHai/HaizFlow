@@ -10,7 +10,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.services import desktop_settings
+from hflow.services import desktop_settings
 
 
 class DesktopSettingsTests(unittest.TestCase):

@@ -5,16 +5,16 @@
 Giữ nguyên cấu trúc thư mục:
 
     installer/
-      HaizFlow-0.1.0-DEVELOPMENT-Setup.exe
+      HFlow-0.1.0-DEVELOPMENT-Setup.exe
       offline-resources/
         engine-cpu-py313-3.zip
         engine-cuda128-py313-4.zip
         engine-vision-onnx-3.zip
         RESOURCE-PACKS.json
 
-1. Đóng HaizFlow đang chạy. Chạy **file Setup**, không chạy trực tiếp các EXE
+1. Đóng HFlow đang chạy. Chạy **file Setup**, không chạy trực tiếp các EXE
    trong thư mục build hoặc engine.
-2. Cài lại vào đúng thư mục hiện có, ví dụ `D:\HaizFlow-Test\HaizFlow`.
+2. Cài lại vào đúng thư mục hiện có, ví dụ `D:\HFlow-Test\HFlow`.
    Bộ cài giữ nguyên thư mục `runtime` chứa dữ liệu và dự án.
 3. Mở app, vào **Cài đặt → Gói tài nguyên**, chọn gói cần dùng.
    App lấy engine từ thư mục đi kèm, kiểm tra SHA-256 rồi cài vào vị trí tài

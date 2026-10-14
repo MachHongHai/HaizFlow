@@ -19,7 +19,7 @@ from test_subtitle_timeline_viewport_ui import QML_DIR, TimelineBackend, visual_
 
 def main():
     app = QGuiApplication([])
-    if os.getenv("HAIZFLOW_UI_CAPTURE_DIR"):
+    if os.getenv("HFLOW_UI_CAPTURE_DIR"):
         # Offscreen Qt does not enumerate Windows fonts. Register installed
         # fonts for visual QA only; never copy them into project assets.
         for name in ("SegUIVar.ttf", "segoeui.ttf", "SegoeIcons.ttf"):
@@ -50,7 +50,7 @@ ApplicationWindow {{
     try:
         timeline = window.findChild(QObject, "timeline")
         wait_for(lambda: len(timeline.property("visibleSegments").toVariant()) == 1200)
-        capture_directory = os.getenv("HAIZFLOW_UI_CAPTURE_DIR")
+        capture_directory = os.getenv("HFLOW_UI_CAPTURE_DIR")
         if capture_directory:
             directory = Path(capture_directory)
             directory.mkdir(parents=True, exist_ok=True)

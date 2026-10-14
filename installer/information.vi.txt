@@ -1,7 +1,7 @@
-Trước khi cài HaizFlow
+Trước khi cài HFlow
 
 Bộ cài chứa ứng dụng. Cài các model cần dùng tại Cài đặt → Gói tài nguyên. Dịch vụ trực tuyến cần Internet và API key riêng.
 
 Dữ liệu và cài đặt được lưu trong thư mục runtime tại nơi cài ứng dụng. Cài đè giữ dữ liệu; khi gỡ ứng dụng, bạn có thể chọn giữ lại dữ liệu.
 
-Giấy phép HaizFlow ở bước tiếp theo. Giấy phép thư viện, codec và model được lưu kèm ứng dụng. Checkpoint OmniVoice chỉ dành cho sử dụng phi thương mại. Bạn cần có quyền sử dụng video, nhạc và mẫu giọng.
+Giấy phép HFlow ở bước tiếp theo. Giấy phép thư viện, codec và model được lưu kèm ứng dụng. Checkpoint OmniVoice chỉ dành cho sử dụng phi thương mại. Bạn cần có quyền sử dụng video, nhạc và mẫu giọng.

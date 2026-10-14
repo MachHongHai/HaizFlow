@@ -11,9 +11,9 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.desktop.activity_log import ActivityLogBuffer
-from haizflow.desktop.models import ActivityEventModel
-from haizflow.services import video_store
+from hflow.desktop.activity_log import ActivityLogBuffer
+from hflow.desktop.models import ActivityEventModel
+from hflow.services import video_store
 
 
 class ActivityLogBufferTests(unittest.TestCase):

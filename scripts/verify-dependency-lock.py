@@ -63,7 +63,7 @@ def _logical_requirements(path: Path) -> list[str]:
 
 def _source_pins() -> dict[str, dict[str, str]]:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    return project.get("tool", {}).get("haizflow", {}).get("source-dependencies", {})
+    return project.get("tool", {}).get("hflow", {}).get("source-dependencies", {})
 
 
 def _locked_requirements() -> dict[str, tuple[Requirement, str]]:

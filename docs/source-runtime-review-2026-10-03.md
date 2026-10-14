@@ -58,7 +58,7 @@ manual audio-preview work also pass the selected temporary directory explicitly.
 
 `scripts/configure-dev-storage.py` creates an ignored startup hook and pip
 configuration **only inside this checkout's `.venv`**. The hook sets cache/temp
-environment variables before third-party imports; it does not import HaizFlow,
+environment variables before third-party imports; it does not import HFlow,
 Qt or ML runtimes at interpreter startup. Isolated smoke-test environments opt
 out. Re-run the script after changing the development storage location.
 

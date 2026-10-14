@@ -1,4 +1,4 @@
-# Shared runtime dependencies imported by HaizFlow code inside every frozen
+# Shared runtime dependencies imported by HFlow code inside every frozen
 # resource engine. Keep this list small: UI and desktop-only dependencies must
 # remain in the Core application.
 python-dotenv==1.2.2

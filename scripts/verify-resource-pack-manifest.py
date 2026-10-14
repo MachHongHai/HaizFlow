@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the immutable resource-pack catalog shipped with HaizFlow Core."""
+"""Validate the immutable resource-pack catalog shipped with HFlow Core."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from haizflow.core.resource_archive import parse_archive_parts  # noqa: E402
+from hflow.core.resource_archive import parse_archive_parts  # noqa: E402
 DEFAULT_MANIFEST = ROOT / "runtime" / "resource-pack-manifest.json"
 ENGINE_PACKS = {
     "engine-cpu-py313",

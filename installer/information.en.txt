@@ -1,7 +1,7 @@
-Before installing HaizFlow
+Before installing HFlow
 
 This installer contains the application. Install models in Settings → Resource packs. Online services need Internet access and their own API keys.
 
 Data and settings are stored in the runtime folder at the installation location. Reinstalling preserves data; uninstalling lets you choose whether to keep it.
 
-The next page contains the HaizFlow license. Library, codec and model licenses are supplied with the application. The OmniVoice checkpoint is for non-commercial use only. You need the appropriate rights to your videos, music and voice samples.
+The next page contains the HFlow license. Library, codec and model licenses are supplied with the application. The OmniVoice checkpoint is for non-commercial use only. You need the appropriate rights to your videos, music and voice samples.

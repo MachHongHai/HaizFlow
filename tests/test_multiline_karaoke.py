@@ -7,11 +7,11 @@ import pytest
 from PIL import Image, ImageDraw
 from PySide6.QtCore import QUrl
 
-from haizflow.desktop.subtitle_overlay_renderer import (
+from hflow.desktop.subtitle_overlay_renderer import (
     SubtitleOverlayRenderer, _karaoke_line_regions, export_events, rasterize,
 )
-from haizflow.pipeline.render import _karaoke_font_directory
-from haizflow.utils.ffmpeg import _binary
+from hflow.pipeline.render import _karaoke_font_directory
+from hflow.utils.ffmpeg import _binary
 
 
 def test_line_masks_follow_ass_clock_not_parallel_horizontal_progress():

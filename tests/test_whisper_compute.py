@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.core.whisper_compute import whisper_compute_type
+from hflow.core.whisper_compute import whisper_compute_type
 
 
 @pytest.mark.parametrize("device,supported,expected", [
@@ -33,7 +33,7 @@ def test_known_unusable_backend_is_not_accepted():
 
 
 def test_clone_reference_uses_same_legacy_gpu_policy():
-    from haizflow.pipeline.voice_reference import recognize_reference
+    from hflow.pipeline.voice_reference import recognize_reference
 
     model = Mock()
     model.transcribe.return_value = ([SimpleNamespace(text="voice")], None)
@@ -54,13 +54,13 @@ def test_clone_reference_uses_same_legacy_gpu_policy():
 ])
 @pytest.mark.parametrize("warm", [False, True])
 def test_warm_and_cold_whisper_load_select_same_capability_mode(supported, expected, warm):
-    from haizflow.pipeline import transcribe
+    from hflow.pipeline import transcribe
 
     profile = SimpleNamespace(cuda_available=True, cpu_threads=4, whisper_batch_size=8)
     with (
         patch.dict(sys.modules, {"ctranslate2": SimpleNamespace(get_supported_compute_types=lambda *a, **k: supported)}),
         patch.object(transcribe, "runtime_profile", return_value=profile),
-        patch("haizflow.core.hardware.cpu_runtime_profile", return_value=profile),
+        patch("hflow.core.hardware.cpu_runtime_profile", return_value=profile),
         patch.object(transcribe, "_WARM_ASR_MODEL", None),
         patch.object(transcribe, "_WARM_DEVICE", None),
         patch.object(transcribe, "_WARM_MODEL_NAME", None),

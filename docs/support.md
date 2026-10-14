@@ -1,4 +1,4 @@
-# HaizFlow help
+# HFlow help
 
 [Home](../README.md) · [Installation](install.md) · [User guide](user-guide.md) · [Tiếng Việt](support.vi.md)
 
@@ -45,7 +45,7 @@ The installer is unsigned. Windows may show an unknown publisher or apply a poli
 
 Open a request on [GitHub Issues](https://github.com/MachHongHai/HaizFlow/issues) and include:
 
-1. Your HaizFlow and Windows versions.
+1. Your HFlow and Windows versions.
 2. The steps and tool/model name.
 3. A notification screenshot or relevant log with private information removed.
 4. Your CPU/GPU mode and resource-pack status.

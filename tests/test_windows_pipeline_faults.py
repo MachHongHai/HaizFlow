@@ -8,12 +8,12 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.pipeline import manual_tools, process_video
-from haizflow.schemas.video import VideoConfig
-from haizflow.services import manual_artifacts
-from haizflow.services.editor_documents import _atomic_write
-from haizflow.services.translation_progress import TranslationProgress
-from haizflow.utils import atomic_file
+from hflow.pipeline import manual_tools, process_video
+from hflow.schemas.video import VideoConfig
+from hflow.services import manual_artifacts
+from hflow.services.editor_documents import _atomic_write
+from hflow.services.translation_progress import TranslationProgress
+from hflow.utils import atomic_file
 
 WINDOWS_ERRORS = [2, 3, 5, 32, 33, 112, 126, 145, 193, 206, 1455]
 

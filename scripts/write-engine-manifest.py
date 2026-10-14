@@ -22,7 +22,7 @@ def main() -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    executable = "HaizFlowEngine.exe"
+    executable = "HFlowEngine.exe"
     commands = {
         "pack_id": PACKS[args.profile],
         "profile": args.profile,

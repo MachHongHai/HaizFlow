@@ -9,7 +9,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.desktop.models import ProjectGridModel, SocialPublishListModel, VideoListModel
+from hflow.desktop.models import ProjectGridModel, SocialPublishListModel, VideoListModel
 
 
 class ModelUpdateTests(unittest.TestCase):

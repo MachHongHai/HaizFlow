@@ -13,7 +13,7 @@ def check_dialog():
 
     app = QGuiApplication.instance() or QGuiApplication([])
     engine = QQmlEngine()
-    directory = Path(__file__).parents[1] / "src/haizflow/desktop/qml"
+    directory = Path(__file__).parents[1] / "src/hflow/desktop/qml"
     component = QQmlComponent(engine)
     component.setData(f'''import QtQuick
 import QtQuick.Controls.Basic

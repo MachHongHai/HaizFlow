@@ -9,8 +9,8 @@ Chủ dự án được hỏi có quyền phân phối các mẫu giọng previe
 branding đang đi kèm ứng dụng hay không, trước khi đưa chúng lên release
 công khai. Câu trả lời trực tiếp: **“Có, tôi có quyền phân phối”**.
 
-Phạm vi: `src/haizflow/desktop/assets/voice_samples` và
-`src/haizflow/desktop/assets/branding` tại thời điểm xác nhận. Không suy ra
+Phạm vi: `src/hflow/desktop/assets/voice_samples` và
+`src/hflow/desktop/assets/branding` tại thời điểm xác nhận. Không suy ra
 quyền đối với tài sản người dùng nhập, bên đóng góp chưa xác nhận hoặc
 mọi phiên bản/tài sản bổ sung sau này. Giấy phép độc lập của vendor, icon,
 font, runtime và model vẫn giữ nguyên.

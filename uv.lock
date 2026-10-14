@@ -608,7 +608,7 @@ wheels = [
 ]
 
 [[package]]
-name = "haizflow"
+name = "hflow"
 version = "0.1.7"
 source = { editable = "." }
 dependencies = [

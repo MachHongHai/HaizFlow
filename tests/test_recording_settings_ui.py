@@ -9,7 +9,7 @@ from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
 from shiboken6 import getCppPointer, wrapInstance
 
-QML = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml"
+QML = Path(__file__).resolve().parents[1] / "src/hflow/desktop/qml"
 
 
 class DraftSettingsState(QObject):

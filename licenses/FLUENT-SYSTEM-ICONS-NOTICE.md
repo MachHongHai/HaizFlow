@@ -1,6 +1,6 @@
 # Fluent System Icons
 
-HaizFlow bundles a curated subset of Microsoft Fluent System Icons from
+HFlow bundles a curated subset of Microsoft Fluent System Icons from
 https://github.com/microsoft/fluentui-system-icons.
 
 Copyright (c) 2020 Microsoft Corporation.

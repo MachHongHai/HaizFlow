@@ -14,10 +14,10 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from haizflow.services.resource_packs import _assets_by_component  # noqa: E402
-from haizflow.core.model_integrity import OMNIVOICE_RUNTIME_FILES  # noqa: E402
-from haizflow.update.filesystem import atomic_json, no_links, remove_owned  # noqa: E402
-from haizflow.update.state import provision  # noqa: E402
+from hflow.services.resource_packs import _assets_by_component  # noqa: E402
+from hflow.core.model_integrity import OMNIVOICE_RUNTIME_FILES  # noqa: E402
+from hflow.update.filesystem import atomic_json, no_links, remove_owned  # noqa: E402
+from hflow.update.state import provision  # noqa: E402
 
 
 def main():
@@ -51,13 +51,13 @@ def main():
                 assert (site / member.filename).resolve().is_relative_to(site.resolve())
             archive.extractall(site)
     env = os.environ.copy()
-    for name in ("HAIZFLOW_HOME", "HAIZFLOW_INSTALL_ROOT", "HAIZFLOW_RESOURCE_ROOT", "MODELS_DIR",
-                 "RUNTIME_DATA_DIR", "APP_DATA_DIR", "HAIZFLOW_SMOKE_TEST"):
+    for name in ("HFLOW_HOME", "HFLOW_INSTALL_ROOT", "HFLOW_RESOURCE_ROOT", "MODELS_DIR",
+                 "RUNTIME_DATA_DIR", "APP_DATA_DIR", "HFLOW_SMOKE_TEST"):
         env.pop(name, None)
-    env.update(HAIZFLOW_ENGINE_APP_ROOT=str(app), HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1",
+    env.update(HFLOW_ENGINE_APP_ROOT=str(app), HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1",
                OMP_NUM_THREADS="1", MKL_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", PYTHONIOENCODING="cp1252")
     env["PATH"] = str(ROOT / "runtime/bin") + os.pathsep + env.get("PATH", "")
-    samples = ROOT / "src/haizflow/desktop/assets/voice_samples"
+    samples = ROOT / "src/hflow/desktop/assets/voice_samples"
     sentences = json.loads((samples / "samples.json").read_text(encoding="utf-8"))["sentences"]
     reference = samples / "omnivoice/omnivoice_female/en.mp3"
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -112,10 +112,10 @@ def main():
                 for item in items:
                     with wave.open(item["wav_path"]) as audio:
                         assert audio.getnframes() > 240 and audio.getframerate() >= 16000
-                    from haizflow.pipeline.omnivoice_tts import _encode_mp3
+                    from hflow.pipeline.omnivoice_tts import _encode_mp3
                     wav = Path(item["wav_path"])
                     mp3 = wav.with_suffix(".mp3")
-                    with patch("haizflow.pipeline.omnivoice_tts._binary",
+                    with patch("hflow.pipeline.omnivoice_tts._binary",
                                return_value=str(args.ffmpeg_bin.resolve() / "ffmpeg.exe")):
                         _encode_mp3(wav, mp3, "frozen-voice-output-check")
                     probe = subprocess.run([str(args.ffmpeg_bin.resolve() / "ffprobe.exe"),

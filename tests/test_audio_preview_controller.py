@@ -7,11 +7,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from haizflow.core.edge_voices import EDGE_VOICES
-from haizflow.core.vieneu_voices import VIENEU_VOICES, sample_voice_id
-from haizflow.desktop.audio_preview_controller import AudioPreviewController
-from haizflow.desktop.catalog import OMNIVOICE_TTS_VOICES, POPULAR_TARGET_LANGUAGES
-from haizflow.utils.ffmpeg import _binary
+from hflow.core.edge_voices import EDGE_VOICES
+from hflow.core.vieneu_voices import VIENEU_VOICES, sample_voice_id
+from hflow.desktop.audio_preview_controller import AudioPreviewController
+from hflow.desktop.catalog import OMNIVOICE_TTS_VOICES, POPULAR_TARGET_LANGUAGES
+from hflow.utils.ffmpeg import _binary
 
 
 def _host(**overrides):
@@ -47,7 +47,7 @@ class AudioPreviewControllerTests(unittest.TestCase):
                                     files={"voice_reference": str(other), "video_input": str(source)})
             host = _host(_selected_video_id="selected", _tts_voice="omnivoice:clone")
             preview = AudioPreviewController(host)
-            with patch("haizflow.desktop.audio_preview_controller.video_store.get_video", return_value=video), \
+            with patch("hflow.desktop.audio_preview_controller.video_store.get_video", return_value=video), \
                     patch.object(preview, "_sample_from_video") as cached:
                 self.assertTrue(preview.start(voice_reference_path=str(reference)))
             cached.assert_not_called()
@@ -92,7 +92,7 @@ class AudioPreviewControllerTests(unittest.TestCase):
         edge_entries = {(item["voice"], item["language"]): item
                         for item in manifest["samples"] if item["provider"] == "edge"}
         self.assertEqual(len(edge_entries), sum(map(len, EDGE_VOICES.values())))
-        with patch("haizflow.pipeline.edge_tts_backend.synthesize_to_mp3") as synthesize:
+        with patch("hflow.pipeline.edge_tts_backend.synthesize_to_mp3") as synthesize:
             for language, voices in EDGE_VOICES.items():
                 for voice, *_labels in voices:
                     with self.subTest(voice=voice, language=language):
@@ -120,7 +120,7 @@ class AudioPreviewControllerTests(unittest.TestCase):
         self.assertEqual(len(entries), len(VIENEU_VOICES))
         self.assertEqual(len({entry["sha256"] for entry in entries.values()}), len(VIENEU_VOICES))
         paths = set()
-        with patch("haizflow.pipeline.vieneu_tts.synthesize_to_mp3") as synthesize:
+        with patch("hflow.pipeline.vieneu_tts.synthesize_to_mp3") as synthesize:
             for name, _gender, _region in VIENEU_VOICES:
                 voice = "vieneu:" + name
                 with self.subTest(voice=voice):
@@ -223,9 +223,9 @@ class AudioPreviewControllerTests(unittest.TestCase):
 
             with (
                 patch.object(AudioPreviewController, "_PACKAGED_SAMPLE_DIR", Path(temp_dir) / "packaged"),
-                patch("haizflow.desktop.audio_preview_controller.video_store.get_video", return_value=video),
+                patch("hflow.desktop.audio_preview_controller.video_store.get_video", return_value=video),
                 patch(
-                    "haizflow.desktop.audio_preview_controller.video_store.get_video_dir",
+                    "hflow.desktop.audio_preview_controller.video_store.get_video_dir",
                     return_value=temp_dir,
                 ),
             ):
@@ -248,7 +248,7 @@ class AudioPreviewControllerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             with (
                 patch.object(AudioPreviewController, "_PACKAGED_SAMPLE_DIR", Path(temp_dir) / "packaged"),
-                patch("haizflow.desktop.audio_preview_controller.video_store.get_video", return_value=video),
+                patch("hflow.desktop.audio_preview_controller.video_store.get_video", return_value=video),
             ):
                 resolved = preview.voice_sample_path("omnivoice", "omnivoice:male", "vi")
 
@@ -262,7 +262,7 @@ class AudioPreviewControllerTests(unittest.TestCase):
             preview = AudioPreviewController(_host())
 
             with patch(
-                "haizflow.desktop.audio_preview_controller.video_store.get_video",
+                "hflow.desktop.audio_preview_controller.video_store.get_video",
                 return_value=video,
             ):
                 resolved = preview.voice_sample_path("omnivoice", "omnivoice:clone", "vi", selected_video_id="video-1")
@@ -287,7 +287,7 @@ class AudioPreviewControllerTests(unittest.TestCase):
 
             with (
                 patch(
-                    "haizflow.desktop.audio_preview_controller.video_store.get_video",
+                    "hflow.desktop.audio_preview_controller.video_store.get_video",
                     return_value=video,
                 ),
                 patch.object(preview, "voice_sample_path", return_value=str(voice)),
@@ -320,8 +320,8 @@ class AudioPreviewControllerTests(unittest.TestCase):
             preview = AudioPreviewController(host)
 
             with (
-                patch("haizflow.desktop.audio_preview_controller.video_store.get_video", return_value=video),
-                patch("haizflow.desktop.audio_preview_controller.video_store.get_video_dir", return_value=root),
+                patch("hflow.desktop.audio_preview_controller.video_store.get_video", return_value=video),
+                patch("hflow.desktop.audio_preview_controller.video_store.get_video_dir", return_value=root),
             ):
                 self.assertTrue(preview.start())
 
@@ -342,7 +342,7 @@ class AudioPreviewControllerTests(unittest.TestCase):
             host = _host(_selected_video_id="video-1", _tts_voice="omnivoice:female")
             preview = AudioPreviewController(host)
             with patch(
-                "haizflow.desktop.audio_preview_controller.video_store.get_video",
+                "hflow.desktop.audio_preview_controller.video_store.get_video",
                 return_value=video,
             ):
                 self.assertTrue(preview.start())
@@ -366,8 +366,8 @@ class AudioPreviewControllerTests(unittest.TestCase):
             )
             preview = AudioPreviewController(host)
             with (
-                patch("haizflow.desktop.audio_preview_controller.video_store.get_video", return_value=video),
-                patch("haizflow.desktop.audio_preview_controller.video_store.get_video_dir", return_value=root),
+                patch("hflow.desktop.audio_preview_controller.video_store.get_video", return_value=video),
+                patch("hflow.desktop.audio_preview_controller.video_store.get_video_dir", return_value=root),
             ):
                 self.assertTrue(preview.start())
             self.assertEqual(host._audio_preview_source, voice.resolve().as_uri())
@@ -389,7 +389,7 @@ class AudioPreviewControllerTests(unittest.TestCase):
             host = _host(_selected_video_id="video-1", _video_path=str(source))
             preview = AudioPreviewController(host)
             with (
-                patch("haizflow.desktop.audio_preview_controller.video_store.get_video", return_value=video),
+                patch("hflow.desktop.audio_preview_controller.video_store.get_video", return_value=video),
                 patch.object(preview, "voice_sample_path", return_value=str(sample)),
             ):
                 self.assertTrue(preview.start())
@@ -407,7 +407,7 @@ class AudioPreviewControllerTests(unittest.TestCase):
             host = _host(_selected_video_id="video-1", _video_path=str(source))
             preview = AudioPreviewController(host)
             with (
-                patch("haizflow.desktop.audio_preview_controller.video_store.get_video", return_value=video),
+                patch("hflow.desktop.audio_preview_controller.video_store.get_video", return_value=video),
                 patch.object(preview, "voice_sample_path", return_value=""),
             ):
                 self.assertFalse(preview.start())
@@ -435,7 +435,7 @@ class AudioPreviewControllerTests(unittest.TestCase):
 
             with (
                 patch(
-                    "haizflow.desktop.audio_preview_controller.video_store.get_video",
+                    "hflow.desktop.audio_preview_controller.video_store.get_video",
                     return_value=video,
                 ),
                 patch.object(preview, "voice_sample_path", return_value=""),

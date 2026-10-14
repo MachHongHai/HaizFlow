@@ -13,7 +13,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.services.external_engine import ExternalEngineClient, ExternalEngineError, ExternalEnginePool  # noqa: E402
+from hflow.services.external_engine import ExternalEngineClient, ExternalEngineError, ExternalEnginePool  # noqa: E402
 
 
 FAKE_ENGINE = r"""

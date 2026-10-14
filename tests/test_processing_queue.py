@@ -10,7 +10,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.services.processing_queue import SerialProcessingQueue
+from hflow.services.processing_queue import SerialProcessingQueue
 
 
 class SerialProcessingQueueTests(unittest.TestCase):

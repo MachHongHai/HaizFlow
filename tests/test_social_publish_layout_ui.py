@@ -13,10 +13,10 @@ from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlPropertyMap
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
 
-from haizflow.desktop.models import SocialPublishListModel
+from hflow.desktop.models import SocialPublishListModel
 
 
-QML_DIR = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml"
+QML_DIR = Path(__file__).resolve().parents[1] / "src/hflow/desktop/qml"
 
 
 class SocialPublishLayoutUiTests(unittest.TestCase):
@@ -95,7 +95,7 @@ class SocialPublishLayoutUiTests(unittest.TestCase):
         self.assertEqual(queue.property("count"), 6)
         self.assertAlmostEqual(queue.property("contentHeight"), 6 * 64, delta=1)
         self.assertLessEqual(surface.height(), 6 * 64 + 1)
-        if os.environ.get("HAIZFLOW_UI_CAPTURE"):
+        if os.environ.get("HFLOW_UI_CAPTURE"):
             target = QML_DIR.parents[3] / "build" / "social-queue-short.png"
             self.assertTrue(window.grabWindow().save(str(target)))
 

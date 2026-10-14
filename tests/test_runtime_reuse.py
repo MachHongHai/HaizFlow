@@ -7,21 +7,21 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from haizflow.desktop.project_commands_controller import ProjectCommandsController
-from haizflow.desktop.smart_warmup_controller import SmartWarmupController
-from haizflow.pipeline import process_video
-from haizflow.services import external_tasks
+from hflow.desktop.project_commands_controller import ProjectCommandsController
+from hflow.desktop.smart_warmup_controller import SmartWarmupController
+from hflow.pipeline import process_video
+from hflow.services import external_tasks
 
 
 class RuntimeReuseTests(unittest.TestCase):
     def test_imports_only_voice_worker_is_closed_without_a_resident_model_marker(self):
-        with patch("haizflow.desktop.smart_warmup_controller.shared_external_engine_pool"):
+        with patch("hflow.desktop.smart_warmup_controller.shared_external_engine_pool"):
             controller = SmartWarmupController(SimpleNamespace(_keep_models_warm=True), Mock())
         for reason in ("shutdown", "storage-move", "device-switch", "memory-pressure"):
-            with self.subTest(reason=reason), patch("haizflow.pipeline.omnivoice_tts.clear_runtime") as clear:
+            with self.subTest(reason=reason), patch("hflow.pipeline.omnivoice_tts.clear_runtime") as clear:
                 controller._release_now(reason)
                 clear.assert_called_once()
-        with patch("haizflow.pipeline.omnivoice_tts.clear_runtime") as clear:
+        with patch("hflow.pipeline.omnivoice_tts.clear_runtime") as clear:
             controller._release_now("foreground")
             clear.assert_not_called()
 
@@ -39,10 +39,10 @@ class RuntimeReuseTests(unittest.TestCase):
             refreshVideos=Mock(),
         )
         with (
-            patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=video),
-            patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update,
-            patch("haizflow.desktop.project_commands_controller.video_store.prepare_video_restart", return_value=video) as restart,
-            patch("haizflow.pipeline.process_registry.prepare_video_resume") as clear_cancel,
+            patch("hflow.desktop.project_commands_controller.video_store.get_video", return_value=video),
+            patch("hflow.desktop.project_commands_controller.video_store.update_video") as update,
+            patch("hflow.desktop.project_commands_controller.video_store.prepare_video_restart", return_value=video) as restart,
+            patch("hflow.pipeline.process_registry.prepare_video_resume") as clear_cancel,
         ):
             for status in ("done", "paused", "failed", "pending", "cancelled"):
                 with self.subTest(status=status):
@@ -54,7 +54,7 @@ class RuntimeReuseTests(unittest.TestCase):
 
     def test_warm_context_ignores_settings_unrelated_to_recognition(self):
         host = SimpleNamespace(_keep_models_warm=True)
-        with patch("haizflow.desktop.smart_warmup_controller.shared_external_engine_pool"):
+        with patch("hflow.desktop.smart_warmup_controller.shared_external_engine_pool"):
             controller = SmartWarmupController(host, Mock())
         controller.request(
             "recognition", {"device": "cpu", "model": "small", "language": "vi", "provider": "omnivoice"}
@@ -68,7 +68,7 @@ class RuntimeReuseTests(unittest.TestCase):
         host = SimpleNamespace(_keep_models_warm=True, _selected_video=Mock(return_value=None))
         resources = Mock()
         resources.required_packs.return_value = ["engine-fixture"]
-        with patch("haizflow.desktop.smart_warmup_controller.shared_external_engine_pool"):
+        with patch("hflow.desktop.smart_warmup_controller.shared_external_engine_pool"):
             controller = SmartWarmupController(host, resources)
         controller._resident.add("recognition")
         controller._resident_contexts["recognition"] = {"device": "cpu", "model": "small"}
@@ -77,7 +77,7 @@ class RuntimeReuseTests(unittest.TestCase):
         self.assertTrue(controller.pack_in_use("engine-fixture"))
 
     def test_voice_language_switch_keeps_same_model_device(self):
-        with patch("haizflow.desktop.smart_warmup_controller.shared_external_engine_pool"):
+        with patch("hflow.desktop.smart_warmup_controller.shared_external_engine_pool"):
             controller = SmartWarmupController(SimpleNamespace(_keep_models_warm=True, _settings_processing_device="gpu"), Mock())
         controller.request("voice", {"provider": "omnivoice", "language": "vi"})
         first = controller._requests[0].context
@@ -87,7 +87,7 @@ class RuntimeReuseTests(unittest.TestCase):
         self.assertNotEqual(first, controller._requests[0].context)
 
     def test_speaker_resources_are_only_required_for_multiple_speaker_mode(self):
-        from haizflow.services.resource_packs import ResourcePackManager
+        from hflow.services.resource_packs import ResourcePackManager
 
         manager = ResourcePackManager()
         single = manager.required_packs("voice", {"provider": "omnivoice-cpu", "speaker_mode": "single"})

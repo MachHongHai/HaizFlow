@@ -1,8 +1,8 @@
-# HaizFlow 0.1.5
+# HFlow 0.1.5
 
-**[Tải bộ cài Windows — HaizFlow-0.1.5-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.5/HaizFlow-0.1.5-Setup.exe)**
+**[Tải bộ cài Windows — HFlow-0.1.5-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.5/HaizFlow-0.1.5-Setup.exe)**
 
-HaizFlow là ứng dụng miễn phí để **tải video hàng loạt, dịch video, tạo phụ đề và lồng tiếng** trên Windows. Bạn có thể xử lý tự động, chỉnh từng bước trong trình sửa Thủ công hoặc xử lý nhiều video theo hàng đợi.
+HFlow là ứng dụng miễn phí để **tải video hàng loạt, dịch video, tạo phụ đề và lồng tiếng** trên Windows. Bạn có thể xử lý tự động, chỉnh từng bước trong trình sửa Thủ công hoặc xử lý nhiều video theo hàng đợi.
 
 ## Chức năng chính
 
@@ -16,12 +16,12 @@ HaizFlow là ứng dụng miễn phí để **tải video hàng loạt, dịch v
 ## Cài đặt và sử dụng
 
 1. **[Bấm để tải bộ cài EXE](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.5/HaizFlow-0.1.5-Setup.exe)**, mở tệp và làm theo hướng dẫn. Bạn chỉ cần bộ cài này, không cần tải các tệp Core hay mã nguồn ở danh sách Assets.
-2. Mở HaizFlow, chọn **Cài đặt → Chung → CPU/GPU**, rồi vào **Gói tài nguyên** để cài các công cụ cần dùng. Không cần cài Python hay CUDA Toolkit riêng.
+2. Mở HFlow, chọn **Cài đặt → Chung → CPU/GPU**, rồi vào **Gói tài nguyên** để cài các công cụ cần dùng. Không cần cài Python hay CUDA Toolkit riêng.
 3. Chọn **Dự án mới → Thủ công, Tự động hoặc Hàng loạt**, thêm video từ tệp hoặc liên kết.
 4. Chọn model và ngôn ngữ. Khi dùng Gemini, thêm key của bạn trong **Cài đặt → API Key**. HY-MT2 dịch trên máy, không cần key.
 5. Chạy các bước cần dùng, xem lại phụ đề và giọng đọc, rồi bấm **Xuất**. Có thể đăng kết quả qua Zernio.
 
-Đã cài HaizFlow? Bấm **Phiên bản mới**, kiểm tra thông tin rồi xác nhận **Cập nhật**. Bản này có tệp cập nhật đầy đủ và cập nhật chênh lệch từ 0.1.4; không cần tải lại gói tài nguyên đã cài. Bạn cũng có thể dùng bộ cài EXE để nâng cấp.
+Đã cài HFlow? Bấm **Phiên bản mới**, kiểm tra thông tin rồi xác nhận **Cập nhật**. Bản này có tệp cập nhật đầy đủ và cập nhật chênh lệch từ 0.1.4; không cần tải lại gói tài nguyên đã cài. Bạn cũng có thể dùng bộ cài EXE để nâng cấp.
 
 [Hướng dẫn cài đặt](https://github.com/MachHongHai/HaizFlow/blob/main/docs/install.vi.md) · [Hướng dẫn sử dụng](https://github.com/MachHongHai/HaizFlow/blob/main/docs/user-guide.vi.md) · [Website](https://haizflow.pages.dev/) · [English guide](https://github.com/MachHongHai/HaizFlow/blob/main/docs/user-guide.md)
 

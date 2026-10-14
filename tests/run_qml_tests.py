@@ -17,7 +17,7 @@ def main() -> int:
         str(test_directory),
         *sys.argv[1:],
     ]
-    return int(QUICK_TEST_MAIN("haizflow_qml", arguments, str(test_directory)))
+    return int(QUICK_TEST_MAIN("hflow_qml", arguments, str(test_directory)))
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""Opt-in real service smoke test, isolated from installed HaizFlow projects."""
+"""Opt-in real service smoke test, isolated from installed HFlow projects."""
 
 import argparse
 import json
@@ -22,17 +22,17 @@ def main():
     sys.path.insert(0, str(ROOT / "src"))
     (ROOT / "build").mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="edge-live-", dir=ROOT / "build") as temporary:
-        os.environ["HAIZFLOW_HOME"] = temporary
+        os.environ["HFLOW_HOME"] = temporary
         os.environ["RUNTIME_DATA_DIR"] = str(Path(temporary) / "data")
-        from haizflow.core.edge_voices import EDGE_VOICES
-        from haizflow.pipeline.edge_tts_backend import synthesize_to_mp3, valid_audio
-        from haizflow.utils.ffmpeg import get_video_duration
+        from hflow.core.edge_voices import EDGE_VOICES
+        from hflow.pipeline.edge_tts_backend import synthesize_to_mp3, valid_audio
+        from hflow.utils.ffmpeg import get_video_duration
 
-        texts = {"vi": "Xin chào. Đây là kiểm tra giọng đọc HaizFlow.",
-                 "en": "Hello. This is a HaizFlow voice test.",
+        texts = {"vi": "Xin chào. Đây là kiểm tra giọng đọc HFlow.",
+                 "en": "Hello. This is a HFlow voice test.",
                  "zh": "你好。这是语音测试。"}
         if args.batch:
-            from haizflow.pipeline.tts import generate_voice_parts
+            from hflow.pipeline.tts import generate_voice_parts
 
             subtitles = Path(temporary) / "segments.json"
             subtitles.write_text(json.dumps([{"text": text} for text in (

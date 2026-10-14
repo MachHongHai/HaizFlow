@@ -1,13 +1,13 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtTest
-import "../../src/haizflow/desktop/qml"
+import "../../src/hflow/desktop/qml"
 
 Item {
     id: root
     width: 720
     height: 560
-    readonly property string sample: Qt.resolvedUrl("../../src/haizflow/desktop/assets/voice_samples/omnivoice/omnivoice_female/en.mp3").toString().replace(/^file:\/\/\//, "")
+    readonly property string sample: Qt.resolvedUrl("../../src/hflow/desktop/assets/voice_samples/omnivoice/omnivoice_female/en.mp3").toString().replace(/^file:\/\/\//, "")
     Component {
         id: controllerComponent
         QtObject {

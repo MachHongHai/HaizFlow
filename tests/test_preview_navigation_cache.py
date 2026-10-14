@@ -9,8 +9,8 @@ from unittest.mock import Mock
 import pytest
 from PySide6.QtCore import QUrl
 
-from haizflow.desktop.editor_preview_controller import EditorPreviewController
-from haizflow.schemas.video import CropSettings, SubtitleStyle
+from hflow.desktop.editor_preview_controller import EditorPreviewController
+from hflow.schemas.video import CropSettings, SubtitleStyle
 
 
 @pytest.fixture
@@ -32,10 +32,10 @@ def preview_session(tmp_path, monkeypatch):
     )
     host._selected_video = lambda: host.selected
     host._resolve_video_file = lambda video, *_args: str(tmp_path / video.video_id / "source.mp4")
-    module = "haizflow.desktop.editor_preview_controller"
+    module = "hflow.desktop.editor_preview_controller"
     monkeypatch.setattr(f"{module}.video_store.get_video_dir", lambda video_id: str(tmp_path / video_id))
     monkeypatch.setattr(f"{module}.video_store.get_video", lambda _video_id: None)
-    monkeypatch.setattr("haizflow.services.editor_documents.load", lambda _video_id: None)
+    monkeypatch.setattr("hflow.services.editor_documents.load", lambda _video_id: None)
     monkeypatch.setattr(f"{module}.manual_artifacts.pin", Mock())
     monkeypatch.setattr(f"{module}.manual_artifacts.unpin", Mock())
     monkeypatch.setattr(f"{module}.cancel_video", Mock())
@@ -67,7 +67,7 @@ def preview_session(tmp_path, monkeypatch):
 
 
 def test_replacement_cannot_reopen_and_repin_a_released_preview(preview_session):
-    from haizflow.desktop.project_import_controller import ProjectImportController
+    from hflow.desktop.project_import_controller import ProjectImportController
     host, controller, renderer, videos, prime, _ = preview_session
     host._project_import = ProjectImportController(host)
     prime("a")
@@ -162,12 +162,12 @@ def test_processed_project_restores_disk_cache_while_another_project_runs(previe
     host.isProcessing = True
     host.selected = videos["b"]
     # The facade must use the selected video, never global processing state.
-    from haizflow.desktop.qml_controller import HaizFlowController
+    from hflow.desktop.qml_controller import HFlowController
     host._editor_preview = controller
     host.isSelectedVideoQueued = False
     probe = Mock(side_effect=AssertionError("Completed caches must not invoke FFprobe"))
-    monkeypatch.setattr("haizflow.desktop.editor_preview_controller.get_video_duration", probe)
-    assert HaizFlowController.requestEditorPreview(host, "[]", 30)
+    monkeypatch.setattr("hflow.desktop.editor_preview_controller.get_video_duration", probe)
+    assert HFlowController.requestEditorPreview(host, "[]", 30)
     assert Path(QUrl(controller.base_source).toLocalFile()) == output.resolve()
     assert controller.stage == "ready" and not controller.busy
     assert renderer.call_count == 1

@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test(profile: str) -> dict:
     build = ROOT / "build/resource-engines" / f"engine-{profile}-py313"
-    artifact = build / "dist/HaizFlowEngine"
+    artifact = build / "dist/HFlowEngine"
     original_package = build / "venv/Lib/site-packages/av"
     parent = ROOT / "build/engine-media-tests"
     parent.mkdir(parents=True, exist_ok=True)
@@ -25,9 +25,9 @@ def test(profile: str) -> dict:
             shutil.copy2(file, fixture / "av" / file.relative_to(artifact / "_internal/av"))
         shutil.copytree(artifact / "_internal/av.libs", fixture / "av.libs")
         environment = os.environ.copy()
-        environment.update(PYTHONPATH=str(fixture) + os.pathsep + str(ROOT / "src"), HAIZFLOW_SMOKE_TEST="1",
-                           HAIZFLOW_HOME=str(fixture / "runtime"))
-        code = ("import av,json; from haizflow.engine.main import media_smoke_test; "
+        environment.update(PYTHONPATH=str(fixture) + os.pathsep + str(ROOT / "src"), HFLOW_SMOKE_TEST="1",
+                           HFLOW_HOME=str(fixture / "runtime"))
+        code = ("import av,json; from hflow.engine.main import media_smoke_test; "
                 "assert 'libx264' not in av.codecs_available and 'libx265' not in av.codecs_available; "
                 "print(json.dumps(media_smoke_test()))")
         process = subprocess.run([str(build / "venv/Scripts/python.exe"), "-c", code],

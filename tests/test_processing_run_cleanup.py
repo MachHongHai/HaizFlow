@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from haizflow.schemas.video import VideoConfig
-from haizflow.services import manual_artifacts, processing_runs, project_store, video_store
+from hflow.schemas.video import VideoConfig
+from hflow.services import manual_artifacts, processing_runs, project_store, video_store
 
 
 @pytest.fixture
@@ -260,10 +260,10 @@ def test_export_cancel_cleans_published_worker_results_before_queue_detaches(vid
     from unittest.mock import Mock
     from PySide6.QtCore import QObject
     from PySide6.QtGui import QGuiApplication
-    from haizflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
-    from haizflow.desktop.video_export_controller import VideoExportController
-    from haizflow.pipeline.process_registry import check_cancellation, clean_video, start_video
-    from haizflow.services.processing_queue import SerialProcessingQueue
+    from hflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
+    from hflow.desktop.video_export_controller import VideoExportController
+    from hflow.pipeline.process_registry import check_cancellation, clean_video, start_video
+    from hflow.services.processing_queue import SerialProcessingQueue
 
     app = QGuiApplication.instance() or QGuiApplication([])
     video = video_factory()
@@ -294,7 +294,7 @@ def test_export_cancel_cleans_published_worker_results_before_queue_detaches(vid
             video_store.update_video(identifier, status="cancelled", step="cancelled")
         finally:
             clean_video(identifier)
-    monkeypatch.setattr("haizflow.pipeline.manual_tools.run_manual_tool_sync", pipeline)
+    monkeypatch.setattr("hflow.pipeline.manual_tools.run_manual_tool_sync", pipeline)
     identifier = processing_runs.arm_export(video.video_id)
     job = {"videoId": video.video_id, "status": "rendering", "progress": 10, "runScopeId": identifier}
     exporter.jobs = [job]

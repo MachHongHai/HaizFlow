@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from haizflow.update.filesystem import UpdateError, atomic_json, read_json
+from hflow.update.filesystem import UpdateError, atomic_json, read_json
 
 
 def windows_error(code):
@@ -29,8 +29,8 @@ def test_temporary_windows_lock_retries_same_file_and_preserves_state(tmp_path, 
             raise windows_error(code)
         real_replace(source, target)
 
-    with (patch("haizflow.update.filesystem.os.replace", side_effect=replace),
-          patch("haizflow.update.filesystem.time.sleep") as sleep):
+    with (patch("hflow.update.filesystem.os.replace", side_effect=replace),
+          patch("hflow.update.filesystem.time.sleep") as sleep):
         atomic_json(path, {"state": "ready"})
         assert sleep.call_count == 2
     assert len(set(calls)) == 1
@@ -41,8 +41,8 @@ def test_temporary_windows_lock_retries_same_file_and_preserves_state(tmp_path, 
 def test_persistent_windows_lock_is_bounded_and_leaves_old_state(tmp_path):
     path = tmp_path / "attempt.status.json"
     atomic_json(path, {"state": "downloading"})
-    with (patch("haizflow.update.filesystem.os.replace", side_effect=windows_error(5)) as replace,
-          patch("haizflow.update.filesystem.time.sleep") as sleep):
+    with (patch("hflow.update.filesystem.os.replace", side_effect=windows_error(5)) as replace,
+          patch("hflow.update.filesystem.time.sleep") as sleep):
         with pytest.raises(UpdateError, match="Windows"):
             atomic_json(path, {"state": "ready"})
         assert replace.call_count == 7
@@ -52,8 +52,8 @@ def test_persistent_windows_lock_is_bounded_and_leaves_old_state(tmp_path):
 
 
 def test_other_write_errors_are_not_retried(tmp_path):
-    with (patch("haizflow.update.filesystem.os.replace", side_effect=OSError("Disk full")) as replace,
-          patch("haizflow.update.filesystem.time.sleep") as sleep):
+    with (patch("hflow.update.filesystem.os.replace", side_effect=OSError("Disk full")) as replace,
+          patch("hflow.update.filesystem.time.sleep") as sleep):
         with pytest.raises(OSError, match="Disk full"):
             atomic_json(tmp_path / "status.json", {})
         replace.assert_called_once()
@@ -99,7 +99,7 @@ def test_actual_windows_reader_lock_recovers_after_reader_closes(tmp_path):
             raise
 
     try:
-        with patch("haizflow.update.filesystem.os.replace", side_effect=replace):
+        with patch("hflow.update.filesystem.os.replace", side_effect=replace):
             atomic_json(path, {"state": "ready"})
         assert errors and set(errors) <= {5, 32, 33}
         assert read_json(path) == {"state": "ready"}

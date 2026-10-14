@@ -5,10 +5,10 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 
-from haizflow.core import bundled_models, voice_profile_model
-from haizflow.core.model_integrity import ModelIntegrityError
-from haizflow.pipeline import speaker_identity as identity
-from haizflow.pipeline.speaker_runtime import VoiceProfileSession
+from hflow.core import bundled_models, voice_profile_model
+from hflow.core.model_integrity import ModelIntegrityError
+from hflow.pipeline import speaker_identity as identity
+from hflow.pipeline.speaker_runtime import VoiceProfileSession
 
 
 def test_acoustic_consensus_handles_high_male_and_one_outlier():
@@ -103,7 +103,7 @@ def test_no_usable_speech_falls_back_without_default_voice_or_failing_task(tmp_p
         return Mock(args=args, returncode=0)
     segments = [{"start": 0, "end": 1, "text": "Some subtitle."}]
     with (patch.object(identity, "verify_model", return_value=tmp_path / "speaker.onnx"),
-          patch("haizflow.pipeline.speaker_runtime.SpeakerSession"),
+          patch("hflow.pipeline.speaker_runtime.SpeakerSession"),
           patch.object(identity, "TMP_DIR", str(tmp_path)),
           patch.object(identity.subprocess, "Popen", side_effect=process),
           patch.object(identity, "communicate_process", side_effect=decoded_audio)):

@@ -11,9 +11,9 @@ from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlPropertyMap
 from PySide6.QtQuick import QQuickWindow
 from PySide6.QtTest import QTest
 
-from haizflow.desktop.video_export_controller import VideoExportController
+from hflow.desktop.video_export_controller import VideoExportController
 
-QML_DIR = Path(__file__).parents[1] / "src/haizflow/desktop/qml"
+QML_DIR = Path(__file__).parents[1] / "src/hflow/desktop/qml"
 
 
 @pytest.mark.parametrize("step,measured", [("manual_export", True), ("rendering", True),
@@ -26,7 +26,7 @@ def test_job_receives_pipeline_progress_even_while_queue_owns_video(monkeypatch,
     exporter.timer.stop()
     exporter.jobs = [{"videoId": "video-a", "status": "rendering", "progress": 0}]
     video = SimpleNamespace(step=step, progress=61, status="processing")
-    monkeypatch.setattr("haizflow.desktop.video_export_controller.video_store.get_video", lambda _key: video)
+    monkeypatch.setattr("hflow.desktop.video_export_controller.video_store.get_video", lambda _key: video)
     try:
         exporter.poll()
         assert exporter.jobs[0]["progress"] == 55
@@ -60,7 +60,7 @@ def test_render_to_copy_transition_does_not_reset_or_finish_early(monkeypatch):
     job = {"videoId": "video-a", "path": "out.mp4", "status": "rendering", "progress": 0, "renderRequired": True}
     exporter.jobs = [job]
     video = SimpleNamespace(step="manual_export", progress=100, status="processing")
-    monkeypatch.setattr("haizflow.desktop.video_export_controller.video_store.get_video", lambda _key: video)
+    monkeypatch.setattr("hflow.desktop.video_export_controller.video_store.get_video", lambda _key: video)
     try:
         exporter.poll()
         assert job["progress"] == 90

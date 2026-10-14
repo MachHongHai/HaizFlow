@@ -15,7 +15,7 @@ from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 
 
-QML_DIR = Path(__file__).resolve().parents[1] / "src" / "haizflow" / "desktop" / "qml"
+QML_DIR = Path(__file__).resolve().parents[1] / "src" / "hflow" / "desktop" / "qml"
 
 
 class SubtitleEditingUiTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class SubtitleEditingUiTests(unittest.TestCase):
     def setUpClass(cls):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         cls.app = QGuiApplication.instance() or QGuiApplication([])
-        if os.environ.get("HAIZFLOW_UI_PREVIEWS") and os.name == "nt":
+        if os.environ.get("HFLOW_UI_PREVIEWS") and os.name == "nt":
             # The offscreen plugin doesn't discover Windows fonts. Seed only
             # visual-QA runs so they show the same UI fonts as the native app.
             fonts = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts"
@@ -176,7 +176,7 @@ ManualEditorToolbar {
             page = window.findChild(QQuickItem, "autoPage")
             for child in page.findChildren(QQuickItem):
                 self.assertNotIn("Flickable", child.metaObject().className())
-            preview_directory = os.environ.get("HAIZFLOW_UI_PREVIEWS")
+            preview_directory = os.environ.get("HFLOW_UI_PREVIEWS")
             if preview_directory:
                 window.grabWindow().save(str(Path(preview_directory) / f"auto-settings-{width}.png"))
             controller.insert("backgroundMusicPath", "D:/music.mp3")
@@ -237,7 +237,7 @@ AppButton { objectName: "iconOnly"; x: 180; y: 20; iconGlyph: "\\uE768"; toolTip
         QTest.qWait(30)
         self.assertEqual(controller.applied, ("en", "cpu", False))
         self.assertFalse(button.isEnabled())
-        preview_directory = os.environ.get("HAIZFLOW_UI_PREVIEWS")
+        preview_directory = os.environ.get("HFLOW_UI_PREVIEWS")
         if preview_directory:
             window.grabWindow().save(str(Path(preview_directory) / "general-settings.png"))
         window.setHeight(400)
@@ -254,7 +254,7 @@ CopyrightDialog { id: dialog; Component.onCompleted: open(); }
         self.assertTrue(dialog.property("opened"))
         self.assertLessEqual(scroll.property("contentHeight"), scroll.property("availableHeight") + 1)
         self.assertLessEqual(dialog.property("height"), window.height() - 48)
-        preview_directory = os.environ.get("HAIZFLOW_UI_PREVIEWS")
+        preview_directory = os.environ.get("HFLOW_UI_PREVIEWS")
         if preview_directory:
             window.grabWindow().save(str(Path(preview_directory) / "copyright.png"))
         # Retain scrolling when a smaller screen cannot fit all legal text.
@@ -429,7 +429,7 @@ CopyrightDialog { id: dialog; Component.onCompleted: open(); }
         success_color = dot.property("color")
         self.assertNotEqual(success_color, failed_dot.property("color"))
         self.assertLess(save.mapToScene(QPointF()).y() + save.height(), window.height())
-        preview_directory = os.environ.get("HAIZFLOW_UI_PREVIEWS")
+        preview_directory = os.environ.get("HFLOW_UI_PREVIEWS")
         if preview_directory:
             window.grabWindow().save(str(Path(preview_directory) / "zernio-api-settings.png"))
         # A failed replacement attempt must not inherit the old key's green state.
@@ -465,7 +465,7 @@ CopyrightDialog { id: dialog; Component.onCompleted: open(); }
         self.assertTrue(name.isVisible())
 
     def test_batch_subtitle_draft_serializes_every_appearance_field_without_editor_writes(self):
-        from haizflow.schemas.video import SubtitleStyle
+        from hflow.schemas.video import SubtitleStyle
 
         source = (QML_DIR / "BatchSettingsDialog.qml").read_text(encoding="utf-8")
         properties = re.findall(r"^    property (?:string|bool|int|real|var) draft\w+:.*$", source, re.M)
@@ -686,7 +686,7 @@ function failMusic() {
         QTest.qWait(80)
         self.assertFalse(dialog.property("hasError"))
         self.assertEqual(field.property("text"), "")
-        preview_directory = os.environ.get("HAIZFLOW_UI_PREVIEWS")
+        preview_directory = os.environ.get("HFLOW_UI_PREVIEWS")
         if preview_directory:
             window.grabWindow().save(str(Path(preview_directory) / "music-link.png"))
         field.setProperty("text", "https://example.com/new-music")
@@ -717,9 +717,9 @@ function failMusic() {
         from datetime import timedelta
         import srt
         from PySide6.QtGui import QImage
-        from haizflow.pipeline.render import SubtitleRegionLayout, _subtitle_parts_for_region
-        from haizflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
-        from haizflow.schemas.video import SubtitleStyle
+        from hflow.pipeline.render import SubtitleRegionLayout, _subtitle_parts_for_region
+        from hflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
+        from hflow.schemas.video import SubtitleStyle
 
         class PreviewController(QObject):
             thumbnail = ""
@@ -861,7 +861,7 @@ function openPreview() { dialog.openWithLayout(68, 50, 70, 35, 12); }
                 self.assertAlmostEqual(line["progress"], expected)
                 if index and line["progress"] > 0:
                     self.assertEqual(lines[index - 1]["progress"], 1)
-            preview_directory = os.environ.get("HAIZFLOW_UI_PREVIEWS")
+            preview_directory = os.environ.get("HFLOW_UI_PREVIEWS")
             if preview_directory:
                 window.grabWindow().save(str(Path(preview_directory) / "auto-subtitle.png"))
             QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, point)
@@ -874,7 +874,7 @@ function openPreview() { dialog.openWithLayout(68, 50, 70, 35, 12); }
             self.assertEqual(controller.renderer.frame, {})
 
     def test_watermark_blur_commits_vietnamese_edits_once_and_repeats(self):
-        from haizflow.desktop.input_method_commit_filter import InputMethodCommitFilter
+        from hflow.desktop.input_method_commit_filter import InputMethodCommitFilter
 
         window = self.create_window('''
 property int commits: 0
@@ -909,7 +909,7 @@ AutoSaveTextField {
     def test_multiline_karaoke_masks_advance_sequentially_without_recreating_delegates(self):
         import tempfile
 
-        from haizflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer, export_events, rasterize
+        from hflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer, export_events, rasterize
 
         with tempfile.TemporaryDirectory() as directory:
             layout = dict(outputWidth=720, outputHeight=1280, layoutWidth=320, layoutHeight=270,
@@ -970,8 +970,8 @@ SubtitleTransformOverlay {
                         if index:
                             self.assertGreaterEqual(mask.y(), masks[index - 1].y() + masks[index - 1].height())
                     screenshot = window.grabWindow()
-                    if os.environ.get("HAIZFLOW_KARAOKE_PREVIEW"):
-                        screenshot.save(os.environ["HAIZFLOW_KARAOKE_PREVIEW"])
+                    if os.environ.get("HFLOW_KARAOKE_PREVIEW"):
+                        screenshot.save(os.environ["HFLOW_KARAOKE_PREVIEW"])
                     self.assertFalse(screenshot.isNull())
                     for index, mask in enumerate(masks):
                         position = mask.mapToScene(QPointF())
@@ -993,7 +993,7 @@ SubtitleTransformOverlay {
         import json
         import tempfile
 
-        from haizflow.desktop.subtitle_overlay_renderer import export_events, rasterize
+        from hflow.desktop.subtitle_overlay_renderer import export_events, rasterize
 
         with tempfile.TemporaryDirectory() as directory:
             layout = dict(outputWidth=720, outputHeight=1280, layoutWidth=640, layoutHeight=205,
@@ -1028,7 +1028,7 @@ SubtitleTransformOverlay {
             self.assertAlmostEqual(selection.y(), frame["y"] / 2 - 3, delta=0.1)
             self.assertLess(selection.width(), 360 * 0.89)
             window.setProperty("visible", True)
-            preview_path = os.environ.get("HAIZFLOW_CROP_PREVIEW")
+            preview_path = os.environ.get("HFLOW_CROP_PREVIEW")
             if preview_path:
                 window.grabWindow().save(preview_path)
 

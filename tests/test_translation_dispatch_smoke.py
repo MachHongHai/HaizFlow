@@ -4,11 +4,11 @@ from unittest.mock import patch
 
 import pytest
 
-from haizflow.core.release_smoke import run_translation_smoke
+from hflow.core.release_smoke import run_translation_smoke
 
 
 def test_translation_acceptance_cannot_run_against_normal_user_runtime():
-    with patch.dict(os.environ, {"HAIZFLOW_SMOKE_TEST": "0"}):
+    with patch.dict(os.environ, {"HFLOW_SMOKE_TEST": "0"}):
         with pytest.raises(RuntimeError, match="isolated"):
             run_translation_smoke("full")
 
@@ -16,12 +16,12 @@ def test_translation_acceptance_cannot_run_against_normal_user_runtime():
 @pytest.mark.parametrize("model,device", [("full", "gpu"), ("q4", "cpu")])
 def test_translation_acceptance_runs_core_dispatch_and_shutdown(model, device):
     with (
-        patch("haizflow.core.hardware.configure_processing_device") as configure_device,
-        patch("haizflow.core.hardware.configure_translation_model") as configure_model,
-        patch("haizflow.services.resource_packs.ResourcePackManager") as manager,
-        patch("haizflow.services.translation._worker_command", return_value=["HaizFlowEngine.exe", "--hymt2-worker"]),
-        patch("haizflow.services.translation._translate_with_hymt2_worker", return_value=["Xin chào, bạn khỏe không?"]) as translate,
-        patch("haizflow.services.translation.shutdown_hymt2_worker") as shutdown,
+        patch("hflow.core.hardware.configure_processing_device") as configure_device,
+        patch("hflow.core.hardware.configure_translation_model") as configure_model,
+        patch("hflow.services.resource_packs.ResourcePackManager") as manager,
+        patch("hflow.services.translation._worker_command", return_value=["HFlowEngine.exe", "--hymt2-worker"]),
+        patch("hflow.services.translation._translate_with_hymt2_worker", return_value=["Xin chào, bạn khỏe không?"]) as translate,
+        patch("hflow.services.translation.shutdown_hymt2_worker") as shutdown,
     ):
         manager.return_value.missing_packs.return_value = []
         result = run_translation_smoke(model)

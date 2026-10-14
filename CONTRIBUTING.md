@@ -1,4 +1,4 @@
-# Contributing to HaizFlow
+# Contributing to HFlow
 
 [Tiếng Việt](CONTRIBUTING.vi.md) · [Development guide](docs/development.md) · [Architecture](docs/architecture.md)
 
@@ -16,7 +16,7 @@ Focused bug reports and pull requests are welcome. Before working on a change, s
 Do not commit models, project media, runtime data, credentials, generated build output, or private logs. Proposed contributions require an explicit license/permission agreement before acceptance; opening a pull request alone does not grant a new redistribution license.
 
 Contributors retain copyright; a pull request is not a copyright assignment.
-The owned HaizFlow code now uses Source-Available 1.0. Before incorporating a
+The owned HFlow code now uses Source-Available 1.0. Before incorporating a
 contribution into a future restricted release, maintainers must obtain and
 record sufficient permission for its exact scope, or keep it separately
 licensed. The [opt-in contributor permission draft](legal/CONTRIBUTOR-PERMISSION-DRAFT.md)

@@ -13,7 +13,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.core import runtime_probe
+from hflow.core import runtime_probe
 
 
 class RuntimeProbeTests(unittest.TestCase):
@@ -21,13 +21,13 @@ class RuntimeProbeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             environment = os.environ.copy()
             environment["PYTHONPATH"] = str(SRC)
-            environment["HAIZFLOW_SMOKE_TEST"] = "1"
+            environment["HFLOW_SMOKE_TEST"] = "1"
             environment["RUNTIME_DATA_DIR"] = temporary
             completed = subprocess.run(
                 [
                     sys.executable,
                     "-c",
-                    "from haizflow.config import RUNTIME_DATA_DIR; print(RUNTIME_DATA_DIR)",
+                    "from hflow.config import RUNTIME_DATA_DIR; print(RUNTIME_DATA_DIR)",
                 ],
                 cwd=ROOT,
                 env=environment,

@@ -7,8 +7,8 @@ from unittest.mock import Mock
 from PySide6.QtCore import QObject
 from PySide6.QtGui import QGuiApplication
 
-from haizflow.desktop.video_export_controller import VideoExportController
-from haizflow.services.processing_queue import SerialProcessingQueue
+from hflow.desktop.video_export_controller import VideoExportController
+from hflow.services.processing_queue import SerialProcessingQueue
 
 
 def host_for(task_queue):
@@ -39,9 +39,9 @@ def test_cancel_detaches_only_owned_waiters_and_cancels_owned_active_render(monk
               for key in ("active-export", "waiting-export", "unrelated")}
     update = Mock()
     pause = Mock()
-    monkeypatch.setattr("haizflow.desktop.video_export_controller.video_store.get_video", videos.get)
-    monkeypatch.setattr("haizflow.desktop.video_export_controller.video_store.update_video", update)
-    monkeypatch.setattr("haizflow.pipeline.process_registry.cancel_video", pause)
+    monkeypatch.setattr("hflow.desktop.video_export_controller.video_store.get_video", videos.get)
+    monkeypatch.setattr("hflow.desktop.video_export_controller.video_store.update_video", update)
+    monkeypatch.setattr("hflow.pipeline.process_registry.cancel_video", pause)
     try:
         assert task_queue.enqueue("active-export") and started.wait(1)
         assert task_queue.enqueue("waiting-export") and task_queue.enqueue("unrelated")
@@ -72,7 +72,7 @@ def test_old_export_token_cannot_cancel_new_run_of_same_video(monkeypatch):
     exporter = VideoExportController(host)
     exporter.timer.stop()
     pause = Mock()
-    monkeypatch.setattr("haizflow.pipeline.process_registry.cancel_video", pause)
+    monkeypatch.setattr("hflow.pipeline.process_registry.cancel_video", pause)
     try:
         assert task_queue.enqueue("same-video") and started.wait(1)
         token = task_queue.token_for("same-video")

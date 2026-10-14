@@ -1,8 +1,8 @@
-# HaizFlow 0.1.9
+# HFlow 0.1.9
 
-**[Tải bộ cài Windows — HaizFlow-0.1.9-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.9/HaizFlow-0.1.9-Setup.exe)**
+**[Tải bộ cài Windows — HFlow-0.1.9-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.9/HaizFlow-0.1.9-Setup.exe)**
 
-HaizFlow là ứng dụng miễn phí để tải video, dịch, tạo phụ đề và lồng tiếng trên Windows. Bạn có thể xử lý tự động, chỉnh từng bước trong chế độ Thủ công hoặc chạy nhiều video theo hàng đợi.
+HFlow là ứng dụng miễn phí để tải video, dịch, tạo phụ đề và lồng tiếng trên Windows. Bạn có thể xử lý tự động, chỉnh từng bước trong chế độ Thủ công hoặc chạy nhiều video theo hàng đợi.
 
 ## Chức năng chính
 

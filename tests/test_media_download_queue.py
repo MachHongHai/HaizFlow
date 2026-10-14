@@ -14,8 +14,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.desktop.media_download_controller import MediaDownloadController, _safe_output_stem
-from haizflow.services.video_download import DownloadCancelled
+from hflow.desktop.media_download_controller import MediaDownloadController, _safe_output_stem
+from hflow.services.video_download import DownloadCancelled
 
 
 class MediaDownloadQueueTests(unittest.TestCase):
@@ -79,7 +79,7 @@ class MediaDownloadQueueTests(unittest.TestCase):
             controller.shutdown()
 
     def test_audio_uses_private_staging_and_never_overwrites_existing_file(self):
-        from haizflow.services.video_download import VideoMetadata
+        from hflow.services.video_download import VideoMetadata
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
             original = output / "Title.m4a"
@@ -88,16 +88,16 @@ class MediaDownloadQueueTests(unittest.TestCase):
             metadata = VideoMetadata("https://youtu.be/new", "Title", "YouTube", 10, "", "")
 
             def download(_url, destination, *_args):
-                self.assertIn(".haizflow-downloads", destination.parts)
+                self.assertIn(".hflow-downloads", destination.parts)
                 destination.write_bytes(b"new audio")
 
             try:
-                with mock.patch("haizflow.desktop.media_download_controller.inspect_video_url", return_value=metadata), \
-                     mock.patch("haizflow.desktop.media_download_controller.download_audio", side_effect=download):
+                with mock.patch("hflow.desktop.media_download_controller.inspect_video_url", return_value=metadata), \
+                     mock.patch("hflow.desktop.media_download_controller.download_audio", side_effect=download):
                     controller._run(metadata.url, "audio", directory)
                 self.assertEqual(original.read_bytes(), b"existing")
                 self.assertEqual((output / "Title (2).m4a").read_bytes(), b"new audio")
-                self.assertEqual(list(output.glob(".haizflow-downloads/*")), [])
+                self.assertEqual(list(output.glob(".hflow-downloads/*")), [])
             finally:
                 controller.shutdown()
 
@@ -114,7 +114,7 @@ class MediaDownloadQueueTests(unittest.TestCase):
                 with mock.patch.object(controller, "_extract", side_effect=extract):
                     controller._run("source.mp4", "extract", directory)
                 self.assertEqual(list(output.glob("*.m4a")), [])
-                self.assertEqual(list(output.glob(".haizflow-downloads/*")), [])
+                self.assertEqual(list(output.glob(".hflow-downloads/*")), [])
             finally:
                 controller.shutdown()
     def test_download_state_distinguishes_idle_and_validation_error(self):
@@ -179,7 +179,7 @@ class MediaDownloadQueueTests(unittest.TestCase):
 
             process.communicate.side_effect = still_running
             with mock.patch(
-                "haizflow.desktop.media_download_controller.subprocess.Popen",
+                "hflow.desktop.media_download_controller.subprocess.Popen",
                 return_value=process,
             ):
                 with self.assertRaisesRegex(DownloadCancelled, "cancelled"):

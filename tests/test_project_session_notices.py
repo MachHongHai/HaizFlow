@@ -7,7 +7,7 @@ from PySide6.QtCore import QObject, QUrl, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlComponent, QQmlEngine
 
-from haizflow.desktop.qml_controller import HaizFlowController
+from hflow.desktop.qml_controller import HFlowController
 
 
 def host(project="project-a", video="video-a"):
@@ -18,7 +18,7 @@ def host(project="project-a", video="video-a"):
 
 
 def show(value, key="gemini-cost"):
-    return HaizFlowController.showProjectSessionAlertOnce(value, key, "Gemini", "Billing", "information")
+    return HFlowController.showProjectSessionAlertOnce(value, key, "Gemini", "Billing", "information")
 
 
 def test_gemini_cost_notice_is_shared_across_models_and_reopening_project():
@@ -50,12 +50,12 @@ def test_normal_error_alerts_and_missing_key_reminders_are_not_suppressed():
     value = host()
     show(value)
     for _ in range(2):
-        HaizFlowController.showAppAlert(value, "Gemini error", "Retry", "critical")
+        HFlowController.showAppAlert(value, "Gemini error", "Retry", "critical")
     assert value._show_app_alert.call_count == 3
     value._settings_language = "vi"
     value.appAlertRequested = Mock()
     for _ in range(2):
-        HaizFlowController.requestGeminiSetup(value)
+        HFlowController.requestGeminiSetup(value)
     assert value.appAlertRequested.emit.call_count == 2
 
 
@@ -67,12 +67,12 @@ def test_production_model_combo_routes_all_gemini_choices_to_shared_session_noti
     class Controller(QObject):
         @Slot(str, str, str, str, result=bool)
         def showProjectSessionAlertOnce(self, key, title, message, severity):
-            return HaizFlowController.showProjectSessionAlertOnce(value, key, title, message, severity)
+            return HFlowController.showProjectSessionAlertOnce(value, key, title, message, severity)
 
     controller = Controller()
     engine = QQmlEngine()
     engine.rootContext().setContextProperty("TestController", controller)
-    qml = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml/TranslationModelCombo.qml"
+    qml = Path(__file__).resolve().parents[1] / "src/hflow/desktop/qml/TranslationModelCombo.qml"
     component = QQmlComponent(engine)
     # The registered AppController singleton shadows a same-named context
     # property. Inject only its symbol, retaining the production combo logic.

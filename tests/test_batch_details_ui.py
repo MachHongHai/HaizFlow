@@ -33,7 +33,7 @@ def exercise(width, overrides):
     engine = QQmlEngine()
     warnings = []
     engine.warnings.connect(lambda items: warnings.extend(item.toString() for item in items))
-    directory = Path(__file__).parents[1] / "src/haizflow/desktop/qml"
+    directory = Path(__file__).parents[1] / "src/hflow/desktop/qml"
     component = QQmlComponent(engine)
     component.setData(QByteArray(b'''
         import QtQuick

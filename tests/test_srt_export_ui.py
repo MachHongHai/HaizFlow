@@ -14,7 +14,7 @@ def check_dialog():
 
     app = QGuiApplication.instance() or QGuiApplication([])
     engine = QQmlEngine()
-    qml_dir = Path(__file__).parents[1] / "src/haizflow/desktop/qml"
+    qml_dir = Path(__file__).parents[1] / "src/hflow/desktop/qml"
     component = QQmlComponent(engine)
     component.setData(f'''import QtQuick
 import QtQuick.Controls.Basic
@@ -71,7 +71,7 @@ ApplicationWindow {{
         combo.setProperty("currentIndex", 2)
         QTest.qWait(15)
         assert not confirm.property("enabled")
-        capture_dir = os.environ.get("HAIZFLOW_UI_PREVIEWS")
+        capture_dir = os.environ.get("HFLOW_UI_PREVIEWS")
         if capture_dir:
             control.setProperty("result", True)
             QMetaObject.invokeMethod(dialog, "openForSelection", Qt.DirectConnection)

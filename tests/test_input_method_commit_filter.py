@@ -12,7 +12,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.desktop.input_method_commit_filter import InputMethodCommitFilter
+from hflow.desktop.input_method_commit_filter import InputMethodCommitFilter
 
 
 class InputMethodCommitFilterTests(unittest.TestCase):

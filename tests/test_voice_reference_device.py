@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.pipeline import omnivoice_tts, voice_reference
+from hflow.pipeline import omnivoice_tts, voice_reference
 
 
 def test_cancelled_reference_does_not_return_a_cached_transcript(tmp_path):
@@ -69,12 +69,12 @@ def test_parent_request_and_resource_pack_are_device_consistent(tmp_path, device
          patch.object(voice_reference, "log_to_video"), \
          patch.object(voice_reference.subprocess, "Popen", return_value=process), \
          patch.object(voice_reference, "communicate_process", side_effect=communicate), \
-         patch("haizflow.core.memory.require_cpu_memory"), \
-         patch("haizflow.services.resource_packs.installed_engine_command", return_value=["engine"]) as command, \
-         patch("haizflow.core.paths.engine_environment", return_value={"HAIZFLOW_ENGINE_APP_ROOT": "D:/Installed"}) as env:
+         patch("hflow.core.memory.require_cpu_memory"), \
+         patch("hflow.services.resource_packs.installed_engine_command", return_value=["engine"]) as command, \
+         patch("hflow.core.paths.engine_environment", return_value={"HFLOW_ENGINE_APP_ROOT": "D:/Installed"}) as env:
         assert voice_reference.transcribe_reference(str(sample), "video", device=device) == "sample text"
         assert voice_reference.transcribe_reference(str(sample), "video", device=device) == "sample text"
-        assert voice_reference.subprocess.Popen.call_args.kwargs["env"]["HAIZFLOW_ENGINE_APP_ROOT"] == "D:/Installed"
+        assert voice_reference.subprocess.Popen.call_args.kwargs["env"]["HFLOW_ENGINE_APP_ROOT"] == "D:/Installed"
     assert len(requests) == 1
     assert requests[0]["payload"]["device"] == device
     assert command.call_args.args[2]["device"] == device
@@ -108,6 +108,6 @@ def test_reference_failure_preserves_engine_error_even_with_empty_stderr(tmp_pat
          patch.object(voice_reference, "log_to_video"), \
          patch.object(voice_reference.subprocess, "Popen", return_value=Mock(returncode=1)), \
          patch.object(voice_reference, "communicate_process", side_effect=communicate), \
-         patch("haizflow.services.resource_packs.installed_engine_command", return_value=["engine"]):
+         patch("hflow.services.resource_packs.installed_engine_command", return_value=["engine"]):
         with pytest.raises(RuntimeError, match=expected):
             voice_reference.transcribe_reference(str(sample), "video", device="gpu")

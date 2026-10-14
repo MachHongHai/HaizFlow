@@ -47,11 +47,11 @@ nên không dùng checksum lịch sử để kiểm tệp hiện tại.
 
 | Hạng mục | Kết quả hiện tại |
 | --- | --- |
-| Installer | `dist/installer/HaizFlow-0.1.0-DEVELOPMENT-Setup.exe`, **194.794.242 byte**, `NotSigned` |
+| Installer | `dist/installer/HFlow-0.1.0-DEVELOPMENT-Setup.exe`, **194.794.242 byte**, `NotSigned` |
 | SHA-256 | `2c714943755d389d841db43e5b15feacbd9a0cd80d0ff1910d5c2c895fb4d2cb` |
-| Raw Core | `dist/HaizFlowCore`, 566.668.531 byte, 3.652 checksum entry |
-| Assembly | `dist/HaizFlow-versioned-0.1.0-storage-safe`, **607.024.255 byte**, 3.795 checksum entry; không có root runtime/update-state |
-| Full Core ZIP | `dist/release-assets-0.1.0-storage-safe-development/HaizFlow-Core-0.1.0-windows-x64-full.zip`, 252.994.454 byte |
+| Raw Core | `dist/HFlowCore`, 566.668.531 byte, 3.652 checksum entry |
+| Assembly | `dist/HFlow-versioned-0.1.0-storage-safe`, **607.024.255 byte**, 3.795 checksum entry; không có root runtime/update-state |
+| Full Core ZIP | `dist/release-assets-0.1.0-storage-safe-development/HFlow-Core-0.1.0-windows-x64-full.zip`, 252.994.454 byte |
 | Source cuối | **1.303 qua, 1 bỏ qua, 157 subtest qua**, 106,29 giây; compile/Python correctness lint/QML lint qua |
 | Cài mới/repair/gỡ/cài lại | Sáu kịch bản qua; bốn fixture dữ liệu giữ nguyên |
 | Delta unsigned | `NotSigned` ở cả ba executable; inventory chính xác, real health, rollback và giữ dữ liệu qua; fixture cục bộ, không test mạng |
@@ -114,13 +114,13 @@ và nghiệm thu đường tải trên máy sạch. Không đưa file DEVELOPMEN
 
 | Artifact | Vị trí / kết quả |
 | --- | --- |
-| Installer nội bộ | `dist/installer/HaizFlow-0.1.0-DEVELOPMENT-Setup.exe` |
+| Installer nội bộ | `dist/installer/HFlow-0.1.0-DEVELOPMENT-Setup.exe` |
 | Kích thước installer | 196.984.156 byte, khoảng 187,86 MiB |
 | Authenticode | `NotSigned`, đúng phạm vi kiểm thử unsigned |
 | Checksum | `.exe.sha256` nằm cạnh installer, đã đối chiếu hash của file thực |
-| Core | `dist/HaizFlowCore/HaizFlowCore.exe`; payload 572.452.212 byte, 3.743 tệp trong checksum manifest |
-| Assembly versioned | `dist/HaizFlow-versioned-0.1.0-final`; 612.847.499 byte, 3.886 tệp trong root checksum manifest |
-| Full Core ZIP nội bộ | `dist/release-assets-0.1.0-final-development/HaizFlow-Core-0.1.0-windows-x64-full.zip`; 256.162.842 byte |
+| Core | `dist/HFlowCore/HFlowCore.exe`; payload 572.452.212 byte, 3.743 tệp trong checksum manifest |
+| Assembly versioned | `dist/HFlow-versioned-0.1.0-final`; 612.847.499 byte, 3.886 tệp trong root checksum manifest |
+| Full Core ZIP nội bộ | `dist/release-assets-0.1.0-final-development/HFlow-Core-0.1.0-windows-x64-full.zip`; 256.162.842 byte |
 | Provenance | Commit nền `b99c1c0713b299d036bafd0bdfd302b70ec8d271`, build ID `0.1.0+b99c1c0713b2`, **git_dirty: true** |
 
 SHA-256 của installer nghiệm thu:

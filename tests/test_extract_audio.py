@@ -10,7 +10,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.pipeline import extract_audio as extract_audio_module
+from hflow.pipeline import extract_audio as extract_audio_module
 
 
 class ExtractAudioTests(unittest.TestCase):

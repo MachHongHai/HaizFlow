@@ -6,10 +6,10 @@ from unittest.mock import Mock, patch
 import pytest
 from PySide6.QtGui import QGuiApplication
 
-from haizflow.desktop.project_commands_controller import ProjectCommandsController
-from haizflow.desktop.project_import_controller import ProjectImportController
-from haizflow.desktop.url_import import ProjectUrlImportRegistry
-from haizflow.schemas.video import VideoConfig, VideoInfo
+from hflow.desktop.project_commands_controller import ProjectCommandsController
+from hflow.desktop.project_import_controller import ProjectImportController
+from hflow.desktop.url_import import ProjectUrlImportRegistry
+from hflow.schemas.video import VideoConfig, VideoInfo
 
 _APP = None
 URL = 'https://www.douyin.com/video/7684852132029539323'
@@ -64,8 +64,8 @@ def test_async_storage_completion_targets_original_project_and_coordinator():
         _processing_queue=SimpleNamespace(active_video_id='', discard=lambda _: False), refreshVideos=Mock())
     controller = ProjectImportController(host)
     try:
-        with patch('haizflow.desktop.project_import_controller.video_store.get_video', return_value=video), \
-                patch('haizflow.desktop.project_import_controller.threading.Thread'):
+        with patch('hflow.desktop.project_import_controller.video_store.get_video', return_value=video), \
+                patch('hflow.desktop.project_import_controller.threading.Thread'):
             controller.handle_url_download_ready('fixture.mp4', '', 'single', importer=first)
         context = controller._tasks[1]
         assert context['project_key'] == 'ff' and context['url_importer'] is first
@@ -105,8 +105,8 @@ def test_late_music_download_cannot_attach_to_replaced_source(tmp_path, replacin
         controller._tasks[1] = dict(operation='replace', video_id=current.video_id)
     temporary = tmp_path / 'download'
     temporary.mkdir()
-    with patch('haizflow.desktop.project_import_controller.video_store.get_video', return_value=current), \
-            patch('haizflow.desktop.project_import_controller.set_desktop_background_music') as apply:
+    with patch('hflow.desktop.project_import_controller.video_store.get_video', return_value=current), \
+            patch('hflow.desktop.project_import_controller.set_desktop_background_music') as apply:
         controller._finish_background_music_download(dict(task_id='music', error='',
             path=str(temporary / 'music.wav'), temporary_directory=str(temporary)))
     apply.assert_not_called()
@@ -120,7 +120,7 @@ def _check_url_dialog_isolation():
     from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlExpression, QQmlPropertyMap
     from PySide6.QtQuick import QQuickWindow
     from PySide6.QtTest import QTest
-    from haizflow.desktop.douyin_session_controller import DouyinSessionController
+    from hflow.desktop.douyin_session_controller import DouyinSessionController
 
     app = QGuiApplication.instance() or QGuiApplication([])
     owner = QQmlPropertyMap()
@@ -136,7 +136,7 @@ def _check_url_dialog_isolation():
     owner.insert('douyinSession', session)
     engine = QQmlEngine()
     engine.rootContext().setContextProperty('AppController', owner)
-    qml = Path(__file__).parents[1] / 'src/haizflow/desktop/qml'
+    qml = Path(__file__).parents[1] / 'src/hflow/desktop/qml'
     component = QQmlComponent(engine)
     component.setData(f'''import QtQuick
 import "{qml.as_uri()}"

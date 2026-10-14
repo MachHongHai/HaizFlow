@@ -10,15 +10,15 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 
-from haizflow.desktop.editor_preview_controller import EditorPreviewController
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.pipeline import render
-from haizflow.schemas.video import CropSettings, SubtitleStyle, VideoConfig, VideoInfo
-from haizflow.services import batch_settings
-from haizflow.services.ocr_regions import source_frame_in_output
-from haizflow.utils.ffmpeg import _binary, get_video_dimensions, get_video_duration, get_media_stream_types
+from hflow.desktop.editor_preview_controller import EditorPreviewController
+from hflow.desktop.qml_controller import HFlowController
+from hflow.pipeline import render
+from hflow.schemas.video import CropSettings, SubtitleStyle, VideoConfig, VideoInfo
+from hflow.services import batch_settings
+from hflow.services.ocr_regions import source_frame_in_output
+from hflow.utils.ffmpeg import _binary, get_video_dimensions, get_video_duration, get_media_stream_types
 
-QML_DIR = Path(__file__).parents[1] / "src/haizflow/desktop/qml"
+QML_DIR = Path(__file__).parents[1] / "src/hflow/desktop/qml"
 
 
 @pytest.mark.parametrize("mode", ["keep_ratio", "blur_background_9_16", "tiktok_9_16_crop"])
@@ -35,11 +35,11 @@ def test_batch_round_trip_and_override_detection(mode):
 
 def test_invalid_format_is_not_saved():
     host = SimpleNamespace(outputFormat="keep_ratio", _output_format="keep_ratio", outputFormatChanged=Mock())
-    HaizFlowController.outputFormat.fset(host, "arbitrary-ffmpeg-text")
+    HFlowController.outputFormat.fset(host, "arbitrary-ffmpeg-text")
     assert host._output_format == "keep_ratio"
     host.outputFormatChanged.emit.assert_not_called()
-    HaizFlowController.outputFormat.fset(host, "blur_background_9_16")
-    assert HaizFlowController.outputFormat.fget(host) == "blur_background_9_16"
+    HFlowController.outputFormat.fset(host, "blur_background_9_16")
+    assert HFlowController.outputFormat.fget(host) == "blur_background_9_16"
     host.outputFormatChanged.emit.assert_called_once()
 
 
@@ -52,8 +52,8 @@ def test_manual_auto_batch_config_keeps_draft_output_format(project_type):
     host._original_volume = config.original_video_volume
     host._selected_project_key = ""
     host._background_music_path = ""
-    with patch("haizflow.desktop.qml_controller.project_store.get_project", return_value=None):
-        result = HaizFlowController._build_config(host)
+    with patch("hflow.desktop.qml_controller.project_store.get_project", return_value=None):
+        result = HFlowController._build_config(host)
     assert result.output_format == "blur_background_9_16"
     assert result.project_type == project_type
 
@@ -64,11 +64,11 @@ def test_frame_change_deactivates_only_visual_export_not_ai_or_audio():
         manual_completed_stages=["translation", "subtitles", "voice", "timeline", "render"])
     config = VideoConfig.model_validate(video.model_dump())
     config.output_format = "blur_background_9_16"
-    with (patch("haizflow.desktop.qml_controller.video_store.update_video") as update,
-          patch("haizflow.desktop.qml_controller.video_store.get_video", return_value=video),
-          patch.object(HaizFlowController, "_sync_legacy_editor_visual_settings"),
-          patch("haizflow.desktop.qml_controller.manual_artifacts.deactivate") as deactivate):
-        HaizFlowController._apply_config_to_video(SimpleNamespace(), video, config)
+    with (patch("hflow.desktop.qml_controller.video_store.update_video") as update,
+          patch("hflow.desktop.qml_controller.video_store.get_video", return_value=video),
+          patch.object(HFlowController, "_sync_legacy_editor_visual_settings"),
+          patch("hflow.desktop.qml_controller.manual_artifacts.deactivate") as deactivate):
+        HFlowController._apply_config_to_video(SimpleNamespace(), video, config)
     changes = update.call_args.kwargs
     assert changes["output_format"] == "blur_background_9_16"
     assert changes["manual_completed_stages"] == ["translation", "subtitles", "voice", "timeline"]

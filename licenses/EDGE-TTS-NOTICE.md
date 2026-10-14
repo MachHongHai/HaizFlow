@@ -1,6 +1,6 @@
 # edge-tts
 
-HaizFlow uses the unmodified edge-tts 7.3.1 Python client by rany.
+HFlow uses the unmodified edge-tts 7.3.1 Python client by rany.
 
 - Upstream: https://github.com/rany2/edge-tts
 - Pinned source: https://github.com/rany2/edge-tts/tree/360fa8e1de354e1dda74c09bd695887d6a44df74
@@ -17,7 +17,7 @@ without an official installer replacing them. Future frozen releases must test
 this replacement path before publication; no such binary was built in this
 source-only change.
 
-HaizFlow's adapter and retry policy are independent code. No Microsoft service
+HFlow's adapter and retry policy are independent code. No Microsoft service
 credentials, endpoint tokens or signing implementation are copied into them.
 The client's LGPL license is not a grant of Microsoft service access or output
 rights. Those terms must be considered separately for the intended use.

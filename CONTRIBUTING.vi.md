@@ -1,8 +1,8 @@
-# Đóng góp cho HaizFlow
+# Đóng góp cho HFlow
 
 [English](CONTRIBUTING.md) · [Hướng dẫn phát triển](docs/development.vi.md) · [Kiến trúc](docs/architecture.vi.md)
 
-HaizFlow chào đón issue rõ ràng và pull request có phạm vi cụ thể. Trước khi sửa, hãy tìm issue hiện có rồi mô tả lỗi người dùng nhìn thấy, kết quả mong muốn và phạm vi thay đổi.
+HFlow chào đón issue rõ ràng và pull request có phạm vi cụ thể. Trước khi sửa, hãy tìm issue hiện có rồi mô tả lỗi người dùng nhìn thấy, kết quả mong muốn và phạm vi thay đổi.
 
 ## Quy trình phát triển
 
@@ -18,7 +18,7 @@ Không commit model, media dự án, runtime data, credential, build output ho�
 Đọc [hướng dẫn phát triển](docs/development.vi.md) và [tiêu chuẩn phát hành](docs/release-readiness.vi.md) để biết quy ước triển khai và gate kiểm tra.
 
 Người đóng góp giữ quyền tác giả; gửi pull request không phải chuyển nhượng
-bản quyền. Phần mã thuộc sở hữu HaizFlow dùng Source-Available 1.0. Trước khi đưa đóng góp vào
+bản quyền. Phần mã thuộc sở hữu HFlow dùng Source-Available 1.0. Trước khi đưa đóng góp vào
 bản phát hành theo giấy phép mới, maintainer phải có quyền phù hợp cho đúng
 phạm vi hoặc giữ phần đó theo giấy phép riêng. [Thỏa thuận đóng góp dự thảo](legal/CONTRIBUTOR-PERMISSION-DRAFT.md)
 chỉ áp dụng khi đã được duyệt và người đóng góp đồng ý rõ ràng, không ràng buộc

@@ -7,22 +7,22 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 if (!$ArtifactPath) {
-  $ArtifactPath = Join-Path $Root "dist\HaizFlow"
+  $ArtifactPath = Join-Path $Root "dist\HFlow"
 }
 $ArtifactPath = [System.IO.Path]::GetFullPath($ArtifactPath)
 $VersionedLayout = Test-Path -LiteralPath (Join-Path $ArtifactPath "update-layout.json") -PathType Leaf
-$LauncherExecutable = Join-Path $ArtifactPath "HaizFlow.exe"
-$Executable = Join-Path $ArtifactPath "HaizFlow.exe"
+$LauncherExecutable = Join-Path $ArtifactPath "HFlow.exe"
+$Executable = Join-Path $ArtifactPath "HFlow.exe"
 if ($VersionedLayout) {
   if (!$InstalledLayout) {
     throw "Do not launch a staged versioned artifact. Test an installed copy with -InstalledLayout; staging must remain immutable."
   }
   $ActiveVersion = (Get-Content -LiteralPath (Join-Path $ArtifactPath "update-state\active-version.json") -Raw | ConvertFrom-Json).active
   if ($ActiveVersion -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid installed Core pointer." }
-  $Executable = Join-Path $ArtifactPath "versions\$ActiveVersion\HaizFlowCore.exe"
+  $Executable = Join-Path $ArtifactPath "versions\$ActiveVersion\HFlowCore.exe"
 }
 if (!(Test-Path -LiteralPath $Executable -PathType Leaf)) {
-  $Executable = Join-Path $ArtifactPath "HaizFlowCore.exe"
+  $Executable = Join-Path $ArtifactPath "HFlowCore.exe"
 }
 if (!(Test-Path -LiteralPath $Executable -PathType Leaf)) {
   throw "Frozen executable is missing: $Executable"
@@ -98,32 +98,32 @@ if ($InstalledLayout) {
   $ReleaseArguments += "--installed-layout"
 }
 
-$PreviousHome = $env:HAIZFLOW_HOME
+$PreviousHome = $env:HFLOW_HOME
 $PreviousRuntimeData = $env:RUNTIME_DATA_DIR
 $PreviousModels = $env:MODELS_DIR
-$PreviousTemp = $env:HAIZFLOW_TMP_DIR
+$PreviousTemp = $env:HFLOW_TMP_DIR
 $PreviousQtPlatform = $env:QT_QPA_PLATFORM
-$PreviousSmokeFlag = $env:HAIZFLOW_SMOKE_TEST
+$PreviousSmokeFlag = $env:HFLOW_SMOKE_TEST
 try {
   New-Item -ItemType Directory -Path $SmokeRoot -Force | Out-Null
-  $env:HAIZFLOW_HOME = $SmokeRoot
+  $env:HFLOW_HOME = $SmokeRoot
   $env:RUNTIME_DATA_DIR = $SmokeData
   $env:MODELS_DIR = $SmokeModels
-  $env:HAIZFLOW_TMP_DIR = $SmokeTemp
+  $env:HFLOW_TMP_DIR = $SmokeTemp
   $env:QT_QPA_PLATFORM = "offscreen"
-  $env:HAIZFLOW_SMOKE_TEST = "1"
+  $env:HFLOW_SMOKE_TEST = "1"
 
   Invoke-FrozenCheck -Arguments $ReleaseArguments -Label "Frozen files and native media tools"
   if ($VersionedLayout) { $Executable = $LauncherExecutable }
   Invoke-FrozenCheck -Arguments @("--ui-smoke-test") -Label "Frozen Qt/QML startup"
 }
 finally {
-  $env:HAIZFLOW_HOME = $PreviousHome
+  $env:HFLOW_HOME = $PreviousHome
   $env:RUNTIME_DATA_DIR = $PreviousRuntimeData
   $env:MODELS_DIR = $PreviousModels
-  $env:HAIZFLOW_TMP_DIR = $PreviousTemp
+  $env:HFLOW_TMP_DIR = $PreviousTemp
   $env:QT_QPA_PLATFORM = $PreviousQtPlatform
-  $env:HAIZFLOW_SMOKE_TEST = $PreviousSmokeFlag
+  $env:HFLOW_SMOKE_TEST = $PreviousSmokeFlag
   if (Test-Path -LiteralPath $SmokeRoot) {
     $ResolvedSmokeRoot = [System.IO.Path]::GetFullPath((Resolve-Path -LiteralPath $SmokeRoot).Path)
     if (![System.IO.Path]::GetDirectoryName($ResolvedSmokeRoot).Equals($SmokeParent, [System.StringComparison]::OrdinalIgnoreCase)) {

@@ -16,12 +16,12 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.pipeline import transcribe
-from haizflow.pipeline.process_video import _timing_file_is_current
-from haizflow.pipeline.subtitle import generate_srt, split_segment_into_cues
-from haizflow.schemas.video import VideoConfig
-from haizflow.services import hymt2_worker, video_store, translation
-from haizflow.services.hymt2_worker import (
+from hflow.pipeline import transcribe
+from hflow.pipeline.process_video import _timing_file_is_current
+from hflow.pipeline.subtitle import generate_srt, split_segment_into_cues
+from hflow.schemas.video import VideoConfig
+from hflow.services import hymt2_worker, video_store, translation
+from hflow.services.hymt2_worker import (
     _build_prompt,
     _build_translation_prompts,
     _clean_single_translation,
@@ -53,7 +53,7 @@ class MixedLanguagePipelineTests(unittest.TestCase):
     def setUp(self):
         # These tests verify recognition/translation contracts with synthetic
         # runtimes, not the developer machine's changing free-memory counters.
-        policy = mock.patch("haizflow.core.hardware.cpu_runtime_profile", side_effect=lambda profile, **_: profile)
+        policy = mock.patch("hflow.core.hardware.cpu_runtime_profile", side_effect=lambda profile, **_: profile)
         policy.start()
         self.addCleanup(policy.stop)
 
@@ -1272,7 +1272,7 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         environment = os.environ.copy()
         environment["PYTHONPATH"] = str(SRC) + os.pathsep + environment.get("PYTHONPATH", "")
         process = subprocess.Popen(
-            [sys.executable, "-m", "haizflow.services.hymt2_worker", "--server"],
+            [sys.executable, "-m", "hflow.services.hymt2_worker", "--server"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

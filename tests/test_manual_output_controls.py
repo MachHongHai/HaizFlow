@@ -4,12 +4,12 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.desktop.presenters import voice_options_for_language
-from haizflow.desktop.project_workspace_controller import ProjectWorkspaceController
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.pipeline import manual_tools, tts
-from haizflow.schemas.video import VideoConfig, VideoInfo
-from haizflow.services.subtitle_language import manual_subtitle_language
+from hflow.desktop.presenters import voice_options_for_language
+from hflow.desktop.project_workspace_controller import ProjectWorkspaceController
+from hflow.desktop.qml_controller import HFlowController
+from hflow.pipeline import manual_tools, tts
+from hflow.schemas.video import VideoConfig, VideoInfo
+from hflow.services.subtitle_language import manual_subtitle_language
 
 
 def video_for(**changes):
@@ -46,8 +46,8 @@ def test_manual_translation_choice_keeps_vieneu_until_chinese_is_published(provi
         languageOptionsChanged=Mock(), ttsVoiceChanged=Mock(), ttsProviderChanged=Mock(),
         ttsProviderOptionsChanged=Mock(), ttsVoiceOptionsChanged=Mock(),
         _voice_options_for_language=lambda language, backend: voice_options_for_language(language, "vi", backend))
-    host._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(host)
-    HaizFlowController.targetLanguage.fset(host, "zh")
+    host._normalized_voice_for_language = HFlowController._normalized_voice_for_language.__get__(host)
+    HFlowController.targetLanguage.fset(host, "zh")
     assert host._target_language == "zh" and host._tts_provider == provider
     assert host._tts_voice == "vieneu:Hải Đăng"
     host.appAlertRequested.emit.assert_not_called()
@@ -58,9 +58,9 @@ def test_every_invalid_vieneu_provider_attempt_warns_and_keeps_previous_choice(p
     video = video_for(target_language="vi", subtitle_language="zh")
     host = SimpleNamespace(_project_type=project_type, _selected_video=lambda: video,
         _target_language="zh" if project_type == "single" else "vi", _tts_provider="omnivoice",
-        _normalized_tts_provider=HaizFlowController._normalized_tts_provider, appAlertRequested=Mock())
+        _normalized_tts_provider=HFlowController._normalized_tts_provider, appAlertRequested=Mock())
     for _ in range(3):
-        HaizFlowController.ttsProvider.fset(host, "vieneu")
+        HFlowController.ttsProvider.fset(host, "vieneu")
     assert host._tts_provider == "omnivoice"
     assert host.appAlertRequested.emit.call_count == 3
 
@@ -91,7 +91,7 @@ def test_existing_chinese_import_dialog_projects_compatible_voice_without_mutati
     host = SimpleNamespace(_project_type="manual", _selected_video=lambda: video,
                            _manual_subtitles=SimpleNamespace(video_id=video.video_id, segments=[{"text": "你好世界"}]))
     with patch.object(manual_tools, "published_voice_record", return_value=None):
-        configuration = HaizFlowController.manualVoiceConfiguration(host, "")
+        configuration = HFlowController.manualVoiceConfiguration(host, "")
     assert configuration["globalProvider"] == fallback and configuration["provider"] == fallback
     assert configuration["globalVoice"] == "omnivoice:female_gentle"
     assert video.model_dump() == original
@@ -102,7 +102,7 @@ def test_chinese_dialog_keeps_edge_but_repairs_unsupported_segment_override():
                      files={"manual_voice_overrides": {"cue": {"provider": "vieneu-gpu", "voice": "vieneu:Hải Đăng"}}})
     host = SimpleNamespace(_project_type="manual", _selected_video=lambda: video)
     with patch.object(manual_tools, "published_voice_record", return_value=None):
-        configuration = HaizFlowController.manualVoiceConfiguration(host, "cue")
+        configuration = HFlowController.manualVoiceConfiguration(host, "cue")
     assert configuration["globalProvider"] == "edge" and configuration["globalVoice"] == "zh-CN-XiaoxiaoNeural"
     assert configuration["provider"] == "omnivoice-gpu"
 
@@ -111,16 +111,16 @@ def test_confirming_full_manual_voice_requests_fresh_generation():
     video = video_for(tts_provider="vieneu-gpu", tts_voice="vieneu:Hải Đăng", subtitle_language="vi")
     host = SimpleNamespace(_project_type="manual", _selected_video=lambda: video,
         _processing_queue=SimpleNamespace(contains=lambda _: False),
-        _normalized_tts_provider=HaizFlowController._normalized_tts_provider,
+        _normalized_tts_provider=HFlowController._normalized_tts_provider,
         _normalized_voice_for_language=lambda _lang, value, _provider: value,
         _manual_subtitles=SimpleNamespace(video_id=video.video_id, segments=[{"segment_id": "cue", "text": "Xin chào"}]),
         voiceCloneReferencePath="", appAlertRequested=Mock(), ttsProviderChanged=Mock(), ttsVoiceChanged=Mock(),
         ttsProviderOptionsChanged=Mock(), ttsVoiceOptionsChanged=Mock(), _apply_setup_to_video=Mock(),
-        speakerModeChanged=Mock(), _manual_voice_configuration_snapshot=HaizFlowController._manual_voice_configuration_snapshot,
+        speakerModeChanged=Mock(), _manual_voice_configuration_snapshot=HFlowController._manual_voice_configuration_snapshot,
         _record_manual_voice_configuration_change=Mock(), runManualTool=Mock(return_value=True))
-    with (patch("haizflow.desktop.qml_controller.video_store.update_video"),
-          patch("haizflow.desktop.qml_controller.video_store.log_to_video")):
-        assert HaizFlowController.configureAndRunManualVoice(host, "vieneu-gpu", "vieneu:Hải Đăng", "all", "", "multiple")
+    with (patch("hflow.desktop.qml_controller.video_store.update_video"),
+          patch("hflow.desktop.qml_controller.video_store.log_to_video")):
+        assert HFlowController.configureAndRunManualVoice(host, "vieneu-gpu", "vieneu:Hải Đăng", "all", "", "multiple")
     host.runManualTool.assert_called_once_with("voice", True)
 
 
@@ -137,10 +137,10 @@ def test_manual_speed_save_does_not_touch_preview_or_other_drafts():
         _processing_queue=SimpleNamespace(contains=lambda _: False), videoExportBusy=False,
         _record_video_settings_change=Mock(), _manual_settings_drafts={video.video_id: VideoConfig(watermark_text="Pending")},
         outputSpeed=1, selectedVideoChanged=Mock(), refreshVideos=Mock(), refreshManualPreviewAudio=Mock())
-    with (patch("haizflow.desktop.qml_controller.video_store.get_video", side_effect=lambda _: current[0]),
-          patch("haizflow.desktop.qml_controller.video_store.update_video", side_effect=update),
-          patch("haizflow.desktop.qml_controller.manual_artifacts.deactivate", side_effect=deactivate)):
-        assert HaizFlowController.setManualOutputSpeed(host, 1.5)
+    with (patch("hflow.desktop.qml_controller.video_store.get_video", side_effect=lambda _: current[0]),
+          patch("hflow.desktop.qml_controller.video_store.update_video", side_effect=update),
+          patch("hflow.desktop.qml_controller.manual_artifacts.deactivate", side_effect=deactivate)):
+        assert HFlowController.setManualOutputSpeed(host, 1.5)
     assert current[0].output_speed == 1.5 and current[0].active_artifacts == {"ocr_region": "ocr", "tts_manifest": "voice"}
     assert host._manual_settings_drafts[video.video_id].watermark_text == "Pending"
     assert host._manual_settings_drafts[video.video_id].output_speed == 1.5
@@ -159,13 +159,13 @@ def test_metadata_poll_does_not_reload_preview_for_output_speed_only(speed_only)
         _build_project_summaries=lambda *_: [{"project_type": "manual"}], videos=Mock(), batch_videos=Mock(),
         projects=Mock(), manual_projects=Mock(), single_projects=Mock(), batch_projects=Mock(),
         download_projects=Mock(), publish_projects=Mock(), selectedVideoChanged=Mock())
-    with patch("haizflow.desktop.project_workspace_controller.video_store.get_video", return_value=current):
+    with patch("hflow.desktop.project_workspace_controller.video_store.get_video", return_value=current):
         assert ProjectWorkspaceController(host).apply_video_metadata_changes({previous.video_id})
     assert host.selectedVideoChanged.emit.call_count == (0 if speed_only else 1)
 
 
 def test_speed_toolbar_never_requests_preview_and_srt_action_is_guarded():
-    qml = Path(__file__).parents[1] / "src/haizflow/desktop/qml"
+    qml = Path(__file__).parents[1] / "src/hflow/desktop/qml"
     workspace = (qml / "ManualWorkspace.qml").read_text(encoding="utf-8")
     handler = workspace.split("onOutputSpeedEdited: function(value) {", 1)[1].split("}", 1)[0]
     assert "setManualOutputSpeed" in handler and "saveNow" not in handler and "schedulePreview" not in handler

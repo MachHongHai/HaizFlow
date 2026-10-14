@@ -39,17 +39,17 @@ def main():
     work.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="export-benchmark-", dir=work) as folder:
         directory = Path(folder)
-        os.environ.update(HAIZFLOW_SMOKE_TEST="1", HAIZFLOW_HOME=folder,
+        os.environ.update(HFLOW_SMOKE_TEST="1", HFLOW_HOME=folder,
                           RUNTIME_DATA_DIR=str(directory / "data"),
-                          HAIZFLOW_RESOURCE_ROOT=str(directory / "resources"))
+                          HFLOW_RESOURCE_ROOT=str(directory / "resources"))
         sys.path.insert(0, str(root / "src"))
-        from haizflow.pipeline import sequence_compiler
-        from haizflow.schemas.video import VideoConfig
-        from haizflow.services import manual_artifacts, project_store, video_export, video_store
-        from haizflow.utils.ffmpeg import _binary, get_video_duration, preferred_export_encoder, validate_video_integrity
+        from hflow.pipeline import sequence_compiler
+        from hflow.schemas.video import VideoConfig
+        from hflow.services import manual_artifacts, project_store, video_export, video_store
+        from hflow.utils.ffmpeg import _binary, get_video_duration, preferred_export_encoder, validate_video_integrity
 
-        old_export = previous_module(root, options.baseline_ref, "src/haizflow/services/video_export.py")
-        old_sequence = previous_module(root, options.baseline_ref, "src/haizflow/pipeline/sequence_compiler.py")
+        old_export = previous_module(root, options.baseline_ref, "src/hflow/services/video_export.py")
+        old_sequence = previous_module(root, options.baseline_ref, "src/hflow/pipeline/sequence_compiler.py")
         project = project_store.create_project("Export benchmark", str(directory / "projects"), "single")
         video = video_store.create_video("export-benchmark", "synthetic.mp4", VideoConfig(
             project_name="Export benchmark", project_directory=str(directory / "projects"),
@@ -109,10 +109,10 @@ def main():
                 "-map", "0:a:0", "-f", "s16le", "-acodec", "pcm_s16le", "-"])
         results["speed_audio_pcm_identical"] = audio["before"] == audio["after"]
         if options.production:
-            from haizflow.pipeline import render
-            from haizflow.schemas.video import CropSettings, SubtitleStyle
+            from hflow.pipeline import render
+            from hflow.schemas.video import CropSettings, SubtitleStyle
 
-            old_render = previous_module(root, options.baseline_ref, "src/haizflow/pipeline/render.py")
+            old_render = previous_module(root, options.baseline_ref, "src/hflow/pipeline/render.py")
             voice, subtitles = directory / "voice.wav", directory / "subtitles.srt"
             subprocess.run([_binary("ffmpeg"), "-y", "-v", "error", "-f", "lavfi", "-i",
                 f"sine=frequency=440:sample_rate=48000:duration={options.duration}", "-ac", "2", str(voice)],

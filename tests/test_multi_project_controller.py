@@ -15,15 +15,15 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.desktop import qml_controller
-from haizflow.desktop import project_import_controller
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.desktop.project_import_controller import ProjectImportController
-from haizflow.desktop.project_commands_controller import ProjectCommandsController
-from haizflow.desktop.localization import QMessageBox
-from haizflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
-from haizflow.desktop.project_workspace_controller import ProjectWorkspaceController
-from haizflow.schemas.video import CropSettings, SubtitleStyle, VideoConfig
+from hflow.desktop import qml_controller
+from hflow.desktop import project_import_controller
+from hflow.desktop.qml_controller import HFlowController
+from hflow.desktop.project_import_controller import ProjectImportController
+from hflow.desktop.project_commands_controller import ProjectCommandsController
+from hflow.desktop.localization import QMessageBox
+from hflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
+from hflow.desktop.project_workspace_controller import ProjectWorkspaceController
+from hflow.schemas.video import CropSettings, SubtitleStyle, VideoConfig
 
 
 class _DownloadSourceModel:
@@ -67,7 +67,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             saveSelectedVideoSettings=Mock(return_value=True),
         )
 
-        self.assertTrue(HaizFlowController.adoptSubtitlePreviewLayout(host))
+        self.assertTrue(HFlowController.adoptSubtitlePreviewLayout(host))
 
         self.assertTrue(host._subtitle_layout_override)
         self.assertEqual(host._subtitle_style.font_size, 74)
@@ -83,7 +83,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             cropSettingsChanged=signal,
         )
 
-        HaizFlowController.setCropDraft(host, 70, 80, 70, 80)
+        HFlowController.setCropDraft(host, 70, 80, 70, 80)
 
         self.assertEqual(host._crop_settings.zoom_percent, 100)
         self.assertEqual(host._crop_settings.left_percent, 70)
@@ -99,7 +99,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             cropSettingsChanged=signal,
         )
 
-        HaizFlowController.setCropDraft(host, 12.345, 4.125, 7.875, 3.625)
+        HFlowController.setCropDraft(host, 12.345, 4.125, 7.875, 3.625)
 
         self.assertEqual(host._crop_settings.left_percent, 12.345)
         self.assertEqual(host._crop_settings.top_percent, 4.125)
@@ -144,7 +144,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             files={"thumbnail": ""},
         )
 
-        with patch("haizflow.desktop.project_workspace_controller.project_store.get_project", return_value=None):
+        with patch("hflow.desktop.project_workspace_controller.project_store.get_project", return_value=None):
             ProjectWorkspaceController(host).select_video(video)
 
         self.assertEqual(host._speech_recognition_model, "turbo")
@@ -161,7 +161,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             _settings_language="en",
         )
 
-        options = HaizFlowController.speechRecognitionModelOptions.fget(host)
+        options = HFlowController.speechRecognitionModelOptions.fget(host)
 
         self.assertTrue(next(item for item in options if item["value"] == "large-v3-turbo")["available"])
 
@@ -175,7 +175,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             _settings_language="en",
         )
 
-        options = HaizFlowController.speechRecognitionModelOptions.fget(host)
+        options = HFlowController.speechRecognitionModelOptions.fget(host)
 
         self.assertTrue(next(item for item in options if item["value"] == "large-v3-turbo")["available"])
 
@@ -183,7 +183,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         manager = SimpleNamespace(status=Mock(return_value="installed"))
         host = SimpleNamespace(_resource_packs=SimpleNamespace(manager=manager))
 
-        self.assertTrue(HaizFlowController._detect_whisper_turbo_model_ready(host))
+        self.assertTrue(HFlowController._detect_whisper_turbo_model_ready(host))
         manager.status.assert_called_once_with("model-whisper-turbo")
 
     def test_download_project_source_import_uses_single_replace_and_batch_copy_flows(self):
@@ -259,7 +259,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             subtitleSettingsChanged=SimpleNamespace(emit=Mock()),
         )
 
-        HaizFlowController.removeOriginalSubtitles.fset(host, True)
+        HFlowController.removeOriginalSubtitles.fset(host, True)
 
         self.assertTrue(host._remove_original_subtitles)
         self.assertFalse(host._subtitle_layout_override)
@@ -271,7 +271,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             subtitleSettingsChanged=SimpleNamespace(emit=Mock()),
         )
 
-        HaizFlowController.originalSubtitleRemovalMode.fset(host, "unsupported")
+        HFlowController.originalSubtitleRemovalMode.fset(host, "unsupported")
 
         self.assertEqual(host._original_subtitle_removal_mode, "patch")
         host.subtitleSettingsChanged.emit.assert_not_called()
@@ -284,7 +284,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             speakerModeChanged=signal,
         )
 
-        HaizFlowController.speakerMode.fset(host, "multiple")
+        HFlowController.speakerMode.fset(host, "multiple")
 
         self.assertEqual(host._speaker_mode, "single")
         signal.emit.assert_not_called()
@@ -420,8 +420,8 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertEqual(config.background_music_path, "music.mp3")
 
     def test_batch_card_opens_the_selected_video_settings(self):
-        batch_page = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchPage.qml").read_text(encoding="utf-8")
-        card = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchVideoCard.qml").read_text(encoding="utf-8")
+        batch_page = (ROOT / "src" / "hflow" / "desktop" / "qml" / "BatchPage.qml").read_text(encoding="utf-8")
+        card = (ROOT / "src" / "hflow" / "desktop" / "qml" / "BatchVideoCard.qml").read_text(encoding="utf-8")
 
         self.assertIn("AppController.selectBatchVideo(index)", batch_page)
         self.assertIn("root.openVideoDetail()", batch_page)
@@ -432,7 +432,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertNotIn('glyph: "\\uE70F"', card)
         self.assertIn("ThumbnailFallback", card)
 
-        project_card = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "ProjectCard.qml").read_text(encoding="utf-8")
+        project_card = (ROOT / "src" / "hflow" / "desktop" / "qml" / "ProjectCard.qml").read_text(encoding="utf-8")
         self.assertIn("required property string videoSize", project_card)
         self.assertIn("id: sizeLabel", project_card)
         self.assertIn("root.videoSize.length > 0", project_card)
@@ -441,7 +441,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn('qsTr("Mở thư mục dự án")', project_card)
         self.assertIn('qsTr("Xóa dự án")', project_card)
 
-        projects_page = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "ProjectsPage.qml").read_text(encoding="utf-8")
+        projects_page = (ROOT / "src" / "hflow" / "desktop" / "qml" / "ProjectsPage.qml").read_text(encoding="utf-8")
         self.assertIn("onProjectFolderRequested", projects_page)
         self.assertIn("onDeleteRequested", projects_page)
 
@@ -458,8 +458,8 @@ class MultiProjectControllerTests(unittest.TestCase):
         commands = ProjectCommandsController(host)
 
         with (
-            patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=selected),
-            patch("haizflow.desktop.project_commands_controller.video_store.log_to_video") as log_to_video,
+            patch("hflow.desktop.project_commands_controller.video_store.get_video", return_value=selected),
+            patch("hflow.desktop.project_commands_controller.video_store.log_to_video") as log_to_video,
         ):
             self.assertTrue(commands.save_selected_video_settings())
 
@@ -480,8 +480,8 @@ class MultiProjectControllerTests(unittest.TestCase):
         )
 
         with (
-            patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=selected),
-            patch("haizflow.desktop.project_commands_controller.video_store.log_to_video") as log_to_video,
+            patch("hflow.desktop.project_commands_controller.video_store.get_video", return_value=selected),
+            patch("hflow.desktop.project_commands_controller.video_store.log_to_video") as log_to_video,
         ):
             self.assertTrue(ProjectCommandsController(host).persist_selected_video_settings())
 
@@ -500,8 +500,8 @@ class MultiProjectControllerTests(unittest.TestCase):
         )
 
         with (
-            patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=selected),
-            patch("haizflow.desktop.project_commands_controller.video_store.log_to_video") as log_to_video,
+            patch("hflow.desktop.project_commands_controller.video_store.get_video", return_value=selected),
+            patch("hflow.desktop.project_commands_controller.video_store.log_to_video") as log_to_video,
         ):
             self.assertTrue(ProjectCommandsController(host).persist_selected_video_settings())
 
@@ -525,10 +525,10 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         with (
             patch(
-                "haizflow.desktop.project_commands_controller.video_store.get_video",
+                "hflow.desktop.project_commands_controller.video_store.get_video",
                 side_effect=lambda video_id: videos.get(video_id),
             ),
-            patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update_video,
+            patch("hflow.desktop.project_commands_controller.video_store.update_video") as update_video,
         ):
             commands.start_batch()
 
@@ -545,7 +545,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             _processing_queue=SimpleNamespace(contains=Mock(return_value=False)),
             _apply_setup_to_video=Mock(), _enqueue_video=Mock(),
         )
-        with patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=video):
+        with patch("hflow.desktop.project_commands_controller.video_store.get_video", return_value=video):
             self.assertFalse(ProjectCommandsController(host).process_for_export(video.video_id))
         host._apply_setup_to_video.assert_not_called()
         host._enqueue_video.assert_not_called()
@@ -559,10 +559,10 @@ class MultiProjectControllerTests(unittest.TestCase):
             selectedVideoChanged=SimpleNamespace(emit=Mock()), refreshVideos=Mock(),
         )
         with (
-            patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=video),
-            patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update,
-            patch("haizflow.desktop.project_commands_controller.video_store.prepare_video_restart") as restart,
-            patch("haizflow.pipeline.process_registry.prepare_video_resume") as resume,
+            patch("hflow.desktop.project_commands_controller.video_store.get_video", return_value=video),
+            patch("hflow.desktop.project_commands_controller.video_store.update_video") as update,
+            patch("hflow.desktop.project_commands_controller.video_store.prepare_video_restart") as restart,
+            patch("hflow.pipeline.process_registry.prepare_video_resume") as resume,
         ):
             self.assertTrue(ProjectCommandsController(host).process_for_export(video.video_id))
         host._apply_setup_to_video.assert_called_once_with(video)
@@ -579,8 +579,8 @@ class MultiProjectControllerTests(unittest.TestCase):
             appAlertRequested=SimpleNamespace(emit=Mock()), geminiSetupRequested=SimpleNamespace(emit=Mock()),
         )
         with (
-            patch("haizflow.desktop.project_commands_controller.video_store.get_video", side_effect=videos.get),
-            patch("haizflow.services.gemini_translation.key_configured", return_value=False),
+            patch("hflow.desktop.project_commands_controller.video_store.get_video", side_effect=videos.get),
+            patch("hflow.services.gemini_translation.key_configured", return_value=False),
         ):
             ProjectCommandsController(host).start_batch()
         host._enqueue_videos.assert_not_called()
@@ -592,14 +592,14 @@ class MultiProjectControllerTests(unittest.TestCase):
                   "clone": SimpleNamespace(video_id="clone", status="pending", tts_voice="omnivoice:clone", files={})}
         host = SimpleNamespace(_batch_video_ids=list(videos), _enqueue_videos=Mock(),
                                appAlertRequested=SimpleNamespace(emit=Mock()))
-        with patch("haizflow.desktop.project_commands_controller.video_store.get_video", side_effect=videos.get):
+        with patch("hflow.desktop.project_commands_controller.video_store.get_video", side_effect=videos.get):
             ProjectCommandsController(host).start_batch()
         host._enqueue_videos.assert_not_called()
         host.appAlertRequested.emit.assert_called_once()
 
     def test_resume_batch_requeues_paused_and_new_pending_videos(self):
         paused = SimpleNamespace(video_id="video-paused", status="paused")
-        from haizflow.services.processing_resume import configuration_snapshot
+        from hflow.services.processing_resume import configuration_snapshot
 
         paused.processing_configuration = configuration_snapshot(paused, "cpu")
         pending = SimpleNamespace(video_id="video-pending", status="pending")
@@ -616,10 +616,10 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         with (
             patch(
-                "haizflow.desktop.project_commands_controller.video_store.get_video",
+                "hflow.desktop.project_commands_controller.video_store.get_video",
                 side_effect=lambda video_id: videos.get(video_id),
             ),
-            patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
+            patch("hflow.desktop.project_commands_controller.video_store.log_to_video"),
         ):
             ProjectCommandsController(host).resume_batch()
 
@@ -629,7 +629,7 @@ class MultiProjectControllerTests(unittest.TestCase):
 
     def test_paused_video_clears_process_control_flags_only_when_requeued(self):
         video = SimpleNamespace(video_id="paused-video", status="paused")
-        from haizflow.services.processing_resume import configuration_snapshot
+        from hflow.services.processing_resume import configuration_snapshot
 
         video.processing_configuration = configuration_snapshot(video, "cpu")
         host = SimpleNamespace(
@@ -645,12 +645,12 @@ class MultiProjectControllerTests(unittest.TestCase):
         )
         with (
             patch(
-                "haizflow.desktop.processing_lifecycle_controller.video_store.get_video",
+                "hflow.desktop.processing_lifecycle_controller.video_store.get_video",
                 return_value=video,
             ),
-            patch("haizflow.desktop.processing_lifecycle_controller.video_store.update_video"),
-            patch("haizflow.desktop.processing_lifecycle_controller.video_store.log_to_video"),
-            patch("haizflow.desktop.processing_lifecycle_controller.prepare_video_resume") as prepare_resume,
+            patch("hflow.desktop.processing_lifecycle_controller.video_store.update_video"),
+            patch("hflow.desktop.processing_lifecycle_controller.video_store.log_to_video"),
+            patch("hflow.desktop.processing_lifecycle_controller.prepare_video_resume") as prepare_resume,
         ):
             self.assertTrue(ProcessingLifecycleController(host).enqueue_video(video.video_id))
 
@@ -673,16 +673,16 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         with (
             patch(
-                "haizflow.desktop.project_commands_controller.QMessageBox.question",
+                "hflow.desktop.project_commands_controller.QMessageBox.question",
                 return_value=QMessageBox.StandardButton.Yes,
             ),
             patch(
-                "haizflow.desktop.project_commands_controller.video_store.get_video",
+                "hflow.desktop.project_commands_controller.video_store.get_video",
                 side_effect=lambda video_id: videos.get(video_id),
             ),
-            patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update_video,
-            patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
-            patch("haizflow.desktop.project_commands_controller.pause_video") as pause_process,
+            patch("hflow.desktop.project_commands_controller.video_store.update_video") as update_video,
+            patch("hflow.desktop.project_commands_controller.video_store.log_to_video"),
+            patch("hflow.desktop.project_commands_controller.pause_video") as pause_process,
         ):
             ProjectCommandsController(host).stop_batch()
 
@@ -700,11 +700,11 @@ class MultiProjectControllerTests(unittest.TestCase):
                 detach_pending=Mock(return_value=(None, [waiting.video_id]))),
             selectedVideoChanged=SimpleNamespace(emit=Mock()), refreshVideos=Mock(),
         )
-        with patch("haizflow.desktop.project_commands_controller.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes), \
-                patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=waiting), \
-                patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update, \
-                patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"), \
-                patch("haizflow.desktop.project_commands_controller.pause_video") as pause:
+        with patch("hflow.desktop.project_commands_controller.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes), \
+                patch("hflow.desktop.project_commands_controller.video_store.get_video", return_value=waiting), \
+                patch("hflow.desktop.project_commands_controller.video_store.update_video") as update, \
+                patch("hflow.desktop.project_commands_controller.video_store.log_to_video"), \
+                patch("hflow.desktop.project_commands_controller.pause_video") as pause:
             ProjectCommandsController(host).stop_video()
         host._processing_queue.detach_pending.assert_called_once_with([waiting.video_id])
         pause.assert_not_called()
@@ -727,13 +727,13 @@ class MultiProjectControllerTests(unittest.TestCase):
         custom = SimpleNamespace(
             video_id="video-3",
             original_filename="custom.mp4",
-            **{**common, "target_language": "en", "tts_voice": "en-US-GuyNeural", "watermark_text": "HaizFlow"},
+            **{**common, "target_language": "en", "tts_voice": "en-US-GuyNeural", "watermark_text": "HFlow"},
         )
         videos = {video.video_id: video for video in (first, second, custom)}
         host = SimpleNamespace(_batch_video_ids=list(videos))
 
         with patch(
-            "haizflow.desktop.project_commands_controller.video_store.get_video",
+            "hflow.desktop.project_commands_controller.video_store.get_video",
             side_effect=lambda video_id: videos.get(video_id),
         ):
             overrides = ProjectCommandsController(host).batch_setting_overrides()
@@ -767,11 +767,11 @@ class MultiProjectControllerTests(unittest.TestCase):
             )
             with (
                 patch(
-                    "haizflow.desktop.project_commands_controller.video_store.get_video",
+                    "hflow.desktop.project_commands_controller.video_store.get_video",
                     side_effect=lambda video_id: videos.get(video_id),
                 ),
-                patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update_video,
-                patch("haizflow.desktop.project_commands_controller.set_desktop_background_music") as set_music,
+                patch("hflow.desktop.project_commands_controller.video_store.update_video") as update_video,
+                patch("hflow.desktop.project_commands_controller.set_desktop_background_music") as set_music,
             ):
                 applied = ProjectCommandsController(host).apply_batch_settings(
                     "A", "vi", "auto", "", False, 60, 25, 100, "", str(music),
@@ -797,8 +797,8 @@ class MultiProjectControllerTests(unittest.TestCase):
             batchChanged=SimpleNamespace(emit=Mock()),
         )
         with (
-            patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=video),
-            patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update,
+            patch("hflow.desktop.project_commands_controller.video_store.get_video", return_value=video),
+            patch("hflow.desktop.project_commands_controller.video_store.update_video") as update,
         ):
             self.assertTrue(ProjectCommandsController(host).apply_batch_settings(
                 "A", "vi", "omnivoice", video.tts_voice, False, 55,
@@ -813,12 +813,12 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertEqual(changes["subtitle_style"].font_size, 44)
 
     def test_batch_page_exposes_settings_resume_and_bottom_progress(self):
-        batch_page = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchPage.qml").read_text(encoding="utf-8")
-        settings = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchSettingsDialog.qml").read_text(
+        batch_page = (ROOT / "src" / "hflow" / "desktop" / "qml" / "BatchPage.qml").read_text(encoding="utf-8")
+        settings = (ROOT / "src" / "hflow" / "desktop" / "qml" / "BatchSettingsDialog.qml").read_text(
             encoding="utf-8"
         )
         shared_settings = (
-            ROOT / "src" / "haizflow" / "desktop" / "qml" / "ProcessingSettingsForm.qml"
+            ROOT / "src" / "hflow" / "desktop" / "qml" / "ProcessingSettingsForm.qml"
         ).read_text(encoding="utf-8")
 
         self.assertIn('text: qsTr("Cài đặt hàng loạt")', batch_page)
@@ -848,7 +848,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn('text: qsTr("Áp dụng")', settings)
         self.assertNotIn('I18n.t("Apply to all videos")', settings)
 
-        batch_audio_dialog = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchAudioMixDialog.qml").read_text(
+        batch_audio_dialog = (ROOT / "src" / "hflow" / "desktop" / "qml" / "BatchAudioMixDialog.qml").read_text(
             encoding="utf-8"
         )
         self.assertIn("AudioLevelControl", batch_audio_dialog)
@@ -862,7 +862,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn("readonly property bool previewPlaying", batch_audio_dialog)
         self.assertIn('iconName: root.previewPlaying ? "pause" : "play"', batch_audio_dialog)
 
-        dubbing_setup = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "DubbingSetupPanel.qml").read_text(
+        dubbing_setup = (ROOT / "src" / "hflow" / "desktop" / "qml" / "DubbingSetupPanel.qml").read_text(
             encoding="utf-8"
         )
         self.assertIn("videoSettingsSaveTimer.restart()", dubbing_setup)
@@ -882,7 +882,7 @@ class MultiProjectControllerTests(unittest.TestCase):
                 statusMessageChanged=SimpleNamespace(emit=Mock()),
             )
             with patch.object(qml_controller.video_store, "get_video", return_value=video):
-                result = HaizFlowController.previewBatchAudioMix(
+                result = HFlowController.previewBatchAudioMix(
                     controller, "vi", "edge", "vi-VN-HoaiMyNeural", True, 40, 25, 90, "music.mp3"
                 )
 
@@ -946,17 +946,17 @@ class MultiProjectControllerTests(unittest.TestCase):
             refreshVideos=Mock(),
             batchChanged=SimpleNamespace(emit=Mock()),
         )
-        controller._normalized_tts_provider = HaizFlowController._normalized_tts_provider
-        controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(
+        controller._normalized_tts_provider = HFlowController._normalized_tts_provider
+        controller._normalized_voice_for_language = HFlowController._normalized_voice_for_language.__get__(
             controller
         )
-        controller._apply_batch_settings = HaizFlowController._apply_batch_settings.__get__(controller)
+        controller._apply_batch_settings = HFlowController._apply_batch_settings.__get__(controller)
 
         with (
             patch.object(qml_controller.video_store, "get_video", return_value=video),
             patch.object(qml_controller.video_store, "update_video") as update_video,
         ):
-            applied = HaizFlowController.applyBatchSettingsDraft(
+            applied = HFlowController.applyBatchSettingsDraft(
                 controller,
                 "review",
                 "en",
@@ -966,7 +966,7 @@ class MultiProjectControllerTests(unittest.TestCase):
                 35,
                 30,
                 100,
-                "HaizFlow",
+                "HFlow",
             )
 
         self.assertTrue(applied)
@@ -985,14 +985,14 @@ class MultiProjectControllerTests(unittest.TestCase):
             original_video_volume=35,
             background_music_volume=30,
             tts_volume=100,
-            watermark_text="HaizFlow",
+            watermark_text="HFlow",
         )
         self.assertFalse(hasattr(controller, "_target_language"))
         controller.refreshVideos.assert_called_once()
         controller.batchChanged.emit.assert_called_once()
 
     def test_batch_settings_dialog_keeps_edits_local_until_apply(self):
-        dialog_qml = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchSettingsDialog.qml").read_text(
+        dialog_qml = (ROOT / "src" / "hflow" / "desktop" / "qml" / "BatchSettingsDialog.qml").read_text(
             encoding="utf-8"
         )
         self.assertIn("function loadDraft()", dialog_qml)
@@ -1014,13 +1014,13 @@ class MultiProjectControllerTests(unittest.TestCase):
             batchChanged=SimpleNamespace(emit=Mock()),
         )
         with patch.object(qml_controller.video_store, "metadata_revision", return_value=7):
-            HaizFlowController.poll_videos(controller)
+            HFlowController.poll_videos(controller)
 
         controller.refreshVideos.assert_not_called()
         controller.batchChanged.emit.assert_not_called()
 
         with patch.object(qml_controller.video_store, "metadata_revision", return_value=8):
-            HaizFlowController.poll_videos(controller)
+            HFlowController.poll_videos(controller)
 
         controller.refreshVideos.assert_called_once()
         controller.batchChanged.emit.assert_called_once()
@@ -1037,7 +1037,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             patch.object(qml_controller.video_store, "metadata_revision", return_value=8),
             patch.object(qml_controller.video_store, "metadata_changes_since", return_value=(8, {"video-1"})),
         ):
-            HaizFlowController.poll_videos(controller)
+            HFlowController.poll_videos(controller)
 
         controller._apply_video_metadata_changes.assert_called_once_with({"video-1"})
         controller.refreshVideos.assert_not_called()
@@ -1047,7 +1047,7 @@ class MultiProjectControllerTests(unittest.TestCase):
     def test_hardware_probe_is_inactive_until_settings_are_opened(self):
         controller = SimpleNamespace(_hardware_telemetry_active=False)
         with patch.object(qml_controller, "detect_hardware_capabilities") as detect:
-            HaizFlowController._refresh_live_hardware(controller)
+            HFlowController._refresh_live_hardware(controller)
         detect.assert_not_called()
 
     def test_failed_thumbnail_is_not_requeued_until_its_source_changes(self):
@@ -1059,19 +1059,19 @@ class MultiProjectControllerTests(unittest.TestCase):
                 _thumbnail_retry_failures={},
                 _thumbnail_retry_lock=threading.Lock(),
                 _resolve_video_file=Mock(return_value=str(source)),
-                _thumbnail_retry_signature=HaizFlowController._thumbnail_retry_signature,
-                _THUMBNAIL_RETRY_MAX_ATTEMPTS=HaizFlowController._THUMBNAIL_RETRY_MAX_ATTEMPTS,
-                _THUMBNAIL_RETRY_INITIAL_DELAY_SECONDS=HaizFlowController._THUMBNAIL_RETRY_INITIAL_DELAY_SECONDS,
+                _thumbnail_retry_signature=HFlowController._thumbnail_retry_signature,
+                _THUMBNAIL_RETRY_MAX_ATTEMPTS=HFlowController._THUMBNAIL_RETRY_MAX_ATTEMPTS,
+                _THUMBNAIL_RETRY_INITIAL_DELAY_SECONDS=HFlowController._THUMBNAIL_RETRY_INITIAL_DELAY_SECONDS,
             )
 
-            self.assertEqual(HaizFlowController._missing_thumbnail_ids(controller, [video]), ["thumbnail-video"])
-            signature = HaizFlowController._thumbnail_retry_signature(str(source))
-            HaizFlowController._record_thumbnail_failure(controller, video.video_id, signature)
-            self.assertEqual(HaizFlowController._missing_thumbnail_ids(controller, [video]), [])
+            self.assertEqual(HFlowController._missing_thumbnail_ids(controller, [video]), ["thumbnail-video"])
+            signature = HFlowController._thumbnail_retry_signature(str(source))
+            HFlowController._record_thumbnail_failure(controller, video.video_id, signature)
+            self.assertEqual(HFlowController._missing_thumbnail_ids(controller, [video]), [])
 
             source.write_bytes(b"changed source")
             os.utime(source, None)
-            self.assertEqual(HaizFlowController._missing_thumbnail_ids(controller, [video]), ["thumbnail-video"])
+            self.assertEqual(HFlowController._missing_thumbnail_ids(controller, [video]), ["thumbnail-video"])
 
     def test_close_confirmation_is_only_required_for_background_work(self):
         idle_controller = SimpleNamespace(
@@ -1080,7 +1080,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             _channel_importer=SimpleNamespace(busy=False),
             _close_confirmed=False,
         )
-        self.assertTrue(HaizFlowController._confirm_application_close(idle_controller))
+        self.assertTrue(HFlowController._confirm_application_close(idle_controller))
 
         busy_controller = SimpleNamespace(
             _processing_queue=SimpleNamespace(has_work=True),
@@ -1093,7 +1093,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             "question",
             return_value=qml_controller.QMessageBox.StandardButton.Cancel,
         ):
-            self.assertFalse(HaizFlowController._confirm_application_close(busy_controller))
+            self.assertFalse(HFlowController._confirm_application_close(busy_controller))
         self.assertFalse(busy_controller._close_confirmed)
 
     def test_shutdown_pauses_active_video_and_closes_the_queue(self):
@@ -1131,10 +1131,10 @@ class MultiProjectControllerTests(unittest.TestCase):
             ),
             patch.object(qml_controller.video_store, "update_video") as update_video,
             patch.object(qml_controller.video_store, "log_to_video"),
-            patch("haizflow.pipeline.transcribe.release_warm_whisperx_model") as release_whisper,
+            patch("hflow.pipeline.transcribe.release_warm_whisperx_model") as release_whisper,
         ):
-            HaizFlowController.shutdown(controller)
-            HaizFlowController.shutdown(controller)
+            HFlowController.shutdown(controller)
+            HFlowController.shutdown(controller)
 
         self.assertTrue(controller._shutdown_started)
         self.assertTrue(controller._initial_model_warmup_done.is_set())
@@ -1175,11 +1175,11 @@ class MultiProjectControllerTests(unittest.TestCase):
             ttsProviderChanged=SimpleNamespace(emit=Mock()),
             ttsProviderOptionsChanged=SimpleNamespace(emit=Mock()),
         )
-        controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(
+        controller._normalized_voice_for_language = HFlowController._normalized_voice_for_language.__get__(
             controller
         )
 
-        HaizFlowController.targetLanguage.fset(controller, "en")
+        HFlowController.targetLanguage.fset(controller, "en")
 
         self.assertEqual(controller._target_language, "en")
         self.assertEqual(controller._tts_voice, "en-US-JennyNeural")
@@ -1205,11 +1205,11 @@ class MultiProjectControllerTests(unittest.TestCase):
             ttsVoiceChanged=SimpleNamespace(emit=Mock()),
             ttsVoiceOptionsChanged=SimpleNamespace(emit=Mock()),
         )
-        controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(
+        controller._normalized_voice_for_language = HFlowController._normalized_voice_for_language.__get__(
             controller
         )
 
-        HaizFlowController.targetLanguage.fset(controller, "ja")
+        HFlowController.targetLanguage.fset(controller, "ja")
 
         self.assertEqual(controller._tts_provider, "omnivoice")
         self.assertEqual(controller._tts_voice, "omnivoice:female")
@@ -1227,11 +1227,11 @@ class MultiProjectControllerTests(unittest.TestCase):
             ttsVoiceChanged=SimpleNamespace(emit=Mock()),
             ttsVoiceOptionsChanged=SimpleNamespace(emit=Mock()),
         )
-        controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(
+        controller._normalized_voice_for_language = HFlowController._normalized_voice_for_language.__get__(
             controller
         )
 
-        HaizFlowController.ttsVoice.fset(controller, "vi-VN-NamMinhNeural")
+        HFlowController.ttsVoice.fset(controller, "vi-VN-NamMinhNeural")
 
         self.assertEqual(controller._tts_voice, "en-US-JennyNeural")
         controller.ttsVoiceChanged.emit.assert_called_once()
@@ -1252,12 +1252,12 @@ class MultiProjectControllerTests(unittest.TestCase):
             ttsVoiceChanged=SimpleNamespace(emit=Mock()),
             ttsVoiceOptionsChanged=SimpleNamespace(emit=Mock()),
         )
-        controller._normalized_tts_provider = HaizFlowController._normalized_tts_provider
-        controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(
+        controller._normalized_tts_provider = HFlowController._normalized_tts_provider
+        controller._normalized_voice_for_language = HFlowController._normalized_voice_for_language.__get__(
             controller
         )
 
-        HaizFlowController.ttsProvider.fset(controller, "edge")
+        HFlowController.ttsProvider.fset(controller, "edge")
 
         self.assertEqual(controller._tts_provider, "edge")
         self.assertEqual(controller._tts_voice, "vi-VN-HoaiMyNeural")
@@ -1277,11 +1277,11 @@ class MultiProjectControllerTests(unittest.TestCase):
             patch.object(qml_controller.video_store, "get_video", return_value=selected_video),
             patch.object(qml_controller.video_store, "log_to_video"),
             patch.object(qml_controller.video_store, "update_video"),
-            patch("haizflow.pipeline.process_video.process_video_sync") as process_video,
+            patch("hflow.pipeline.process_video.process_video_sync") as process_video,
         ):
             process_video.side_effect = lambda _video_id: pipeline_started.set()
             worker = threading.Thread(
-                target=HaizFlowController._execute_pipeline,
+                target=HFlowController._execute_pipeline,
                 args=(controller, "project-a-video"),
             )
             worker.start()
@@ -1312,7 +1312,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             patch.object(qml_controller.video_store, "get_video", return_value=selected_video),
             patch.object(qml_controller, "create_desktop_video") as create_video,
         ):
-            started = HaizFlowController.startProjectVideo(controller)
+            started = HFlowController.startProjectVideo(controller)
 
         self.assertFalse(started)
         create_video.assert_not_called()
@@ -1339,7 +1339,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             patch.object(qml_controller.video_store, "get_video", return_value=selected_video),
             patch.object(qml_controller.video_store, "log_to_video"),
         ):
-            started = HaizFlowController.startProjectVideo(controller)
+            started = HFlowController.startProjectVideo(controller)
 
         self.assertTrue(started)
         self.assertEqual(
@@ -1356,7 +1356,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         )
         controller._log_queue.put(("video_log", "project-a-video", "Project A line"))
 
-        HaizFlowController._drain_log_queue(controller)
+        HFlowController._drain_log_queue(controller)
 
         self.assertEqual(controller._logs, "Project B log")
         controller.logsChanged.emit.assert_not_called()
@@ -1387,7 +1387,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             patch.object(qml_controller.project_store, "list_projects", return_value=[{"key": target["project_key"]}]),
             patch.object(qml_controller, "create_desktop_video", return_value=created_video) as create_video,
         ):
-            imported = HaizFlowController._import_downloaded_video(
+            imported = HFlowController._import_downloaded_video(
                 controller,
                 "downloaded.mp4",
                 "single",
@@ -1424,7 +1424,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             patch.object(qml_controller.QMessageBox, "warning"),
             patch.object(qml_controller, "create_desktop_video") as create_video,
         ):
-            imported = HaizFlowController._import_downloaded_video(
+            imported = HFlowController._import_downloaded_video(
                 controller,
                 "downloaded.mp4",
                 "single",
@@ -1474,7 +1474,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             patch.object(qml_controller.project_store, "list_projects", return_value=[{"key": project_key}]),
             patch.object(qml_controller, "create_desktop_video", return_value=created_video) as create_video,
         ):
-            HaizFlowController._handle_channel_video_ready(
+            HFlowController._handle_channel_video_ready(
                 controller,
                 "downloaded.mp4",
                 "workspace",
@@ -1521,7 +1521,7 @@ class MultiProjectControllerTests(unittest.TestCase):
                 patch.object(qml_controller.video_store, "log_to_video"),
             ):
                 self.assertTrue(ProjectCommandsController(host).save_translation_review_draft(payload))
-                restored = HaizFlowController.reviewSegments.fget(host)
+                restored = HFlowController.reviewSegments.fget(host)
 
             draft_path = Path(video.files["translation_review_draft"])
             self.assertTrue(draft_path.is_file())
@@ -1575,7 +1575,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             host = SimpleNamespace(_selected_video=lambda: video)
 
             with patch.object(qml_controller.video_store, "get_video_dir", return_value=temporary):
-                preview = HaizFlowController.reviewPreviewMedia.fget(host)
+                preview = HFlowController.reviewPreviewMedia.fget(host)
 
             self.assertFalse(preview["useVideoAudio"])
             self.assertTrue(preview["backgroundSource"].startswith("file:"))
@@ -1615,9 +1615,9 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         with (
             patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes),
-            patch("haizflow.desktop.project_commands_controller.video_store.list_videos", return_value=[]),
-            patch("haizflow.desktop.project_commands_controller.project_store.validate_project_deletion_by_key") as validate,
-            patch("haizflow.desktop.project_commands_controller.project_store.delete_project_by_key") as delete,
+            patch("hflow.desktop.project_commands_controller.video_store.list_videos", return_value=[]),
+            patch("hflow.desktop.project_commands_controller.project_store.validate_project_deletion_by_key") as validate,
+            patch("hflow.desktop.project_commands_controller.project_store.delete_project_by_key") as delete,
         ):
             deleted = ProjectCommandsController(host).delete_project_summary(project)
 
@@ -1651,8 +1651,8 @@ class MultiProjectControllerTests(unittest.TestCase):
         commands = SimpleNamespace(delete_project_summary=Mock(return_value=True))
         host = SimpleNamespace(_project_model_for_type=Mock(return_value=model))
 
-        with patch.object(HaizFlowController, "_project_commands_for", return_value=commands):
-            deleted = HaizFlowController.deleteProjectInMode(host, 3, "download")
+        with patch.object(HFlowController, "_project_commands_for", return_value=commands):
+            deleted = HFlowController.deleteProjectInMode(host, 3, "download")
 
         self.assertTrue(deleted)
         host._project_model_for_type.assert_called_once_with("download")

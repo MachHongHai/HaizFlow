@@ -7,8 +7,8 @@ from PySide6.QtGui import QGuiApplication, QFontDatabase
 from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlPropertyMap
 from PySide6.QtQuick import QQuickWindow
 
-from haizflow.desktop.douyin_session_controller import DouyinSessionController
-from haizflow.desktop.media_download_controller import MediaDownloadController
+from hflow.desktop.douyin_session_controller import DouyinSessionController
+from hflow.desktop.media_download_controller import MediaDownloadController
 
 _APP = None
 URL = 'https://www.youtube.com/watch?v=abcdefghijk'
@@ -120,7 +120,7 @@ def test_audio_ui_shows_check_before_download_and_invalidates_when_edited(tmp_pa
     owner.insert('douyinSession', guest)
     engine.rootContext().setContextProperty('AppController', owner)
     component = QQmlComponent(engine, QUrl.fromLocalFile(str(Path(__file__).parents[1] /
-        'src/haizflow/desktop/qml/AudioDownloadPage.qml')))
+        'src/hflow/desktop/qml/AudioDownloadPage.qml')))
     assert component.isReady(), [error.toString() for error in component.errors()]
     root = component.createWithInitialProperties({'downloader': controller, 'width': 780, 'height': 680})
     assert root is not None
@@ -157,7 +157,7 @@ def test_audio_ui_shows_check_before_download_and_invalidates_when_edited(tmp_pa
         _APP.processEvents()
         assert window.grabWindow().save(str(capture))
         import os
-        if directory := os.environ.get('HAIZFLOW_UI_CAPTURE_DIR'):
+        if directory := os.environ.get('HFLOW_UI_CAPTURE_DIR'):
             target = Path(directory)
             target.mkdir(parents=True, exist_ok=True)
             assert window.grabWindow().save(str(target / 'audio-check-preview.png'))

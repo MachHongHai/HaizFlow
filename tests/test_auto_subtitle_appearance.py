@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.schemas.video import SubtitleStyle
+from hflow.desktop.qml_controller import HFlowController
+from hflow.schemas.video import SubtitleStyle
 
 
 def test_auto_appearance_is_atomic_and_preserves_cover_alignment_and_geometry():
@@ -15,7 +15,7 @@ def test_auto_appearance_is_atomic_and_preserves_cover_alignment_and_geometry():
     for manual in (False, True):
         host = SimpleNamespace(_subtitle_style=original, _subtitle_layout_override=manual,
                                subtitleSettingsChanged=Mock())
-        assert HaizFlowController.applySubtitleAppearance(host, patch)
+        assert HFlowController.applySubtitleAppearance(host, patch)
         style = host._subtitle_style
         assert all(getattr(style, key) == ("Bangers" if key == "font_family" else value)
                    for key, value in patch.items())
@@ -24,7 +24,7 @@ def test_auto_appearance_is_atomic_and_preserves_cover_alignment_and_geometry():
         assert host._subtitle_layout_override is manual
         assert SubtitleStyle.model_validate(style.model_dump()) == style
         host.subtitleSettingsChanged.emit.assert_called_once()
-        assert HaizFlowController.applySubtitleAppearance(host, patch)
+        assert HFlowController.applySubtitleAppearance(host, patch)
         host.subtitleSettingsChanged.emit.assert_called_once()
 
 
@@ -33,14 +33,14 @@ def test_invalid_auto_appearance_never_partially_replaces_saved_style():
     host = SimpleNamespace(_subtitle_style=original, subtitleSettingsChanged=Mock())
     for patch in ({"text_color": "not a color", "bold": True}, {"outline": -2},
                   {"font_size": 500}, {"position_x_percent": 5}, {"alignment": "invalid"}, {}):
-        assert not HaizFlowController.applySubtitleAppearance(host, patch)
+        assert not HFlowController.applySubtitleAppearance(host, patch)
         assert host._subtitle_style == original
     host.subtitleSettingsChanged.emit.assert_not_called()
 
 
 def test_auto_ocr_font_outgrows_thin_box_without_changing_cover_or_manual_style():
-    from haizflow.pipeline import render
-    from haizflow.schemas.video import CropSettings
+    from hflow.pipeline import render
+    from hflow.schemas.video import CropSettings
 
     for width, height, expected_size in ((1920, 1080, 80), (1080, 1920, 92), (2160, 3840, 184)):
         region = dict(x_percent=20, y_percent=88, width_percent=60, height_percent=2, line_height_percent=1)

@@ -8,8 +8,8 @@ from unittest.mock import Mock, patch
 import pytest
 import numpy as np
 
-from haizflow.core import memory
-from haizflow.pipeline import process_video, omnivoice_tts as voice, manual_tools
+from hflow.core import memory
+from hflow.pipeline import process_video, omnivoice_tts as voice, manual_tools
 
 
 @pytest.mark.parametrize("device,recovery,expected", [
@@ -140,7 +140,7 @@ def test_manual_cpu_translation_releases_rpc_warm_owners_before_dispatch(tmp_pat
           patch.object(manual_tools.manual_artifacts, "publish", return_value=record),
           patch.object(manual_tools, "_release_recognition_runtime", side_effect=lambda: order.append("asr-released")),
           patch.object(voice, "clear_runtime", side_effect=lambda: order.append("voice-released")),
-          patch("haizflow.services.external_engine.shared_external_engine_pool") as pool,
+          patch("hflow.services.external_engine.shared_external_engine_pool") as pool,
           patch.object(manual_tools, "translate_segments", side_effect=lambda *a, **kw: order.append("dispatch")),
           patch.object(manual_tools, "_replace_subtitles_from_translation")):
         pool.return_value.release.side_effect = lambda capabilities: order.append(capabilities)

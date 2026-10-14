@@ -5,8 +5,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 from PySide6.QtWidgets import QMessageBox
 
-from haizflow.services import social_publish as tiktok_publish, zernio
-from haizflow.desktop.social_publish_controller import (
+from hflow.services import social_publish as tiktok_publish, zernio
+from hflow.desktop.social_publish_controller import (
     ZERNIO_CREDENTIAL_TARGET,
     ZERNIO_API_KEYS_URL,
     ZERNIO_SIGN_IN_URL,
@@ -125,10 +125,10 @@ class SocialPublishControllerTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        index_patch = patch("haizflow.services.zernio_keys.INDEX_PATH", Path(directory.name) / "keys.json")
+        index_patch = patch("hflow.services.zernio_keys.INDEX_PATH", Path(directory.name) / "keys.json")
         index_patch.start()
         self.addCleanup(index_patch.stop)
-        secret_patch = patch("haizflow.services.secure_credentials.read_secret", return_value="")
+        secret_patch = patch("hflow.services.secure_credentials.read_secret", return_value="")
         secret_patch.start()
         self.addCleanup(secret_patch.stop)
         self.host = _Host()
@@ -140,9 +140,9 @@ class SocialPublishControllerTests(unittest.TestCase):
         client = MagicMock()
         client.list_profiles.return_value = []
         client.list_accounts.return_value = []
-        with (patch("haizflow.desktop.social_publish_controller.zernio_keys.key_value", return_value=candidate),
-              patch("haizflow.desktop.social_publish_controller.zernio_keys.select_key") as select,
-              patch("haizflow.desktop.social_publish_controller.zernio.ZernioClient", return_value=client)):
+        with (patch("hflow.desktop.social_publish_controller.zernio_keys.key_value", return_value=candidate),
+              patch("hflow.desktop.social_publish_controller.zernio_keys.select_key") as select,
+              patch("hflow.desktop.social_publish_controller.zernio.ZernioClient", return_value=client)):
             self.assertTrue(self.controller.select_api_key("named-id"))
             self.controller._credential_worker_thread.join(timeout=2)
             self.assertEqual(self.controller._api_key_cache, "previous")
@@ -157,9 +157,9 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.controller._api_key_cache = "previous"
         client = MagicMock()
         client.list_profiles.side_effect = zernio.ZernioError("private", status=401)
-        with (patch("haizflow.desktop.social_publish_controller.zernio_keys.key_value", return_value="candidate"),
-              patch("haizflow.desktop.social_publish_controller.zernio_keys.select_key") as select,
-              patch("haizflow.desktop.social_publish_controller.zernio.ZernioClient", return_value=client)):
+        with (patch("hflow.desktop.social_publish_controller.zernio_keys.key_value", return_value="candidate"),
+              patch("hflow.desktop.social_publish_controller.zernio_keys.select_key") as select,
+              patch("hflow.desktop.social_publish_controller.zernio.ZernioClient", return_value=client)):
             self.assertTrue(self.controller.select_api_key("named-id"))
             self.controller._credential_worker_thread.join(timeout=2)
             self.controller.drain_events()
@@ -169,7 +169,7 @@ class SocialPublishControllerTests(unittest.TestCase):
 
     def test_key_management_is_disabled_during_publishing(self):
         self.controller._busy = True
-        with patch("haizflow.desktop.social_publish_controller.zernio_keys.remove_key") as delete:
+        with patch("hflow.desktop.social_publish_controller.zernio_keys.remove_key") as delete:
             self.assertFalse(self.controller.add_api_key("Team", "sk_" + "a" * 64))
             self.assertFalse(self.controller.select_api_key("named-id"))
             self.assertFalse(self.controller.remove_api_key("named-id"))
@@ -187,14 +187,14 @@ class SocialPublishControllerTests(unittest.TestCase):
         bad = MagicMock()
         bad.list_profiles.side_effect = zernio.ZernioError("private-secret", status=401)
         values = {"good": "sk_" + "a" * 64, "bad": "sk_" + "b" * 64}
-        with (patch("haizflow.desktop.social_publish_controller.zernio_keys.list_keys", return_value=entries),
-              patch("haizflow.desktop.social_publish_controller.zernio_keys.active_id", return_value="good"),
-              patch("haizflow.desktop.social_publish_controller.zernio_keys.key_value",
+        with (patch("hflow.desktop.social_publish_controller.zernio_keys.list_keys", return_value=entries),
+              patch("hflow.desktop.social_publish_controller.zernio_keys.active_id", return_value="good"),
+              patch("hflow.desktop.social_publish_controller.zernio_keys.key_value",
                     side_effect=lambda key_id: values[key_id] if key_id in values else (_ for _ in ()).throw(ValueError("missing"))),
-              patch("haizflow.desktop.social_publish_controller.zernio.ZernioClient",
+              patch("hflow.desktop.social_publish_controller.zernio.ZernioClient",
                     side_effect=lambda key: good if key == values["good"] else bad),
-              patch("haizflow.desktop.social_publish_controller.zernio_keys.select_key") as select,
-              patch("haizflow.services.secure_credentials.write_secret") as write):
+              patch("hflow.desktop.social_publish_controller.zernio_keys.select_key") as select,
+              patch("hflow.services.secure_credentials.write_secret") as write):
             self.assertTrue(self.controller.verify_api_key())
             self.assertFalse(self.controller.verify_api_key())
             self.controller._credential_worker_thread.join(timeout=2)
@@ -222,8 +222,8 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.controller._api_key_cache = "active-secret"
         self.controller._emit_changed()
         emissions = self.host.zernioAccountsChanged.emissions
-        with (patch("haizflow.desktop.social_publish_controller.zernio_keys.active_id", return_value="active-id"),
-              patch("haizflow.desktop.social_publish_controller.zernio_keys.remove_key", return_value=True)):
+        with (patch("hflow.desktop.social_publish_controller.zernio_keys.active_id", return_value="active-id"),
+              patch("hflow.desktop.social_publish_controller.zernio_keys.remove_key", return_value=True)):
             self.assertTrue(self.controller.remove_api_key("inactive-id"))
         self.assertEqual(self.host.zernioAccountsChanged.emissions, emissions + 1)
         self.assertEqual(self.controller._api_key_cache, "active-secret")
@@ -234,7 +234,7 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.controller._state.update(selected_account_id="previous-account", selected_platform="youtube")
         self.controller._events.put(dict(type="accounts", project_key="publish-project",
                                          accounts=[{"_id": "other-account", "platform": "youtube"}], profiles=[]))
-        with (patch("haizflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings") as update,
+        with (patch("hflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings") as update,
               patch.object(self.controller, "_poll_connected_accounts")):
             self.controller.drain_events()
             update.assert_not_called()
@@ -248,9 +248,9 @@ class SocialPublishControllerTests(unittest.TestCase):
         client.list_profiles.return_value = []
         client.list_accounts.return_value = []
         with (
-            patch("haizflow.desktop.social_publish_controller.zernio.ZernioClient", return_value=client),
-            patch("haizflow.services.secure_credentials.write_secret") as write,
-            patch("haizflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings") as update,
+            patch("hflow.desktop.social_publish_controller.zernio.ZernioClient", return_value=client),
+            patch("hflow.services.secure_credentials.write_secret") as write,
+            patch("hflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings") as update,
         ):
             self.assertTrue(self.controller.save_api_key(candidate))
             self.controller._credential_worker_thread.join(timeout=2)
@@ -271,8 +271,8 @@ class SocialPublishControllerTests(unittest.TestCase):
         client = MagicMock()
         client.list_profiles.side_effect = zernio.ZernioError(candidate, status=401)
         with (
-            patch("haizflow.desktop.social_publish_controller.zernio.ZernioClient", return_value=client),
-            patch("haizflow.services.secure_credentials.write_secret") as write,
+            patch("hflow.desktop.social_publish_controller.zernio.ZernioClient", return_value=client),
+            patch("hflow.services.secure_credentials.write_secret") as write,
         ):
             self.assertTrue(self.controller.save_api_key(candidate))
             self.controller._credential_worker_thread.join(timeout=2)
@@ -290,7 +290,7 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.controller._credential_busy = True
         self.controller._events.put(dict(type="credential", generation=1, replace=True,
                                          result="verified", key="new", profiles=[], accounts=[]))
-        with patch("haizflow.services.secure_credentials.write_secret",
+        with patch("hflow.services.secure_credentials.write_secret",
                    side_effect=OSError("private details")):
             self.controller.drain_events()
         self.assertEqual(self.controller._api_key_cache, "old")
@@ -311,8 +311,8 @@ class SocialPublishControllerTests(unittest.TestCase):
                                       items=[dict(id="queued", status="ready")])
         original = dict(self.controller._state)
         with (
-            patch("haizflow.services.secure_credentials.delete_secret"),
-            patch("haizflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings") as update,
+            patch("hflow.services.secure_credentials.delete_secret"),
+            patch("hflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings") as update,
         ):
             self.assertTrue(self.controller.clear_api_key())
             update.assert_not_called()
@@ -324,7 +324,7 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.controller._events.put(dict(type="credential", generation=1, replace=True,
                                          result="verified", key="new"))
         self.controller.shutdown()
-        with patch("haizflow.services.secure_credentials.write_secret") as write:
+        with patch("hflow.services.secure_credentials.write_secret") as write:
             self.controller.drain_events()
             write.assert_not_called()
 
@@ -332,7 +332,7 @@ class SocialPublishControllerTests(unittest.TestCase):
         client = MagicMock()
         client.list_profiles.return_value = []
         client.list_accounts.return_value = []
-        with patch("haizflow.desktop.social_publish_controller.zernio.ZernioClient", return_value=client):
+        with patch("hflow.desktop.social_publish_controller.zernio.ZernioClient", return_value=client):
             self.controller._account_worker("refresh", "fake", "")
         client.create_profile.assert_not_called()
         self.controller.drain_events()
@@ -384,8 +384,8 @@ class SocialPublishControllerTests(unittest.TestCase):
             with (
                 patch.object(self.controller, "_ensure_publish_project", return_value=True),
                 patch.object(self.controller, "_reload"),
-                patch("haizflow.desktop.social_publish_controller.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes),
-                patch("haizflow.desktop.social_publish_controller.tiktok_publish.remove_item", return_value=item) as remove,
+                patch("hflow.desktop.social_publish_controller.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes),
+                patch("hflow.desktop.social_publish_controller.tiktok_publish.remove_item", return_value=item) as remove,
             ):
                 self.assertTrue(self.controller.remove_item(0))
             remove.assert_called_once_with(directory, "post-1")
@@ -401,9 +401,9 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.controller._consent_confirmed = True
         with (patch.object(self.controller, "_ensure_publish_project", return_value=True),
               patch.object(self.controller, "_reload"),
-              patch("haizflow.desktop.social_publish_controller.QMessageBox.question",
+              patch("hflow.desktop.social_publish_controller.QMessageBox.question",
                     return_value=QMessageBox.StandardButton.Yes) as question,
-              patch("haizflow.desktop.social_publish_controller.tiktok_publish.remove_item",
+              patch("hflow.desktop.social_publish_controller.tiktok_publish.remove_item",
                     return_value=done) as remove):
             self.assertFalse(self.controller.remove_item(0))
             question.assert_not_called()
@@ -422,8 +422,8 @@ class SocialPublishControllerTests(unittest.TestCase):
             return QMessageBox.StandardButton.Yes
 
         with (patch.object(self.controller, "_ensure_publish_project", return_value=True),
-              patch("haizflow.desktop.social_publish_controller.QMessageBox.question", side_effect=confirm),
-              patch("haizflow.desktop.social_publish_controller.tiktok_publish.remove_item") as remove):
+              patch("hflow.desktop.social_publish_controller.QMessageBox.question", side_effect=confirm),
+              patch("hflow.desktop.social_publish_controller.tiktok_publish.remove_item") as remove):
             self.assertFalse(self.controller.remove_item(0))
             remove.assert_not_called()
 
@@ -434,13 +434,13 @@ class SocialPublishControllerTests(unittest.TestCase):
             "platform_post_url": "https://www.tiktok.com/@creator/video/1234567890123456789",
             "platform_post_url_verified": True,
         }])
-        with patch("haizflow.desktop.social_publish_controller.open_external_url", return_value=True) as opened:
+        with patch("hflow.desktop.social_publish_controller.open_external_url", return_value=True) as opened:
             self.assertTrue(self.controller.open_post(0))
             opened.assert_called_once()
 
     def test_onboarding_links_open_their_dedicated_zernio_pages(self):
         with patch(
-            "haizflow.desktop.social_publish_controller.open_external_url",
+            "hflow.desktop.social_publish_controller.open_external_url",
             return_value=True,
         ) as opened:
             self.assertTrue(self.controller.open_zernio_sign_up())
@@ -474,7 +474,7 @@ class SocialPublishControllerTests(unittest.TestCase):
     def test_api_key_is_read_from_windows_credential_store_once(self):
         key = "sk_" + "a" * 64
         with patch(
-            "haizflow.services.secure_credentials.read_secret",
+            "hflow.services.secure_credentials.read_secret",
             return_value=key,
         ) as read_secret:
             self.assertEqual(self.controller._api_key(), key)
@@ -497,7 +497,7 @@ class SocialPublishControllerTests(unittest.TestCase):
         worker = MagicMock()
         with (
             patch.object(self.controller, "_api_key", return_value="sk_" + "a" * 64),
-            patch("haizflow.desktop.social_publish_controller.threading.Thread", return_value=worker),
+            patch("hflow.desktop.social_publish_controller.threading.Thread", return_value=worker),
         ):
             self.assertTrue(self.controller._start_account_worker("refresh", silent=True))
 
@@ -511,7 +511,7 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.controller._background_account_refreshing = True
         with (
             patch.object(self.controller, "_api_key", return_value="sk_" + "a" * 64),
-            patch("haizflow.desktop.social_publish_controller.threading.Thread", return_value=worker),
+            patch("hflow.desktop.social_publish_controller.threading.Thread", return_value=worker),
         ):
             self.assertTrue(self.controller.connect_platform("youtube"))
 
@@ -524,7 +524,7 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.controller._creator_syncing = True
         with (
             patch.object(self.controller, "_api_key", return_value="sk_" + "a" * 64),
-            patch("haizflow.desktop.social_publish_controller.threading.Thread", return_value=worker),
+            patch("hflow.desktop.social_publish_controller.threading.Thread", return_value=worker),
         ):
             self.assertTrue(self.controller.connect_platform("youtube"))
 
@@ -536,7 +536,7 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.controller._accounts = [{"_id": "account-1", "platform": "youtube"}]
         with (
             patch.object(self.controller, "_api_key", return_value="sk_" + "a" * 64),
-            patch("haizflow.desktop.social_publish_controller.threading.Thread", return_value=worker) as thread,
+            patch("hflow.desktop.social_publish_controller.threading.Thread", return_value=worker) as thread,
         ):
             self.assertTrue(self.controller.disconnect_account(0))
 
@@ -572,11 +572,11 @@ class SocialPublishControllerTests(unittest.TestCase):
 
     def test_non_tiktok_connection_is_ready_without_tiktok_creator_info(self):
         self.controller._project_key = "publish-project"
-        self.controller._project_root = "D:/HaizFlowData/publish-project"
+        self.controller._project_root = "D:/HFlowData/publish-project"
         self.host._project_type = "publish"
         self.controller._accounts = [{"id": "youtube-1", "platform": "youtube", "name": "Channel"}]
         with patch(
-            "haizflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings",
+            "hflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings",
             side_effect=lambda _root, **changes: {**self.controller._state, **changes},
         ):
             self.assertTrue(self.controller.select_account(0))
@@ -587,7 +587,7 @@ class SocialPublishControllerTests(unittest.TestCase):
 
     def test_reselecting_loaded_account_does_not_rewrite_state_or_reload_model(self):
         self.controller._project_key = "publish-project"
-        self.controller._project_root = "D:/HaizFlowData/publish-project"
+        self.controller._project_root = "D:/HFlowData/publish-project"
         self.host._project_type = "publish"
         self.controller._accounts = [{"id": "youtube-1", "platform": "youtube"}]
         self.controller._state.update(
@@ -600,7 +600,7 @@ class SocialPublishControllerTests(unittest.TestCase):
 
         with (
             patch(
-                "haizflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings"
+                "hflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings"
             ) as update_settings,
             patch.object(self.controller, "_sync_model") as sync_model,
         ):
@@ -611,7 +611,7 @@ class SocialPublishControllerTests(unittest.TestCase):
 
     def test_reselecting_cached_tiktok_account_does_not_wait_for_network(self):
         self.controller._project_key = "publish-project"
-        self.controller._project_root = "D:/HaizFlowData/publish-project"
+        self.controller._project_root = "D:/HFlowData/publish-project"
         self.host._project_type = "publish"
         self.controller._accounts = [{"id": "tiktok-1", "platform": "tiktok"}]
         self.controller._state.update(
@@ -631,9 +631,9 @@ class SocialPublishControllerTests(unittest.TestCase):
         )
 
         with (
-            patch("haizflow.desktop.social_publish_controller.time.monotonic", return_value=1.0),
+            patch("hflow.desktop.social_publish_controller.time.monotonic", return_value=1.0),
             patch(
-                "haizflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings",
+                "hflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings",
                 side_effect=lambda _root, **changes: {**self.controller._state, **changes},
             ),
             patch.object(self.controller, "_start_creator_info_worker") as creator_worker,
@@ -670,11 +670,11 @@ class SocialPublishControllerTests(unittest.TestCase):
 
         with (
             patch.object(self.controller, "add_videos", return_value=True) as add,
-            patch("haizflow.desktop.social_publish_controller.video_store.get_video",
+            patch("hflow.desktop.social_publish_controller.video_store.get_video",
                   side_effect=lambda identifier: MagicMock(video_id=identifier)),
-            patch("haizflow.services.manual_artifacts.peek", side_effect=lambda identifier, _kind, _signature:
+            patch("hflow.services.manual_artifacts.peek", side_effect=lambda identifier, _kind, _signature:
                   {"resolved_outputs": {"video": f"D:/out/{identifier}.mp4"}}),
-            patch("haizflow.services.manual_artifacts.pin") as pin,
+            patch("hflow.services.manual_artifacts.pin") as pin,
         ):
             self.assertTrue(self.controller.add_selected_project_videos())
             self.assertEqual(pin.call_count, 2)
@@ -783,16 +783,16 @@ class SocialPublishControllerTests(unittest.TestCase):
             patch.object(self.controller, "_reload"),
             patch.object(self.controller, "_api_key", return_value="sk_" + "a" * 64),
             patch.object(self.controller, "reconcile_accounts", return_value=True) as refresh,
-            patch("haizflow.desktop.social_publish_controller.tiktok_publish.migrate_project_layout"),
-            patch("haizflow.desktop.social_publish_controller.tiktok_publish.cleanup_orphaned_media"),
+            patch("hflow.desktop.social_publish_controller.tiktok_publish.migrate_project_layout"),
+            patch("hflow.desktop.social_publish_controller.tiktok_publish.cleanup_orphaned_media"),
         ):
-            self.controller.attach_project("publish-project", "D:/HaizFlowData/publish-project")
+            self.controller.attach_project("publish-project", "D:/HFlowData/publish-project")
 
         refresh.assert_called_once_with()
 
     def test_switching_publish_projects_clears_transient_creator_state(self):
         self.controller._project_key = "old-project"
-        self.controller._project_root = "D:/HaizFlowData/old-project"
+        self.controller._project_root = "D:/HFlowData/old-project"
         self.controller._privacy_levels = ["PUBLIC_TO_EVERYONE"]
         self.controller._interaction_settings = {
             "comment": True,
@@ -804,10 +804,10 @@ class SocialPublishControllerTests(unittest.TestCase):
         with (
             patch.object(self.controller, "_reload"),
             patch.object(self.controller, "_api_key", return_value=""),
-            patch("haizflow.desktop.social_publish_controller.tiktok_publish.migrate_project_layout"),
-            patch("haizflow.desktop.social_publish_controller.tiktok_publish.cleanup_orphaned_media"),
+            patch("hflow.desktop.social_publish_controller.tiktok_publish.migrate_project_layout"),
+            patch("hflow.desktop.social_publish_controller.tiktok_publish.cleanup_orphaned_media"),
         ):
-            self.controller.attach_project("new-project", "D:/HaizFlowData/new-project")
+            self.controller.attach_project("new-project", "D:/HFlowData/new-project")
 
         self.assertEqual(self.controller._privacy_levels, [])
         self.assertEqual(
@@ -820,7 +820,7 @@ class SocialPublishControllerTests(unittest.TestCase):
         with (
             patch.object(self.controller, "_ensure_publish_project", return_value=True),
             patch(
-                "haizflow.desktop.social_publish_controller.QFileDialog.getOpenFileNames",
+                "hflow.desktop.social_publish_controller.QFileDialog.getOpenFileNames",
                 return_value=(["D:/media/one.mp4", "D:/media/two.mov"], "Video files"),
             ),
             patch.object(self.controller, "add_videos", return_value=True) as add_videos,
@@ -839,7 +839,7 @@ class SocialPublishControllerTests(unittest.TestCase):
             with (
                 patch.object(self.controller, "_ensure_publish_project", return_value=True),
                 patch(
-                    "haizflow.desktop.social_publish_controller.QFileDialog.getExistingDirectory",
+                    "hflow.desktop.social_publish_controller.QFileDialog.getExistingDirectory",
                     return_value=folder,
                 ),
                 patch.object(self.controller, "add_videos", return_value=True) as add_videos,
@@ -865,7 +865,7 @@ class SocialPublishControllerTests(unittest.TestCase):
         ]
 
         with patch(
-            "haizflow.desktop.social_publish_controller.zernio.ZernioClient",
+            "hflow.desktop.social_publish_controller.zernio.ZernioClient",
             return_value=client,
         ):
             self.controller._account_worker("refresh", "sk_" + "a" * 64, "publish-project")
@@ -884,7 +884,7 @@ class SocialPublishControllerTests(unittest.TestCase):
         client.list_accounts.return_value = [{"_id": "account-2", "platform": "youtube"}]
 
         with patch(
-            "haizflow.desktop.social_publish_controller.zernio.ZernioClient",
+            "hflow.desktop.social_publish_controller.zernio.ZernioClient",
             return_value=client,
         ):
             self.controller._account_worker(
@@ -917,7 +917,7 @@ class SocialPublishControllerTests(unittest.TestCase):
 
     def test_account_refresh_clears_a_selection_removed_on_the_web(self):
         self.controller._project_key = "publish-project"
-        self.controller._project_root = "D:/HaizFlowData/publish-project"
+        self.controller._project_root = "D:/HFlowData/publish-project"
         self.controller._accounts = [{"_id": "removed", "platform": "tiktok"}]
         self.controller._state["selected_account_id"] = "removed"
         self.controller._events.put(
@@ -933,7 +933,7 @@ class SocialPublishControllerTests(unittest.TestCase):
 
         with (
             patch(
-                "haizflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings",
+                "hflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings",
                 side_effect=lambda _root, **changes: {**self.controller._state, **changes},
             ),
             patch.object(self.controller, "_poll_connected_accounts"),
@@ -946,7 +946,7 @@ class SocialPublishControllerTests(unittest.TestCase):
 
     def test_stale_background_refresh_cannot_restore_a_disconnected_account(self):
         self.controller._project_key = "publish-project"
-        self.controller._project_root = "D:/HaizFlowData/publish-project"
+        self.controller._project_root = "D:/HFlowData/publish-project"
         self.controller._account_generation = 2
         self.controller._background_account_refreshing = True
         self.controller._accounts = []
@@ -974,7 +974,7 @@ class SocialPublishControllerTests(unittest.TestCase):
 
     def test_silent_refresh_ignores_volatile_api_fields_without_rebuilding_the_ui(self):
         self.controller._project_key = "publish-project"
-        self.controller._project_root = "D:/HaizFlowData/publish-project"
+        self.controller._project_root = "D:/HFlowData/publish-project"
         self.controller._accounts = [
             {
                 "_id": "youtube-account",
@@ -1060,7 +1060,7 @@ class SocialPublishControllerTests(unittest.TestCase):
 
     def test_account_event_updates_the_ui_visible_account_list(self):
         self.controller._project_key = "publish-project"
-        self.controller._project_root = "D:/HaizFlowData/publish-project"
+        self.controller._project_root = "D:/HFlowData/publish-project"
         self.controller._events.put(
             {
                 "type": "accounts",
@@ -1081,7 +1081,7 @@ class SocialPublishControllerTests(unittest.TestCase):
 
         with (
             patch(
-                "haizflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings",
+                "hflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings",
                 return_value={"selected_account_id": "account-1"},
             ),
             patch.object(self.controller, "_start_creator_info_worker", return_value=True),
@@ -1095,7 +1095,7 @@ class SocialPublishControllerTests(unittest.TestCase):
 
     def test_oauth_sync_waits_for_a_new_account_instead_of_accepting_stale_results(self):
         self.controller._project_key = "publish-project"
-        self.controller._project_root = "D:/HaizFlowData/publish-project"
+        self.controller._project_root = "D:/HFlowData/publish-project"
         self.controller._accounts = [{"_id": "existing", "platform": "tiktok"}]
         self.controller._state["selected_account_id"] = "existing"
         self.controller._start_oauth_sync()
@@ -1144,23 +1144,23 @@ class SocialPublishControllerTests(unittest.TestCase):
 
         refresh.assert_called_once_with("refresh", silent=True)
 
-    def test_connection_prefers_the_existing_haizflow_profile(self):
+    def test_connection_prefers_the_existing_hflow_profile(self):
         profile = self.controller._connection_profile(
             [
                 {"_id": "default", "name": "Default", "isDefault": True},
-                {"_id": "haizflow", "name": "HaizFlow"},
+                {"_id": "hflow", "name": "HFlow"},
             ]
         )
 
-        self.assertEqual(profile["_id"], "haizflow")
+        self.assertEqual(profile["_id"], "hflow")
 
     def test_third_connection_is_not_blocked_when_zernio_returns_authorization_url(self):
         client = MagicMock()
-        client.list_profiles.return_value = [{"_id": "haizflow", "name": "HaizFlow"}]
+        client.list_profiles.return_value = [{"_id": "hflow", "name": "HFlow"}]
         client.get_connect_url.return_value = "https://zernio.com/connect/third"
 
         with patch(
-            "haizflow.desktop.social_publish_controller.zernio.ZernioClient",
+            "hflow.desktop.social_publish_controller.zernio.ZernioClient",
             return_value=client,
         ):
             self.controller._account_worker(
@@ -1181,7 +1181,7 @@ class SocialPublishControllerTests(unittest.TestCase):
         client.get_connect_url.return_value = "https://zernio.com/connect/youtube"
 
         with patch(
-            "haizflow.desktop.social_publish_controller.zernio.ZernioClient",
+            "hflow.desktop.social_publish_controller.zernio.ZernioClient",
             return_value=client,
         ):
             self.controller._account_worker(
@@ -1190,8 +1190,8 @@ class SocialPublishControllerTests(unittest.TestCase):
                 "publish-project",
                 "youtube",
                 cached_profile_id="profile-cached",
-                cached_profile_name="HaizFlow",
-                cached_profiles=[{"_id": "profile-cached", "name": "HaizFlow"}],
+                cached_profile_name="HFlow",
+                cached_profiles=[{"_id": "profile-cached", "name": "HFlow"}],
             )
 
         client.list_profiles.assert_not_called()
@@ -1204,7 +1204,7 @@ class SocialPublishControllerTests(unittest.TestCase):
         client = MagicMock()
         client.list_profiles.side_effect = RuntimeError("malformed response")
         with patch(
-            "haizflow.desktop.social_publish_controller.zernio.ZernioClient",
+            "hflow.desktop.social_publish_controller.zernio.ZernioClient",
             return_value=client,
         ):
             self.controller._account_worker(
@@ -1243,7 +1243,7 @@ class SocialPublishControllerTests(unittest.TestCase):
             "first_comment": "",
         }
         with patch(
-            "haizflow.desktop.social_publish_controller.zernio.ZernioClient",
+            "hflow.desktop.social_publish_controller.zernio.ZernioClient",
             return_value=client,
         ):
             self.controller._publish_worker(
@@ -1261,7 +1261,7 @@ class SocialPublishControllerTests(unittest.TestCase):
 
     def test_connection_refreshes_only_when_the_cached_profile_was_deleted(self):
         client = MagicMock()
-        client.list_profiles.return_value = [{"_id": "profile-new", "name": "HaizFlow"}]
+        client.list_profiles.return_value = [{"_id": "profile-new", "name": "HFlow"}]
 
         def connect_url(profile_id, _platform):
             if profile_id == "profile-cached":
@@ -1270,7 +1270,7 @@ class SocialPublishControllerTests(unittest.TestCase):
 
         client.get_connect_url.side_effect = connect_url
         with patch(
-            "haizflow.desktop.social_publish_controller.zernio.ZernioClient",
+            "hflow.desktop.social_publish_controller.zernio.ZernioClient",
             return_value=client,
         ):
             self.controller._account_worker(
@@ -1288,11 +1288,11 @@ class SocialPublishControllerTests(unittest.TestCase):
 
     def test_third_connection_billing_failure_has_a_clear_message(self):
         client = MagicMock()
-        client.list_profiles.return_value = [{"_id": "haizflow", "name": "HaizFlow"}]
+        client.list_profiles.return_value = [{"_id": "hflow", "name": "HFlow"}]
         client.get_connect_url.return_value = ""
 
         with patch(
-            "haizflow.desktop.social_publish_controller.zernio.ZernioClient",
+            "hflow.desktop.social_publish_controller.zernio.ZernioClient",
             return_value=client,
         ):
             self.controller._account_worker(
@@ -1337,7 +1337,7 @@ class SocialPublishControllerTests(unittest.TestCase):
                 }
             )
 
-            with patch("haizflow.desktop.social_publish_controller.project_store.touch_project_by_key"):
+            with patch("hflow.desktop.social_publish_controller.project_store.touch_project_by_key"):
                 self.controller.drain_events()
 
             restored = tiktok_publish.load_state(project_root)["items"][0]
@@ -1362,7 +1362,7 @@ class SocialPublishControllerTests(unittest.TestCase):
             "request_id": "stable-request-id",
         }
 
-        with patch("haizflow.desktop.social_publish_controller.time.sleep"):
+        with patch("hflow.desktop.social_publish_controller.time.sleep"):
             result = _create_post_idempotently(client, arguments)
 
         self.assertEqual(result["existingPost"]["id"], "post-accepted")
@@ -1386,7 +1386,7 @@ class SocialPublishControllerTests(unittest.TestCase):
             "request_id": "stable-request-id",
         }
 
-        with patch("haizflow.desktop.social_publish_controller.time.sleep"):
+        with patch("hflow.desktop.social_publish_controller.time.sleep"):
             result = _create_post_idempotently(client, arguments)
 
         self.assertEqual(result["existingPost"]["id"], "post-accepted")
@@ -1420,7 +1420,7 @@ class SocialPublishControllerTests(unittest.TestCase):
             "request_id": "stable-request-id",
         }
 
-        with patch("haizflow.desktop.social_publish_controller.time.sleep"):
+        with patch("hflow.desktop.social_publish_controller.time.sleep"):
             result = _create_post_idempotently(client, arguments)
 
         self.assertEqual(result["existingPost"]["id"], "post-accepted")
@@ -1444,7 +1444,7 @@ class SocialPublishControllerTests(unittest.TestCase):
         ]
 
         with patch(
-            "haizflow.desktop.social_publish_controller.zernio.ZernioClient",
+            "hflow.desktop.social_publish_controller.zernio.ZernioClient",
             return_value=client,
         ):
             self.controller._status_worker(

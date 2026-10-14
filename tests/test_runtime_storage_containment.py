@@ -20,16 +20,16 @@ class RuntimeStorageContainmentTests(unittest.TestCase):
             selected = root / "selected-home"
             environment = dict(
                 os.environ,
-                HAIZFLOW_SMOKE_TEST="1",
-                HAIZFLOW_HOME=str(selected),
+                HFLOW_SMOKE_TEST="1",
+                HFLOW_HOME=str(selected),
                 RUNTIME_DATA_DIR=str(selected / "data"),
                 PYTHONPATH=str(ROOT / "src"),
             )
-            environment.pop("HAIZFLOW_RESOURCE_ROOT", None)
+            environment.pop("HFLOW_RESOURCE_ROOT", None)
             script = (
                 "import tempfile,json; "
                 f"tempfile.tempdir={str(old)!r}; "
-                "from haizflow.config import TMP_DIR; "
+                "from hflow.config import TMP_DIR; "
                 "before=tempfile.gettempdir(); "
                 "with_file=tempfile.NamedTemporaryFile(); "
                 "print(json.dumps([TMP_DIR,before,with_file.name])); with_file.close()"
@@ -50,21 +50,21 @@ class RuntimeStorageContainmentTests(unittest.TestCase):
             escape = root / "not-selected"
             environment = dict(
                 os.environ,
-                HAIZFLOW_SMOKE_TEST="1",
-                HAIZFLOW_HOME=str(selected),
+                HFLOW_SMOKE_TEST="1",
+                HFLOW_HOME=str(selected),
                 RUNTIME_DATA_DIR=str(selected / "data"),
                 MODELS_DIR=str(escape / "models"),
                 PIP_CACHE_DIR=str(escape / "pip"),
                 UV_CACHE_DIR=str(escape / "uv"),
                 HF_HOME=str(escape / "hf"),
                 TORCH_HOME=str(escape / "torch"),
-                HAIZFLOW_TMP_DIR=str(escape / "tmp"),
+                HFLOW_TMP_DIR=str(escape / "tmp"),
                 PYTHONPATH=str(ROOT / "src"),
             )
-            environment.pop("HAIZFLOW_RESOURCE_ROOT", None)
+            environment.pop("HFLOW_RESOURCE_ROOT", None)
             script = (
-                "import json; from haizflow import config as c; "
-                "from haizflow.core.paths import engines_dir,resource_packages_dir; "
+                "import json; from hflow import config as c; "
+                "from hflow.core.paths import engines_dir,resource_packages_dir; "
                 "print(json.dumps([c.MODELS_DIR,c.HF_HOME,c.TORCH_HOME,c.PIP_CACHE_DIR,c.UV_CACHE_DIR,"
                 "c.TMP_DIR,str(engines_dir()),str(resource_packages_dir())]))"
             )

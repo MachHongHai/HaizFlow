@@ -10,9 +10,9 @@ from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickWindow
 from PySide6.QtTest import QSignalSpy, QTest
 
-from haizflow.desktop.qml_controller import HaizFlowController
+from hflow.desktop.qml_controller import HFlowController
 
-QML_DIR = Path(__file__).parents[1] / "src/haizflow/desktop/qml"
+QML_DIR = Path(__file__).parents[1] / "src/hflow/desktop/qml"
 _APP = None
 
 
@@ -83,9 +83,9 @@ def test_queue_click_never_retires_models_or_probes_runtime(monkeypatch):
     enqueue = Mock(return_value=True)
     warmup = SimpleNamespace(foreground_work_requested=Mock(side_effect=AssertionError("GUI model retirement")))
     host = SimpleNamespace(_smart_warmup=warmup, _processing_lifecycle=SimpleNamespace(enqueue_video=enqueue))
-    monkeypatch.setattr("haizflow.desktop.processing_lifecycle_controller.runtime_profile",
+    monkeypatch.setattr("hflow.desktop.processing_lifecycle_controller.runtime_profile",
                         Mock(side_effect=AssertionError("GUI runtime probe")))
-    assert HaizFlowController._enqueue_video(host, "video-a")
+    assert HFlowController._enqueue_video(host, "video-a")
     enqueue.assert_called_once_with("video-a")
     warmup.foreground_work_requested.assert_not_called()
 
@@ -93,7 +93,7 @@ def test_queue_click_never_retires_models_or_probes_runtime(monkeypatch):
 def test_manual_click_only_peeks_large_published_media():
     import inspect
 
-    source = inspect.getsource(HaizFlowController.runManualTool)
+    source = inspect.getsource(HFlowController.runManualTool)
     assert "ensure_current_subtitle_document(video.video_id, validate=False)" in source
     assert 'manual_artifacts.peek_active(video, "tts_manifest")' in source
     assert 'manual_artifacts.active(video, "tts_manifest")' not in source
@@ -111,7 +111,7 @@ def test_separation_button_uses_immediate_acknowledgement_with_project_guard():
 
 
 def test_translation_button_does_not_build_voice_or_export_signatures(monkeypatch):
-    from haizflow.pipeline import manual_tools
+    from hflow.pipeline import manual_tools
 
     for name in ("voice_signature", "audio_signature", "export_signature", "published_voice_record"):
         monkeypatch.setattr(manual_tools, name, Mock(side_effect=AssertionError("Unrelated cache computation")))
@@ -120,7 +120,7 @@ def test_translation_button_does_not_build_voice_or_export_signatures(monkeypatc
 
 
 def test_voice_button_retains_required_subtitle_guard(monkeypatch):
-    from haizflow.pipeline import manual_tools
+    from hflow.pipeline import manual_tools
 
     subtitles = Mock(return_value=False)
     monkeypatch.setattr(manual_tools, "_subtitle_ready", subtitles)
@@ -130,8 +130,8 @@ def test_voice_button_retains_required_subtitle_guard(monkeypatch):
 
 
 def test_document_read_batch_reuses_only_within_one_calculation_and_detects_edits(tmp_path, monkeypatch):
-    from haizflow.schemas.editor import EditorDocument, EditorSequence
-    from haizflow.services import editor_documents
+    from hflow.schemas.editor import EditorDocument, EditorSequence
+    from hflow.services import editor_documents
 
     path = tmp_path / "editor.json"
     original = EditorDocument(video_id="video-a", sequence=EditorSequence(duration_ms=60000))
@@ -170,18 +170,18 @@ def test_resume_restart_controls_share_immediate_acknowledgement_and_identity_gu
 
 
 def test_restart_click_does_not_probe_the_hardware_runtime(monkeypatch):
-    from haizflow.desktop.project_commands_controller import ProjectCommandsController, QMessageBox
+    from hflow.desktop.project_commands_controller import ProjectCommandsController, QMessageBox
     video = SimpleNamespace(video_id="restart", status="paused")
     host = SimpleNamespace(_selected_video_id=video.video_id, _settings_owner_video_id=video.video_id,
         _processing_queue=SimpleNamespace(contains=lambda _: False), _device_switching=False,
         _apply_setup_to_video=Mock(), _enqueue_video=Mock(), selectedVideoChanged=SimpleNamespace(emit=Mock()))
     controller = ProjectCommandsController(host)
     monkeypatch.setattr(controller, "_resources_ready", lambda *_: True)
-    monkeypatch.setattr("haizflow.desktop.project_commands_controller.video_store.get_video", lambda _: video)
-    monkeypatch.setattr("haizflow.desktop.project_commands_controller.QMessageBox.question", lambda *_: QMessageBox.StandardButton.Yes)
-    monkeypatch.setattr("haizflow.desktop.project_commands_controller.video_store.prepare_video_restart", lambda _: video)
-    monkeypatch.setattr("haizflow.desktop.project_commands_controller.video_store.log_to_video", Mock())
-    monkeypatch.setattr("haizflow.desktop.project_commands_controller.runtime_profile", Mock(side_effect=AssertionError("GUI hardware probe")))
+    monkeypatch.setattr("hflow.desktop.project_commands_controller.video_store.get_video", lambda _: video)
+    monkeypatch.setattr("hflow.desktop.project_commands_controller.QMessageBox.question", lambda *_: QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr("hflow.desktop.project_commands_controller.video_store.prepare_video_restart", lambda _: video)
+    monkeypatch.setattr("hflow.desktop.project_commands_controller.video_store.log_to_video", Mock())
+    monkeypatch.setattr("hflow.desktop.project_commands_controller.runtime_profile", Mock(side_effect=AssertionError("GUI hardware probe")))
     controller.restart_selected_video()
     host._enqueue_video.assert_called_once_with(video.video_id)
 

@@ -5,9 +5,9 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 
-from haizflow.pipeline import manual_tools, process_video
-from haizflow.pipeline import omnivoice_tts as voice
-from haizflow.pipeline.tts_quality import (
+from hflow.pipeline import manual_tools, process_video
+from hflow.pipeline import omnivoice_tts as voice
+from hflow.pipeline.tts_quality import (
     active_speech_rms,
     match_quiet_speech_level,
     short_phrase_generation_options,
@@ -47,7 +47,7 @@ def test_short_policy_invalidates_only_short_local_clips_not_edge_or_long_cache(
     video = SimpleNamespace(speaker_mode="single", tts_voice="omnivoice:female", tts_provider="omnivoice-gpu",
                             target_language="vi", files={}, manual_tool_generations={})
     segments = [{"text": "Đồ ngốc!"}, {"text": "Đây là một câu dài vẫn được giữ nguyên trong cache."}]
-    from haizflow.pipeline import tts_quality
+    from hflow.pipeline import tts_quality
     first = manual_tools._voice_clip_signatures(video, segments)
     with patch.object(tts_quality, "SHORT_PHRASE_VERSION", "another-test-policy"):
         changed = manual_tools._voice_clip_signatures(video, segments)
@@ -127,7 +127,7 @@ def test_quality_guard_rejects_beeps_even_with_speech_afterwards():
 
 
 def test_number_policy_invalidates_only_numeric_local_cache():
-    from haizflow.pipeline import tts_quality
+    from hflow.pipeline import tts_quality
     video = SimpleNamespace(speaker_mode="single", tts_voice="omnivoice:male", tts_provider="omnivoice-gpu",
                             target_language="vi", files={}, manual_tool_generations={})
     segments = [{"text": "90.000 đô la."}, {"text": "Đây là một câu nói dài hoàn toàn bình thường."}]
@@ -173,7 +173,7 @@ def test_worker_retries_beeps_once_without_changing_voice_or_publishing_bad_audi
 
 
 def test_auto_checkpoint_includes_numeric_policy_without_invalidating_other_inputs():
-    from haizflow.pipeline import tts_quality
+    from hflow.pipeline import tts_quality
     video = SimpleNamespace(speaker_mode="single", tts_voice="omnivoice:male", tts_provider="omnivoice-gpu",
                             target_language="vi", files={})
     segments = [{"text": "90.000 đô la."}]

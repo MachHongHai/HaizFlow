@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from haizflow.services.temporary_cleanup import TemporaryCleanupManager
+from hflow.services.temporary_cleanup import TemporaryCleanupManager
 
 
 def manager_at(root, monkeypatch):
@@ -27,7 +27,7 @@ def test_locked_download_tree_is_journalled_and_cleaned_after_restart(tmp_path, 
             raise PermissionError(13, "WinError 32: locked fixture")
         return remove(path, *args, **kwargs)
     with monkeypatch.context() as patch:
-        patch.setattr("haizflow.services.temporary_cleanup.shutil.rmtree", locked)
+        patch.setattr("hflow.services.temporary_cleanup.shutil.rmtree", locked)
         manager.discard(workspace, tree=True)
     assert workspace.exists() and manager.journal.exists()
     reopened = TemporaryCleanupManager(manager.journal)
@@ -37,7 +37,7 @@ def test_locked_download_tree_is_journalled_and_cleaned_after_restart(tmp_path, 
 
 def test_locked_export_file_retries_but_completed_output_survives(tmp_path, monkeypatch):
     manager = manager_at(tmp_path, monkeypatch)
-    partial = tmp_path / ".haizflow-export-test.partial.mp4"
+    partial = tmp_path / ".hflow-export-test.partial.mp4"
     partial.write_bytes(b"partial")
     final = tmp_path / "final.mp4"
     final.write_bytes(b"completed")
@@ -55,7 +55,7 @@ def test_locked_export_file_retries_but_completed_output_survives(tmp_path, monk
 
 def test_replaced_file_is_not_removed_by_old_cleanup_record(tmp_path, monkeypatch):
     manager = manager_at(tmp_path, monkeypatch)
-    partial = tmp_path / ".haizflow-export-test.partial.mp4"
+    partial = tmp_path / ".hflow-export-test.partial.mp4"
     partial.write_bytes(b"old")
     monkeypatch.setattr(manager, "_remove", lambda _entry: False)
     manager.discard(partial, tree=False)
@@ -84,7 +84,7 @@ def test_nested_project_blocks_recursive_temporary_cleanup(tmp_path, monkeypatch
     workspace = tmp_path / "downloads" / "video"
     project = workspace / "nested"
     project.mkdir(parents=True)
-    (project / ".haizflow-project.json").write_text("{}", encoding="utf-8")
+    (project / ".hflow-project.json").write_text("{}", encoding="utf-8")
     manager.discard(workspace, tree=True)
     assert project.exists() and not manager._pending
 
@@ -101,7 +101,7 @@ def test_owned_srt_revision_cleanup_and_locked_retry(tmp_path, monkeypatch):
             if Path(path) == revision:
                 raise PermissionError("WinError 32")
             return remove(path, *args, **kwargs)
-        patch.setattr("haizflow.services.temporary_cleanup.shutil.rmtree", locked)
+        patch.setattr("hflow.services.temporary_cleanup.shutil.rmtree", locked)
         manager.discard(revision, tree=True)
     assert revision.exists() and manager._pending
     reopened = TemporaryCleanupManager(manager.journal)
@@ -125,7 +125,7 @@ def test_actual_windows_locked_file_can_be_removed_after_handle_closes(tmp_path,
     from ctypes import wintypes
 
     manager = manager_at(tmp_path, monkeypatch)
-    partial = tmp_path / ".haizflow-export-win-lock.partial.mp4"
+    partial = tmp_path / ".hflow-export-win-lock.partial.mp4"
     partial.write_bytes(b"partial")
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,

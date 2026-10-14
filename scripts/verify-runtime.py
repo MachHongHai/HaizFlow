@@ -33,7 +33,7 @@ def directory_size(path: Path) -> int:
 def expected_packages() -> dict[str, str]:
     configuration = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     project = configuration["project"]
-    source_pins = configuration.get("tool", {}).get("haizflow", {}).get("source-dependencies", {})
+    source_pins = configuration.get("tool", {}).get("hflow", {}).get("source-dependencies", {})
     expected = {}
     for value in project.get("dependencies", []):
         requirement = Requirement(value)
@@ -60,7 +60,7 @@ def check(condition: bool, message: str, failures: list[str]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate the HaizFlow source/build runtime.")
+    parser = argparse.ArgumentParser(description="Validate the HFlow source/build runtime.")
     parser.add_argument("--for-build", action="store_true")
     parser.add_argument("--environment-root", type=Path, default=ROOT / ".venv")
     parser.add_argument(
@@ -105,8 +105,8 @@ def main() -> int:
 
     if str(SRC) not in sys.path:
         sys.path.insert(0, str(SRC))
-    from haizflow.config import HYMT2_CPU_MODEL_REVISION, HYMT2_MODEL_REVISION, WHISPER_MODEL_REVISION
-    from haizflow.core.model_integrity import (
+    from hflow.config import HYMT2_CPU_MODEL_REVISION, HYMT2_MODEL_REVISION, WHISPER_MODEL_REVISION
+    from hflow.core.model_integrity import (
         HYMT2_CPU_REVISION,
         HYMT2_GPU_REVISION,
         OMNIVOICE_REVISION,
@@ -175,9 +175,9 @@ def main() -> int:
         except Exception:
             print("[WARN] Optional TorchCodec decoder is unavailable; waveform fallback remains active.")
 
-    from haizflow.config import HF_HOME, MODELS_DIR, RUNTIME_DATA_DIR, TMP_DIR, TORCH_HOME
-    from haizflow.core.storage_policy import MINIMUM_OPERATIONAL_FREE_BYTES
-    from haizflow.core.runtime_probe import probe_runtime
+    from hflow.config import HF_HOME, MODELS_DIR, RUNTIME_DATA_DIR, TMP_DIR, TORCH_HOME
+    from hflow.core.storage_policy import MINIMUM_OPERATIONAL_FREE_BYTES
+    from hflow.core.runtime_probe import probe_runtime
 
     check(Path(RUNTIME_DATA_DIR).is_absolute(), f"Runtime data: {RUNTIME_DATA_DIR}", failures)
     check(Path(HF_HOME).is_absolute(), f"Hugging Face cache: {HF_HOME}", failures)
@@ -270,7 +270,7 @@ def main() -> int:
     check(pip_check.returncode == 0, pip_check.stdout.strip() or pip_check.stderr.strip() or "pip check", failures)
 
     if args.for_build and args.profile == "full":
-        from haizflow.core.model_integrity import (
+        from hflow.core.model_integrity import (
             verify_alignment_models,
             verify_demucs_model,
             verify_subtitle_ocr_models,
@@ -291,7 +291,7 @@ def main() -> int:
             check(True, f"Pinned original-subtitle OCR models: {ocr_directory}", failures)
         except Exception as exc:
             check(False, f"Pinned original-subtitle OCR models: {exc}", failures)
-        from haizflow.services.model_bootstrap import models_ready, required_download_bytes
+        from hflow.services.model_bootstrap import models_ready, required_download_bytes
 
         for device in ("cpu", "gpu"):
             check(
@@ -300,7 +300,7 @@ def main() -> int:
                 failures,
             )
     if args.for_build:
-        check((ROOT / "src" / "haizflow" / "desktop" / "qml" / "Main.qml").is_file(), "QML source tree", failures)
+        check((ROOT / "src" / "hflow" / "desktop" / "qml" / "Main.qml").is_file(), "QML source tree", failures)
         check(importlib.metadata.version("pyinstaller") == "6.21.0", "PyInstaller 6.21.0", failures)
 
     if failures:

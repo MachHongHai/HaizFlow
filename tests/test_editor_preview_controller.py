@@ -10,10 +10,10 @@ from unittest import mock
 
 from PySide6.QtCore import QUrl
 
-from haizflow.desktop.editor_preview_controller import EditorPreviewController
-from haizflow.schemas.video import CropSettings, SubtitleStyle
-from haizflow.services import manual_artifacts
-from haizflow.utils.ffmpeg import _binary, get_video_duration
+from hflow.desktop.editor_preview_controller import EditorPreviewController
+from hflow.schemas.video import CropSettings, SubtitleStyle
+from hflow.services import manual_artifacts
+from hflow.utils.ffmpeg import _binary, get_video_duration
 
 
 class _Signal:
@@ -171,7 +171,7 @@ class EditorPreviewControllerTests(unittest.TestCase):
             "output_format": "keep_ratio",
             "remove_original_subtitles": True,
             "removal_mode": "patch",
-            "watermark_text": "HaizFlow",
+            "watermark_text": "HFlow",
             "watermark_scale_percent": 100,
             "ocr_region": {},
             "original_subtitle_intervals": [],
@@ -237,7 +237,7 @@ class EditorPreviewControllerTests(unittest.TestCase):
         }
 
         with mock.patch(
-            "haizflow.desktop.editor_preview_controller.manual_artifacts.peek",
+            "hflow.desktop.editor_preview_controller.manual_artifacts.peek",
             return_value=record,
         ) as peek:
             self.assertEqual(EditorPreviewController._manual_voice_artifact(video), record)
@@ -246,7 +246,7 @@ class EditorPreviewControllerTests(unittest.TestCase):
 
         pending_replacement = {**record, "config_fingerprint": "old-voice-settings"}
         with mock.patch(
-            "haizflow.desktop.editor_preview_controller.manual_artifacts.peek",
+            "hflow.desktop.editor_preview_controller.manual_artifacts.peek",
             return_value=pending_replacement,
         ):
             self.assertEqual(
@@ -280,13 +280,13 @@ class EditorPreviewControllerTests(unittest.TestCase):
             with (
                 mock.patch.object(controller, "_remove_stale_files"),
                 mock.patch.object(controller, "_remove_stale_audio_dirs"),
-                mock.patch("haizflow.desktop.editor_preview_controller.manual_artifacts.pin"),
+                mock.patch("hflow.desktop.editor_preview_controller.manual_artifacts.pin"),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.video_store.get_video",
+                    "hflow.desktop.editor_preview_controller.video_store.get_video",
                     return_value=video,
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.manual_artifacts.register_existing",
+                    "hflow.desktop.editor_preview_controller.manual_artifacts.register_existing",
                     return_value={"resolved_outputs": {"video": str(cached)}},
                 ) as register,
             ):
@@ -325,15 +325,15 @@ class EditorPreviewControllerTests(unittest.TestCase):
 
             with (
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.subprocess.Popen",
+                    "hflow.desktop.editor_preview_controller.subprocess.Popen",
                     side_effect=spawn,
                 ) as popen,
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.communicate_process",
+                    "hflow.desktop.editor_preview_controller.communicate_process",
                     return_value=("", ""),
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.get_video_duration",
+                    "hflow.desktop.editor_preview_controller.get_video_duration",
                     return_value=5.0,
                 ),
             ):
@@ -386,7 +386,7 @@ class EditorPreviewControllerTests(unittest.TestCase):
             with (
                 mock.patch.object(controller, "_manual_voice_artifact", return_value=None),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.build_audio_timeline",
+                    "hflow.desktop.editor_preview_controller.build_audio_timeline",
                     side_effect=fake_mix,
                 ),
             ):
@@ -426,7 +426,7 @@ class EditorPreviewControllerTests(unittest.TestCase):
         )
         with (
             mock.patch.object(controller, "_source_duration", side_effect=blocked_duration),
-            mock.patch("haizflow.desktop.editor_preview_controller.start_video") as start,
+            mock.patch("hflow.desktop.editor_preview_controller.start_video") as start,
         ):
             worker.start()
             self.assertTrue(entered_probe.wait(1.0))
@@ -456,7 +456,7 @@ class EditorPreviewControllerTests(unittest.TestCase):
             controller._source = QUrl.fromLocalFile(str(current)).toString()
 
             with mock.patch(
-                "haizflow.desktop.editor_preview_controller.video_store.get_video_dir",
+                "hflow.desktop.editor_preview_controller.video_store.get_video_dir",
                 return_value=str(video_dir),
             ):
                 removed = controller.clear_cache("video-clear")
@@ -479,7 +479,7 @@ class EditorPreviewControllerTests(unittest.TestCase):
                 subtitle_layout_override=False,
                 remove_original_subtitles=True,
                 original_subtitle_removal_mode="patch",
-                watermark_text="HaizFlow",
+                watermark_text="HFlow",
             )
             signal = _Signal()
             host = SimpleNamespace(
@@ -514,20 +514,20 @@ class EditorPreviewControllerTests(unittest.TestCase):
             ])
             with (
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.video_store.get_video_dir",
+                    "hflow.desktop.editor_preview_controller.video_store.get_video_dir",
                     return_value=str(video_dir),
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.get_video_duration",
+                    "hflow.desktop.editor_preview_controller.get_video_duration",
                     return_value=20.0,
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.render_video",
+                    "hflow.desktop.editor_preview_controller.render_video",
                     side_effect=fake_render,
                 ),
-                mock.patch("haizflow.desktop.editor_preview_controller.start_video"),
-                mock.patch("haizflow.desktop.editor_preview_controller.clean_video"),
-                mock.patch("haizflow.desktop.editor_preview_controller.cancel_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.start_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.clean_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.cancel_video"),
                 mock.patch.object(
                     controller,
                     "_assemble_preview_chunks",
@@ -608,19 +608,19 @@ class EditorPreviewControllerTests(unittest.TestCase):
 
             with (
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.video_store.get_video_dir",
+                    "hflow.desktop.editor_preview_controller.video_store.get_video_dir",
                     return_value=str(video_dir),
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.get_video_duration",
+                    "hflow.desktop.editor_preview_controller.get_video_duration",
                     return_value=8.0,
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.render_video",
+                    "hflow.desktop.editor_preview_controller.render_video",
                     side_effect=fake_render,
                 ),
-                mock.patch("haizflow.desktop.editor_preview_controller.start_video"),
-                mock.patch("haizflow.desktop.editor_preview_controller.clean_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.start_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.clean_video"),
             ):
                 self.assertTrue(controller.request("[]", 2.0))
                 self.assertTrue(render_done.wait(3.0))
@@ -674,11 +674,11 @@ class EditorPreviewControllerTests(unittest.TestCase):
             }
             with (
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.video_store.get_video_dir",
+                    "hflow.desktop.editor_preview_controller.video_store.get_video_dir",
                     return_value=str(video_dir),
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.build_audio_timeline",
+                    "hflow.desktop.editor_preview_controller.build_audio_timeline",
                     side_effect=fake_mix,
                 ),
             ):
@@ -745,20 +745,20 @@ class EditorPreviewControllerTests(unittest.TestCase):
 
             with (
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.video_store.get_video_dir",
+                    "hflow.desktop.editor_preview_controller.video_store.get_video_dir",
                     return_value=str(video_dir),
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.get_video_duration",
+                    "hflow.desktop.editor_preview_controller.get_video_duration",
                     return_value=8.0,
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.get_video_dimensions",
+                    "hflow.desktop.editor_preview_controller.get_video_dimensions",
                     return_value=(1000, 1000),
                 ),
-                mock.patch("haizflow.desktop.editor_preview_controller.render_video", side_effect=fake_render),
-                mock.patch("haizflow.desktop.editor_preview_controller.start_video"),
-                mock.patch("haizflow.desktop.editor_preview_controller.clean_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.render_video", side_effect=fake_render),
+                mock.patch("hflow.desktop.editor_preview_controller.start_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.clean_video"),
             ):
                 self.assertTrue(
                     controller.request(
@@ -823,20 +823,20 @@ class EditorPreviewControllerTests(unittest.TestCase):
 
             patches = (
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.video_store.get_video_dir",
+                    "hflow.desktop.editor_preview_controller.video_store.get_video_dir",
                     return_value=str(video_dir),
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.get_video_duration",
+                    "hflow.desktop.editor_preview_controller.get_video_duration",
                     side_effect=fake_duration,
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.render_video",
+                    "hflow.desktop.editor_preview_controller.render_video",
                     side_effect=fake_render,
                 ),
-                mock.patch("haizflow.desktop.editor_preview_controller.start_video"),
-                mock.patch("haizflow.desktop.editor_preview_controller.clean_video"),
-                mock.patch("haizflow.desktop.editor_preview_controller.cancel_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.start_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.clean_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.cancel_video"),
             )
             with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
                 self.assertTrue(controller.request('[{"start": 0, "end": 2, "text": "hello"}]', 0))
@@ -893,17 +893,17 @@ class EditorPreviewControllerTests(unittest.TestCase):
 
             with (
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.video_store.get_video_dir",
+                    "hflow.desktop.editor_preview_controller.video_store.get_video_dir",
                     return_value=str(video_dir),
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.get_video_duration",
+                    "hflow.desktop.editor_preview_controller.get_video_duration",
                     return_value=10.0,
                 ),
-                mock.patch("haizflow.desktop.editor_preview_controller.render_video", side_effect=render),
-                mock.patch("haizflow.desktop.editor_preview_controller.start_video"),
-                mock.patch("haizflow.desktop.editor_preview_controller.clean_video"),
-                mock.patch("haizflow.desktop.editor_preview_controller.cancel_video") as cancel,
+                mock.patch("hflow.desktop.editor_preview_controller.render_video", side_effect=render),
+                mock.patch("hflow.desktop.editor_preview_controller.start_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.clean_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.cancel_video") as cancel,
             ):
                 payload = json.dumps([{"start": 0, "end": 1, "text": "Hello"}])
                 self.assertTrue(controller.request(payload, 0))
@@ -951,16 +951,16 @@ class EditorPreviewControllerTests(unittest.TestCase):
 
             with (
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.video_store.get_video_dir",
+                    "hflow.desktop.editor_preview_controller.video_store.get_video_dir",
                     return_value=str(video_dir),
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.get_video_duration",
+                    "hflow.desktop.editor_preview_controller.get_video_duration",
                     return_value=10.0,
                 ),
-                mock.patch("haizflow.desktop.editor_preview_controller.render_video", side_effect=render),
-                mock.patch("haizflow.desktop.editor_preview_controller.start_video"),
-                mock.patch("haizflow.desktop.editor_preview_controller.clean_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.render_video", side_effect=render),
+                mock.patch("hflow.desktop.editor_preview_controller.start_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.clean_video"),
             ):
                 payload = json.dumps([{"start": 0, "end": 1, "text": "Hello"}])
                 self.assertTrue(controller.request(payload, 0))
@@ -1024,16 +1024,16 @@ class EditorPreviewControllerTests(unittest.TestCase):
 
             with (
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.video_store.get_video_dir",
+                    "hflow.desktop.editor_preview_controller.video_store.get_video_dir",
                     return_value=str(video_dir),
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.get_video_duration",
+                    "hflow.desktop.editor_preview_controller.get_video_duration",
                     return_value=30.0,
                 ),
-                mock.patch("haizflow.desktop.editor_preview_controller.render_video", side_effect=render),
-                mock.patch("haizflow.desktop.editor_preview_controller.start_video"),
-                mock.patch("haizflow.desktop.editor_preview_controller.clean_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.render_video", side_effect=render),
+                mock.patch("hflow.desktop.editor_preview_controller.start_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.clean_video"),
                 mock.patch.object(
                     controller,
                     "_assemble_preview_chunks",
@@ -1118,23 +1118,23 @@ class EditorPreviewControllerTests(unittest.TestCase):
 
             with (
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.video_store.get_video_dir",
+                    "hflow.desktop.editor_preview_controller.video_store.get_video_dir",
                     return_value=str(video_dir),
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.get_video_duration",
+                    "hflow.desktop.editor_preview_controller.get_video_duration",
                     return_value=6.0,
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.render_video",
+                    "hflow.desktop.editor_preview_controller.render_video",
                     side_effect=fake_render,
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.build_audio_timeline",
+                    "hflow.desktop.editor_preview_controller.build_audio_timeline",
                     side_effect=AssertionError("preview must not mix missing voice clips"),
                 ),
-                mock.patch("haizflow.desktop.editor_preview_controller.start_video"),
-                mock.patch("haizflow.desktop.editor_preview_controller.clean_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.start_video"),
+                mock.patch("hflow.desktop.editor_preview_controller.clean_video"),
             ):
                 self.assertTrue(
                     controller.request(

@@ -46,7 +46,7 @@ Upstream still reports intermittent failures with valid requests:
 https://github.com/rany2/edge-tts/issues/473
 No client can guarantee Microsoft's service will always return audio. Exhausted
 retries stop with an actionable message, never a successful empty voice/export.
-HaizFlow does not silently switch the requested voice/provider.
+HFlow does not silently switch the requested voice/provider.
 
 ## Prerecorded voice previews
 
@@ -93,15 +93,15 @@ the LGPL client license does not grant rights to Microsoft's remote service.
 The 23:41–23:42 local attempts failed with `NoAudioReceived` after restarting
 the source desktop with the updated client. Read-only probes synthesized the
 two initial project sentences through both unmodified `Communicate` and the
-HaizFlow wrapper successfully. A Qt/thread/two-worker batch then completed
+HFlow wrapper successfully. A Qt/thread/two-worker batch then completed
 7/22 sentences before an exhausted empty-audio response.
 
 Direct, serial `Communicate` requests on all 22 actual subtitle texts returned
 audio for 18 and `NoAudioReceived` for four. Rechecking those four reproduced
 three failures; one succeeded. The unmodified `python -m edge_tts` CLI also
-failed on "Không, thôi vậy." without importing any HaizFlow modules. Thus the
+failed on "Không, thôi vậy." without importing any HFlow modules. Thus the
 empty response is reproducible in the upstream client/service path, not caused
-by HaizFlow's timeline fitting, fades, cache publication or Qt UI. This does
+by HFlow's timeline fitting, fades, cache publication or Qt UI. This does
 not distinguish a service failure from an upstream client defect.
 
 These probes used isolated output files and did not rewrite work9 subtitles,

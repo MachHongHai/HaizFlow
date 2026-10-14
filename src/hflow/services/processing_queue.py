@@ -1,0 +1,179 @@
+"""A single-worker FIFO queue for resource-intensive video pipelines."""
+
+from __future__ import annotations
+
+import logging
+import threading
+from collections import deque
+from collections.abc import Callable
+
+LOGGER = logging.getLogger(__name__)
+
+
+class SerialProcessingQueue:
+    """Run one pipeline at a time while allowing the UI to keep accepting work."""
+
+    def __init__(
+        self,
+        runner: Callable[[str], None],
+        on_started: Callable[[str], None] | None = None,
+        on_finished: Callable[[str], None] | None = None,
+        on_idle: Callable[[], None] | None = None,
+        on_error: Callable[[str, Exception], None] | None = None,
+    ):
+        self._runner = runner
+        self._on_started = on_started
+        self._on_finished = on_finished
+        self._on_idle = on_idle
+        self._on_error = on_error
+        self._pending: deque[str] = deque()
+        self._active_video_id: str | None = None
+        self._worker: threading.Thread | None = None
+        self._shutdown_requested = False
+        self._lock = threading.RLock()
+        self._run_serial = 0
+        self._run_tokens: dict[str, int] = {}
+
+    @property
+    def active_video_id(self) -> str | None:
+        with self._lock:
+            return self._active_video_id
+
+    @property
+    def has_work(self) -> bool:
+        """Return whether a video is active or waiting without exposing internals."""
+        with self._lock:
+            return self._active_video_id is not None or bool(self._pending)
+
+    def pending_ids(self) -> list[str]:
+        with self._lock:
+            return list(self._pending)
+
+    def contains(self, video_id: str) -> bool:
+        with self._lock:
+            return video_id == self._active_video_id or video_id in self._pending
+
+    def enqueue(self, video_id: str) -> bool:
+        """Add a video once. Returns False when it is already queued or active."""
+        with self._lock:
+            if self._shutdown_requested or video_id == self._active_video_id or video_id in self._pending:
+                return False
+            self._pending.append(video_id)
+            self._run_serial += 1
+            self._run_tokens[video_id] = self._run_serial
+            if not self._worker or not self._worker.is_alive():
+                self._worker = threading.Thread(target=self._run, name="hflow-processing-queue", daemon=True)
+                self._worker.start()
+            return True
+
+    def discard(self, video_id: str) -> bool:
+        """Remove a waiting video. The active video must be cancelled by its pipeline manager."""
+        with self._lock:
+            try:
+                self._pending.remove(video_id)
+            except ValueError:
+                return False
+            self._run_tokens.pop(video_id, None)
+            return True
+
+    def token_for(self, video_id: str) -> int | None:
+        """Identity of this enqueue, not merely the video shared by later runs."""
+        with self._lock:
+            return self._run_tokens.get(video_id)
+
+    def detach_owned(self, tokens: dict[str, int], on_active=None) -> tuple[str | None, list[str]]:
+        with self._lock:
+            targets = {key for key, token in tokens.items() if self._run_tokens.get(key) == token}
+            active, removed = self.detach_pending(targets)
+            # Keep the enqueue identity stable until cancellation is signalled.
+            # The runner cannot retire/re-enqueue this ID between these steps.
+            if active is not None and on_active is not None:
+                on_active(active)
+            return active, removed
+
+    def detach_pending(self, video_ids) -> tuple[str | None, list[str]]:
+        """Atomically remove matching waiters and snapshot the active item.
+
+        Batch pause uses this to prevent the worker from promoting another
+        video in the gap between several individual ``discard`` calls.
+        """
+        targets = set(video_ids)
+        with self._lock:
+            active = self._active_video_id if self._active_video_id in targets else None
+            removed = [video_id for video_id in self._pending if video_id in targets]
+            if removed:
+                self._pending = deque(video_id for video_id in self._pending if video_id not in targets)
+                for video_id in removed:
+                    self._run_tokens.pop(video_id, None)
+            return active, removed
+
+    def shutdown(self, *, timeout_seconds: float = 10.0) -> bool:
+        """Stop accepting work, discard waiting items, and wait for the active runner.
+
+        The owner must first signal cancellation to the active runner. Returning
+        ``False`` means that runner did not finish before the timeout; the queue
+        still remains closed and will not start any waiting work.
+        """
+        with self._lock:
+            self._shutdown_requested = True
+            self._pending.clear()
+            self._run_tokens = {key: token for key, token in self._run_tokens.items()
+                                if key == self._active_video_id}
+            worker = self._worker
+        if worker is None or worker is threading.current_thread():
+            return worker is None
+        worker.join(timeout=max(0.0, timeout_seconds))
+        return not worker.is_alive()
+
+    def _run(self) -> None:
+        while True:
+            with self._lock:
+                if self._shutdown_requested or not self._pending:
+                    self._pending.clear()
+                    self._active_video_id = None
+                    self._worker = None
+                    break
+                video_id = self._pending.popleft()
+                self._active_video_id = video_id
+
+            can_run = True
+            if self._on_started:
+                try:
+                    self._on_started(video_id)
+                except Exception as exc:
+                    can_run = False
+                    self._report_error(video_id, exc)
+            try:
+                if can_run:
+                    self._runner(video_id)
+            except Exception as exc:
+                self._report_error(video_id, exc)
+            finally:
+                # Release the lifecycle state before notifying observers.  UI
+                # callbacks query ``contains()`` to decide whether Resume and
+                # Restart are available; notifying while this item was still
+                # active left those controls stuck in their queued state.
+                with self._lock:
+                    if self._active_video_id == video_id:
+                        self._active_video_id = None
+                        self._run_tokens.pop(video_id, None)
+                if self._on_finished:
+                    try:
+                        self._on_finished(video_id)
+                    except Exception as exc:
+                        self._report_error(video_id, exc)
+        if self._on_idle:
+            try:
+                self._on_idle()
+            except Exception as exc:
+                self._report_error("", exc)
+
+    def _report_error(self, video_id: str, exc: Exception) -> None:
+        """Keep the worker alive even when a runner or lifecycle callback fails."""
+        if not self._on_error:
+            return
+        try:
+            self._on_error(video_id, exc)
+        except Exception:
+            # Error reporting must never strand the remaining queue.
+            LOGGER.exception("Processing queue error callback failed for %s", video_id or "<idle>")

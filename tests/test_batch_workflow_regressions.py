@@ -9,12 +9,12 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
-from haizflow.desktop.project_commands_controller import ProjectCommandsController, _batch_values_for_device
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.schemas.video import VideoConfig
-from haizflow.services import batch_feedback, batch_settings
-from haizflow.services.processing_queue import SerialProcessingQueue
+from hflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
+from hflow.desktop.project_commands_controller import ProjectCommandsController, _batch_values_for_device
+from hflow.desktop.qml_controller import HFlowController
+from hflow.schemas.video import VideoConfig
+from hflow.services import batch_feedback, batch_settings
+from hflow.services.processing_queue import SerialProcessingQueue
 
 
 def video(identifier="one", **kwargs):
@@ -40,7 +40,7 @@ def test_every_batch_setting_has_visible_individual_override(key):
         if model != key:
             baseline[model] = actual[model]
     with patch.object(commands, "batch_settings_values", return_value=baseline), \
-            patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=current):
+            patch("hflow.desktop.project_commands_controller.video_store.get_video", return_value=current):
         overrides = commands.batch_setting_overrides()
     assert overrides == [{"videoId": "one", "fileName": "one.mp4", "differences": [key]}]
 
@@ -55,7 +55,7 @@ def test_legacy_model_choices_do_not_create_false_overrides(gib):
     expected = _batch_values_for_device(batch_settings.values_for(current), "gpu",
                                         total_vram_bytes=capabilities.total_vram_bytes)
     with patch.object(commands, "batch_settings_values", return_value=expected), \
-            patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=current):
+            patch("hflow.desktop.project_commands_controller.video_store.get_video", return_value=current):
         assert commands.batch_setting_overrides() == []
 
 
@@ -68,7 +68,7 @@ def test_preview_sources_keep_import_order_dimensions_and_never_select_or_edit(t
     videos = {item.video_id: item for item in [first, second, missing]}
     host = SimpleNamespace(_batch_video_ids=list(videos), _selected_video_id="second", selectVideo=Mock())
     saved = copy.deepcopy(videos)
-    with patch("haizflow.desktop.project_commands_controller.video_store.get_video", side_effect=videos.get):
+    with patch("hflow.desktop.project_commands_controller.video_store.get_video", side_effect=videos.get):
         sources = ProjectCommandsController(host).batch_preview_sources()
     assert [item["videoId"] for item in sources] == ["first", "second"]
     assert [(item["videoWidth"], item["videoHeight"]) for item in sources] == [(1920, 1080), (1080, 1920)]
@@ -79,8 +79,8 @@ def test_preview_sources_keep_import_order_dimensions_and_never_select_or_edit(t
 
 def test_batch_preview_rejects_another_project_without_probing():
     host = SimpleNamespace(_batch_video_ids=["owned"])
-    with patch("haizflow.desktop.qml_controller.video_store.get_video") as read:
-        assert HaizFlowController.batchPreviewMedia(host, "other-project") == {}
+    with patch("hflow.desktop.qml_controller.video_store.get_video") as read:
+        assert HFlowController.batchPreviewMedia(host, "other-project") == {}
     read.assert_not_called()
 
 
@@ -99,8 +99,8 @@ def test_summary_distinguishes_pipeline_success_export_failure_pause_and_cancel(
 def test_finished_count_and_progress_never_count_failure_as_success():
     host = SimpleNamespace(_batch_catalog_videos=lambda: [
         video("ok", status="done", progress=100), video("bad", status="failed", progress=20)])
-    assert HaizFlowController.batchCompletedCount.fget(host) == 1
-    assert HaizFlowController.batchProgress.fget(host) == 100
+    assert HFlowController.batchCompletedCount.fget(host) == 1
+    assert HFlowController.batchProgress.fget(host) == 100
 
 
 @pytest.mark.parametrize("status", ["paused", "awaiting_review", "failed", "done"])
@@ -111,7 +111,7 @@ def test_processing_only_summary_waits_for_resume_and_is_emitted_once(status):
                            refreshVideos=Mock(), processingChanged=SimpleNamespace(emit=Mock()),
                            batchChanged=SimpleNamespace(emit=Mock()), appAlertRequested=SimpleNamespace(emit=Mock()))
     lifecycle = ProcessingLifecycleController(host)
-    with patch("haizflow.desktop.processing_lifecycle_controller.video_store.get_video",
+    with patch("hflow.desktop.processing_lifecycle_controller.video_store.get_video",
                return_value=video(status=status)):
         for _ in range(2):
             host._log_queue.put("__QUEUE_IDLE__")
@@ -120,7 +120,7 @@ def test_processing_only_summary_waits_for_resume_and_is_emitted_once(status):
 
 
 def test_batch_dialogs_use_explicit_source_and_local_drafts():
-    directory = Path(__file__).parents[1] / "src/haizflow/desktop/qml"
+    directory = Path(__file__).parents[1] / "src/hflow/desktop/qml"
     settings = (directory / "BatchSettingsDialog.qml").read_text(encoding="utf-8")
     assert "AppController.batchPreviewSources()" in settings
     assert "item.videoId === AppController.selectedVideoId" in settings
@@ -169,9 +169,9 @@ def test_resume_process_export_has_no_duplicate_processing_only_notice():
                            batchChanged=SimpleNamespace(emit=Mock()),
                            _video_exports=SimpleNamespace(jobs=[{"videoId": "one", "process": True, "status": "paused"}]))
     commands = ProjectCommandsController(host)
-    with patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=current), \
+    with patch("hflow.desktop.project_commands_controller.video_store.get_video", return_value=current), \
             patch.object(commands, "_resources_ready_for_videos", return_value=True), \
-            patch("haizflow.services.processing_resume.can_resume", return_value=True):
+            patch("hflow.services.processing_resume.can_resume", return_value=True):
         commands.resume_batch()
     assert host._batch_summary_ids == []
     host._enqueue_videos.assert_called_once_with(["one"])

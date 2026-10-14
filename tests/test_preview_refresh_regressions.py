@@ -9,10 +9,10 @@ import pytest
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtTest import QTest
 
-from haizflow.desktop import subtitle_overlay_renderer as caption_renderer
-from haizflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
-from haizflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer, rasterize, sprite_key
-from haizflow.schemas.editor import EditorClip, EditorDocument, EditorTrack
+from hflow.desktop import subtitle_overlay_renderer as caption_renderer
+from hflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
+from hflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer, rasterize, sprite_key
+from hflow.schemas.editor import EditorClip, EditorDocument, EditorTrack
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -148,7 +148,7 @@ def test_corrupt_caption_marker_is_rebuilt_instead_of_hiding_cue(tmp_path):
             ImageDraw.Draw(image).rectangle((10, 10, 50, 25), fill="white")
             image.save(directory / f"{name}.png")
 
-    with patch("haizflow.desktop.subtitle_overlay_renderer.subprocess.run", side_effect=output):
+    with patch("hflow.desktop.subtitle_overlay_renderer.subprocess.run", side_effect=output):
         frame = rasterize("header", "body", layout, tmp_path)
     assert frame["width"] > 0
     assert json.loads((directory / "complete.json").read_text())["normal"] == frame["normal"]
@@ -172,8 +172,8 @@ def test_visual_refresh_keeps_published_voice_pcm_without_restart():
     future.cancel.return_value = True
     try:
         with (
-            patch("haizflow.services.editor_documents.load", return_value=document),
-            patch("haizflow.pipeline.manual_tools.published_voice_record", return_value={
+            patch("hflow.services.editor_documents.load", return_value=document),
+            patch("hflow.pipeline.manual_tools.published_voice_record", return_value={
                 "signature": "published", "resolved_outputs": {},
             }),
             patch.object(audio._executor, "submit", return_value=future) as submit,
@@ -213,8 +213,8 @@ def test_replaced_audio_at_same_path_refreshes_pcm_identity(tmp_path):
     audio = ManualPreviewAudioController()
     try:
         with (
-            patch("haizflow.services.editor_documents.load", return_value=None),
-            patch("haizflow.pipeline.manual_tools.published_voice_record", return_value=None),
+            patch("hflow.services.editor_documents.load", return_value=None),
+            patch("hflow.pipeline.manual_tools.published_voice_record", return_value=None),
             patch.object(audio._executor, "submit") as submit,
         ):
             audio.request(video, [])
@@ -226,7 +226,7 @@ def test_replaced_audio_at_same_path_refreshes_pcm_identity(tmp_path):
 
 
 def test_caption_visibility_uses_timeline_and_already_mapped_audio_clock():
-    workspace = (Path(__file__).parents[1] / "src/haizflow/desktop/qml/ManualWorkspace.qml").read_text(
+    workspace = (Path(__file__).parents[1] / "src/hflow/desktop/qml/ManualWorkspace.qml").read_text(
         encoding="utf-8")
     assert "Math.min(segment.end, timing.end)" not in workspace
     assert "subtitleOverlayRenderer.seek(AppController.manualPreviewAudio.positionSeconds)" in workspace

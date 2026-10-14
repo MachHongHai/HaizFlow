@@ -50,12 +50,12 @@ $AcceptedVulnerabilities = @(
   "PYSEC-2026-2290",
   "PYSEC-2026-2447",
   # NLTK 3.10.3 fixes the earlier parser/corpus advisories. The remaining
-  # pathsec advisory affects model-artifact persistence APIs that HaizFlow does
+  # pathsec advisory affects model-artifact persistence APIs that HFlow does
   # not call; WhisperX alignment is routed through the internal sentence
   # splitter and cannot accept a caller-controlled NLTK model path.
   "PYSEC-2026-3740",
   # Transformers CVE-2026-9856 is in save_pretrained() filename generation.
-  # HaizFlow only loads checksum-pinned local HY-MT2 safetensors with remote
+  # HFlow only loads checksum-pinned local HY-MT2 safetensors with remote
   # code disabled and never calls tokenizer/processor save_pretrained().
   "CVE-2026-9856",
   # CVE-2026-80047 downloads custom generation code before trust consent.
@@ -68,7 +68,7 @@ $AcceptedVulnerabilities = @(
   # delivered by immutable SHA-256-verified resource packs.
   "CVE-2026-69112",
   # Lightning 2.6.5 is the newest compatible release and upstream has not
-  # published the merged CVE-2026-58659 fix yet. HaizFlow backports the exact
+  # published the merged CVE-2026-58659 fix yet. HFlow backports the exact
   # instantiator allowlist in core/dependency_security.py and tests it.
   "PYSEC-2026-3624"
 )

@@ -8,9 +8,9 @@ import numpy as np
 import pytest
 from PySide6.QtGui import QGuiApplication
 
-from haizflow.desktop.editor_preview_controller import EditorPreviewController
-from haizflow.pipeline import omnivoice_tts as voice
-from haizflow.utils import ffmpeg
+from hflow.desktop.editor_preview_controller import EditorPreviewController
+from hflow.pipeline import omnivoice_tts as voice
+from hflow.utils import ffmpeg
 
 _GUI = None
 
@@ -34,7 +34,7 @@ def test_small_asr_tail_does_not_materialize_thirty_minute_source():
 
 
 def test_plain_long_source_uses_streaming_audio_without_full_pcm_decode(tmp_path):
-    from haizflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
+    from hflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
     source = tmp_path / "long.mp4"
     source.write_bytes(b"media")
     video = SimpleNamespace(video_id="long", project_type="manual", files={"video_input": str(source)},
@@ -44,9 +44,9 @@ def test_plain_long_source_uses_streaming_audio_without_full_pcm_decode(tmp_path
     player.position.return_value = 0
     controller._native_player, controller._native_output = player, output
     try:
-        with (patch("haizflow.services.editor_documents.load", return_value=None),
-              patch("haizflow.pipeline.manual_tools.published_voice_record", return_value=None),
-              patch("haizflow.services.video_store.get_video_dir", return_value=str(tmp_path)),
+        with (patch("hflow.services.editor_documents.load", return_value=None),
+              patch("hflow.pipeline.manual_tools.published_voice_record", return_value=None),
+              patch("hflow.services.video_store.get_video_dir", return_value=str(tmp_path)),
               patch.object(controller, "_decode") as decode):
             controller.request(video, [])
             assert not controller.busy and controller._native_source == str(source)
@@ -66,7 +66,7 @@ def test_plain_long_source_uses_streaming_audio_without_full_pcm_decode(tmp_path
 
 
 def test_edited_or_mixed_audio_cannot_use_plain_source_fast_path(tmp_path):
-    from haizflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
+    from hflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
     source = tmp_path / "source.mp4"
     source.write_bytes(b"source")
     video = SimpleNamespace(files={"video_input": str(source)})
@@ -81,7 +81,7 @@ def test_edited_or_mixed_audio_cannot_use_plain_source_fast_path(tmp_path):
 
 
 def test_streamed_source_replacement_at_same_path_reloads_native_decoder(tmp_path):
-    from haizflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
+    from hflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
     source = tmp_path / "input.mp4"
     source.write_bytes(b"old")
     video = SimpleNamespace(files={"video_input": str(source)}, original_video_volume=60)
@@ -100,7 +100,7 @@ def test_streamed_source_replacement_at_same_path_reloads_native_decoder(tmp_pat
 
 
 def test_native_audio_steady_playback_does_not_restart_or_seek_each_video_tick(tmp_path):
-    from haizflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
+    from hflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
     source = tmp_path / "source.mp4"
     source.write_bytes(b"media")
     audio = ManualPreviewAudioController()
@@ -128,7 +128,7 @@ def test_native_audio_steady_playback_does_not_restart_or_seek_each_video_tick(t
 def test_native_proxy_uses_embedded_audio_only_for_the_same_physical_source(tmp_path):
     import os
     from PySide6.QtCore import QUrl
-    from haizflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
+    from hflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
     source, native, rendered = (tmp_path / name for name in ("source.mp4", "native.mp4", "rendered.mp4"))
     source.write_bytes(b"original")
     os.link(source, native)
@@ -159,10 +159,10 @@ def test_native_proxy_uses_embedded_audio_only_for_the_same_physical_source(tmp_
 
 
 def test_preview_clock_resync_requires_sustained_drift_and_has_a_cooldown():
-    from haizflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
+    from hflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
     audio = ManualPreviewAudioController()
     try:
-        with patch("haizflow.desktop.manual_preview_audio_controller.time.monotonic") as clock:
+        with patch("hflow.desktop.manual_preview_audio_controller.time.monotonic") as clock:
             clock.return_value = 10
             assert not audio._needs_clock_resync(1, 0)
             clock.return_value = 10.2
@@ -181,7 +181,7 @@ def test_preview_clock_resync_requires_sustained_drift_and_has_a_cooldown():
 
 
 def test_pcm_refills_buffer_after_delayed_gui_ticks_without_dropping_samples():
-    from haizflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController, RATE, PCM_BUFFER_FRAMES
+    from hflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController, RATE, PCM_BUFFER_FRAMES
     queued = 0
     chunks = []
     def write(data):
@@ -216,7 +216,7 @@ def test_pcm_refills_buffer_after_delayed_gui_ticks_without_dropping_samples():
 
 
 def test_leaving_project_releases_pcm_handles_but_keeps_completed_disk_cache(tmp_path):
-    from haizflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
+    from hflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
     path = tmp_path / "cached.pcm"
     path.write_bytes(bytes(400))
     audio = ManualPreviewAudioController()
@@ -239,25 +239,25 @@ def test_leaving_project_releases_pcm_handles_but_keeps_completed_disk_cache(tmp
 
 
 def test_owned_download_input_is_linked_atomically_but_local_source_is_copied(tmp_path):
-    from haizflow.services.desktop_videos import _copy_file_atomically
+    from hflow.services.desktop_videos import _copy_file_atomically
     source, destination = tmp_path / "download.mp4", tmp_path / "project" / "input.mp4"
     source.write_bytes(b"complete media")
-    with patch("haizflow.services.desktop_videos.shutil.copyfile") as copy:
+    with patch("hflow.services.desktop_videos.shutil.copyfile") as copy:
         _copy_file_atomically(str(source), str(destination), link_source=True)
         copy.assert_not_called()
     assert source.exists() and destination.read_bytes() == source.read_bytes()
     destination.unlink()
-    with patch("haizflow.services.desktop_videos.os.link") as link:
+    with patch("hflow.services.desktop_videos.os.link") as link:
         _copy_file_atomically(str(source), str(destination))
         link.assert_not_called()
     assert destination.read_bytes() == b"complete media"
 
 
 def test_cross_volume_owned_download_still_copies_on_link_failure(tmp_path):
-    from haizflow.services.desktop_videos import _copy_file_atomically
+    from hflow.services.desktop_videos import _copy_file_atomically
     source, destination = tmp_path / "source.mp4", tmp_path / "input.mp4"
     source.write_bytes(b"safe input")
-    with patch("haizflow.services.desktop_videos.os.link", side_effect=OSError("cross-volume")):
+    with patch("hflow.services.desktop_videos.os.link", side_effect=OSError("cross-volume")):
         _copy_file_atomically(str(source), str(destination), link_source=True)
     assert source.exists() and destination.read_bytes() == b"safe input"
 
@@ -349,7 +349,7 @@ def test_real_thirty_minute_unicode_source_is_reusable_without_render(tmp_path):
     controller._busy = True
     with (patch.object(controller, "_render_proxy_layer", side_effect=AssertionError("No full encode")),
           patch.object(controller, "_materialize_preview_sequence", side_effect=AssertionError("No sequence encode")),
-          patch("haizflow.desktop.editor_preview_controller.video_store.get_video", return_value=None)):
+          patch("hflow.desktop.editor_preview_controller.video_store.get_video", return_value=None)):
         controller._render_current(1, "native-job", SimpleNamespace(video_id="native-long"), settings, tmp_path / "preview")
     assert not controller.busy and not controller.error and controller.source
 
@@ -359,7 +359,7 @@ def test_hevc_native_preview_accepts_sdr_without_unconditionally_converting_long
     settings = dict(source_path="long-hevc.mp4", output_format="keep_ratio", crop={},
                     remove_original_subtitles=True, ocr_region={})
     response = SimpleNamespace(stdout=json.dumps({"streams": [{"codec_name": "hevc", "pix_fmt": pixel_format}]}))
-    with patch("haizflow.desktop.editor_preview_controller.subprocess.run", return_value=response):
+    with patch("hflow.desktop.editor_preview_controller.subprocess.run", return_value=response):
         assert EditorPreviewController._can_reuse_native_source(settings, 0) == allowed
 
 
@@ -373,7 +373,7 @@ def test_disk_cache_hydration_finishes_without_probe(tmp_path):
         "version": 1, "duration": 1800, "size": output.stat().st_size,
     }), encoding="utf-8")
     controller = EditorPreviewController(SimpleNamespace())
-    with patch("haizflow.desktop.editor_preview_controller.get_video_duration") as probe:
+    with patch("hflow.desktop.editor_preview_controller.get_video_duration") as probe:
         controller._restore_manual_disk_cache(tmp_path, fingerprint)
     assert controller._completed_requests[fingerprint][3] == 1800
     probe.assert_not_called()
@@ -381,7 +381,7 @@ def test_disk_cache_hydration_finishes_without_probe(tmp_path):
 
 def test_preview_pcm_is_reused_after_project_reopen_and_invalidated_by_source_change(tmp_path):
     import wave
-    from haizflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
+    from hflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
 
     source = tmp_path / "音频.wav"
     with wave.open(str(source), "wb") as output:
@@ -415,7 +415,7 @@ def test_preview_pcm_is_reused_after_project_reopen_and_invalidated_by_source_ch
 
 def test_cancelled_pcm_decode_never_publishes_cache(tmp_path):
     from concurrent.futures import CancelledError
-    from haizflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
+    from hflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
     audio = ManualPreviewAudioController()
     try:
         target = tmp_path / "cancelled.pcm"
@@ -428,7 +428,7 @@ def test_cancelled_pcm_decode_never_publishes_cache(tmp_path):
 
 
 def test_long_caption_index_keeps_overlap_and_gap_behavior_without_hot_hashing():
-    from haizflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
+    from hflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
     renderer = SubtitleOverlayRenderer()
     renderer._events = [dict(start=i * 2, end=i * 2 + 1, body=str(i)) for i in range(1500)]
     renderer._events[100]["end"] = 205
@@ -453,9 +453,9 @@ def test_long_caption_index_keeps_overlap_and_gap_behavior_without_hot_hashing()
 
 
 def test_waveform_disk_cache_skips_decode_and_isolated_by_fingerprint(tmp_path):
-    from haizflow.desktop.manual_editor_document_model import ManualEditorDocumentModel
+    from hflow.desktop.manual_editor_document_model import ManualEditorDocumentModel
     payload = {"durationMs": 1800000, "peaks": [0.5] * 96}
-    with patch("haizflow.services.desktop_videos.analyze_voice_reference", return_value=payload) as analyze:
+    with patch("hflow.services.desktop_videos.analyze_voice_reference", return_value=payload) as analyze:
         assert ManualEditorDocumentModel._cached_waveform("source.mp4", "first", tmp_path)["peaks"] == payload["peaks"]
         assert ManualEditorDocumentModel._cached_waveform("source.mp4", "first", tmp_path)["peaks"] == payload["peaks"]
         analyze.assert_called_once()
@@ -467,7 +467,7 @@ def test_waveform_disk_cache_skips_decode_and_isolated_by_fingerprint(tmp_path):
 
 def test_old_waveform_delivery_cannot_clear_new_project_pending_request():
     from concurrent.futures import Future
-    from haizflow.desktop.manual_editor_document_model import ManualEditorDocumentModel
+    from hflow.desktop.manual_editor_document_model import ManualEditorDocumentModel
     model = ManualEditorDocumentModel()
     old, current = Future(), Future()
     try:
@@ -488,8 +488,8 @@ def test_old_waveform_delivery_cannot_clear_new_project_pending_request():
 
 @pytest.mark.parametrize("change", ["none", "default", "override", "provider"])
 def test_reordered_multispeaker_clips_reuse_only_matching_voice_configuration(tmp_path, change):
-    from haizflow.pipeline import manual_tools
-    from haizflow.services import manual_artifacts
+    from hflow.pipeline import manual_tools
+    from hflow.services import manual_artifacts
     video = SimpleNamespace(video_id="reordered", project_type="manual", speaker_mode="multiple",
                             tts_provider="edge", tts_voice="vi-VN-NamMinhNeural", target_language="vi",
                             files={}, active_artifacts={})
@@ -559,7 +559,7 @@ def test_reordered_multispeaker_clips_reuse_only_matching_voice_configuration(tm
 
 
 def test_multispeaker_published_voice_stays_active_after_timing_only_reorder():
-    from haizflow.pipeline import manual_tools
+    from hflow.pipeline import manual_tools
     video = SimpleNamespace(video_id="retimed", active_artifacts={"subtitle_document": "current"})
     voice = {"signature": "voice", "inputs": ["subtitle_document:original"]}
     original = [dict(segment_id="a", start=0, end=1, text="Một"),

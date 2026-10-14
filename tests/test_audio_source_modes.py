@@ -11,7 +11,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.pipeline import process_video
+from hflow.pipeline import process_video
 
 
 class AudioSourceModeTests(unittest.TestCase):

@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from haizflow.pipeline import transcribe as timing
+from hflow.pipeline import transcribe as timing
 
 
 def sentence(start, end, text="One sentence.", language="en"):

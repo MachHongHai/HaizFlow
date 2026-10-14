@@ -1,0 +1,967 @@
+import json
+import os
+import queue
+import re
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import uuid
+import unicodedata
+from datetime import datetime, timezone
+from difflib import SequenceMatcher
+from pathlib import Path
+
+from hflow.config import HYMT2_REQUEST_TIMEOUT_SECONDS, HYMT2_WARM_TIMEOUT_SECONDS
+from hflow.core.hardware import processing_device_preference, runtime_profile, translation_model_preference
+from hflow.core.paths import is_frozen, project_root
+from hflow.pipeline.process_registry import check_cancellation, register_process, release_process_job, unregister_process
+from hflow.services.video_store import log_to_video
+from hflow.services.translation_timing import POLICY_VERSION, speech_duration, timing_budget
+
+WHISPER_LANGUAGE_NAMES = {}
+
+
+LANGUAGE_NAMES = {
+    "vi": "Vietnamese",
+    "en": "English",
+    "zh": "Chinese",
+    "hi": "Hindi",
+    "es": "Spanish",
+    "fr": "French",
+    "ar": "Arabic",
+    "pt": "Portuguese",
+    "ru": "Russian",
+    "id": "Indonesian",
+    "de": "German",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "it": "Italian",
+    "th": "Thai",
+    "fil": "Filipino",
+}
+
+# State changes are brief and protected separately from an active warm-up or
+# translation request.  Shutdown must be able to observe and terminate a busy
+# worker immediately; it must never wait for an inference-sized critical section.
+_WORKER_LOCK = threading.RLock()
+_WORKER_OPERATION_LOCK = threading.Lock()
+_WORKER_SHUTDOWN_EVENT = threading.Event()
+_WORKER_PROCESS = None
+_WORKER_OUTPUT = None
+_WORKER_READER = None
+_WORKER_WARM = False
+_WORKER_IDLE_TIMER = None
+_WORKER_DIAGNOSTIC_PATH = None
+
+
+def language_name(language_code: str) -> str:
+    normalized = (language_code or "").lower()
+    fallback = str(WHISPER_LANGUAGE_NAMES.get(normalized) or normalized or "English").title()
+    return str(LANGUAGE_NAMES.get(normalized) or fallback)
+
+
+def translate_segments(
+    input_json_path: str,
+    output_json_path: str,
+    video_id: str,
+    target_language: str = "vi",
+    source_language: str = "auto",
+    provider: str = "hymt2",
+    progress_callback=None,
+    translation_model: str = "auto",
+    checkpoint_path: str | None = None,
+    validation_mode: str = "auto",
+):
+    from hflow.services.gemini_translation import MODELS as GEMINI_MODELS
+    from hflow.services.gemini_translation import translate_texts
+
+    if validation_mode not in {"auto", "manual"}:
+        raise ValueError("Unsupported translation validation mode.")
+
+    requested_model = str(translation_model or "auto").lower()
+    using_gemini = requested_model in GEMINI_MODELS
+    if provider not in {"hymt2", "gemini"} or (provider == "gemini") != using_gemini:
+        raise ValueError("Translation provider does not match the selected model.")
+    from hflow.core.hardware import configure_translation_model
+
+    if requested_model not in {"auto", "q4", "full", *GEMINI_MODELS}:
+        raise ValueError(f"Unsupported translation model: {translation_model}")
+    if using_gemini:
+        # An earlier local project may have left HY-MT2 warm. Gemini does not
+        # need it and should never hold a second large model in memory.
+        shutdown_hymt2_worker()
+    elif translation_model_preference() != requested_model:
+        shutdown_hymt2_worker()
+        configure_translation_model(requested_model)
+
+    target_language_name = language_name(target_language)
+    engine_name = "Gemini" if using_gemini else "HY-MT2"
+    log_to_video(video_id, f"Initializing {engine_name} translation | target: {target_language_name}.")
+    with open(input_json_path, "r", encoding="utf-8") as file:
+        segments = json.load(file)
+    if not isinstance(segments, list) or not segments:
+        raise RuntimeError("Translation requires at least one timestamped source sentence.")
+    for index, segment in enumerate(segments, 1):
+        if not isinstance(segment, dict) or not str(segment.get("text") or "").strip():
+            raise RuntimeError(f"Source sentence {index} is missing text.")
+        try:
+            float(segment["start"])
+            float(segment["end"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(f"Source sentence {index} has invalid timestamps.") from exc
+        try:
+            speech_duration(segment)
+        except ValueError as exc:
+            raise RuntimeError(f"Source sentence {index} has an invalid time range.") from exc
+
+    source_texts = [segment["text"] for segment in segments]
+    source_codes = [str(segment.get("language") or source_language or "en").lower() for segment in segments]
+    speech_durations = [speech_duration(segment) for segment in segments]
+    from hflow.services.translation_progress import TranslationProgress
+
+    checkpoint = TranslationProgress(checkpoint_path or output_json_path + ".progress.json", {
+        "segments": segments, "model": requested_model, "provider": provider,
+        "source_language": source_language, "target_language": target_language,
+        "format": "sentence-translation-v1",
+        "speech_length_policy": POLICY_VERSION,
+    }, len(segments))
+    def save_valid_batch(indices, values):
+        valid = [(index, value) for index, value in zip(indices, values)
+                 if isinstance(value, str) and value.strip()]
+        if valid:
+            checkpoint.save_batch([item[0] for item in valid], [item[1] for item in valid])
+
+    missing = [index for index, value in enumerate(checkpoint.values) if value is None]
+    completed = len(segments) - len(missing)
+    if completed:
+        log_to_video(video_id, f"Resuming translation: keeping {completed} of {len(segments)} completed sentences.")
+        if progress_callback:
+            progress_callback(completed, len(segments), "Resuming saved translations")
+    if not missing:
+        translations = list(checkpoint.values)
+    elif using_gemini:
+        translations = translate_texts(
+            source_texts, model=requested_model,
+            source_language=language_name(source_language) if source_language != "auto" else "auto",
+            target_language=target_language_name,
+            video_id=video_id, progress_callback=progress_callback,
+            initial_translations=checkpoint.values, result_callback=save_valid_batch,
+            speech_durations=speech_durations,
+        )
+    else:
+        translations = _translate_with_hymt2_worker(
+            source_texts,
+            video_id=video_id,
+            source_languages=[language_name(code) for code in source_codes],
+            target_language_name=target_language_name,
+            progress_callback=progress_callback,
+            translate_indices=missing, initial_translations=checkpoint.values,
+            result_callback=save_valid_batch,
+            speech_durations=speech_durations,
+        )
+    if len(translations) != len(segments):
+        raise RuntimeError(
+            "HY-MT2 must return exactly one translation for each timestamped source sentence."
+        )
+    translations = [clean_translation(text) for text in translations]
+    save_valid_batch(list(range(len(segments))), translations)
+    suspect_indexes = _suspicious_translation_indexes(
+        source_texts,
+        translations,
+        target_language_name,
+    )
+    # HY-MT2 occasionally copies a labelled neighbouring sentence from the
+    # context block.  Retry only the affected sentences: first with the same
+    # useful context plus a stricter source boundary, then without context as
+    # a bounded final recovery.  Never rerun already-valid translations.
+    for retry_number, include_context in enumerate((True, False), start=1):
+        if not suspect_indexes:
+            break
+        retry_indexes = sorted(suspect_indexes)
+        labels = ", ".join(str(index + 1) for index in retry_indexes)
+        recovery_kind = "strict contextual" if include_context else "isolated"
+        log_to_video(
+            video_id,
+            f"Translation validation rejected segment(s) {labels}; running {recovery_kind} retry {retry_number}/2.",
+            level="WARNING",
+            component="TRANSLATE",
+        )
+        check_cancellation(video_id)
+        try:
+            if using_gemini:
+                retry_values = translate_texts(
+                    [source_texts[index] for index in retry_indexes],
+                    model=requested_model, source_language="auto",
+                    target_language=target_language_name, video_id=video_id,
+                    speech_durations=[speech_durations[index] for index in retry_indexes],
+                )
+                if len(retry_values) != len(retry_indexes):
+                    raise ValueError("Recovery returned an incomplete translation batch.")
+                retry_results = dict(zip(retry_indexes, retry_values))
+            else:
+                retry_results = _translate_with_hymt2_worker(
+                    source_texts,
+                    video_id=video_id,
+                    source_languages=[language_name(code) for code in source_codes],
+                    target_language_name=target_language_name,
+                    progress_callback=None,
+                    include_context=include_context,
+                    strict_source_only=True,
+                    translate_indices=retry_indexes,
+                    speech_durations=speech_durations,
+                )
+            # Validate the whole retry before replacing any durable result.
+            candidates = {index: clean_translation(retry_results[index]) for index in retry_indexes}
+            check_cancellation(video_id)
+            for index, candidate in candidates.items():
+                if not _invalid_translation(candidate) or _invalid_translation(translations[index]):
+                    translations[index] = candidate
+        except (OSError, RuntimeError, ValueError, TypeError, KeyError, IndexError, AttributeError) as exc:
+            check_cancellation(video_id)
+            if "cancelled by user" in str(exc).lower():
+                raise
+            log_to_video(video_id, f"Translation recovery {retry_number}/2 failed; retaining received results: {exc}",
+                         level="WARNING", component="TRANSLATE")
+        save_valid_batch(retry_indexes, [translations[index] for index in retry_indexes])
+        suspect_indexes = _suspicious_translation_indexes(
+            source_texts,
+            translations,
+            target_language_name,
+        )
+    invalid_indexes = {
+        index for index in suspect_indexes
+        if _invalid_translation(translations[index])
+    }
+    if invalid_indexes and validation_mode == "auto":
+        labels = ", ".join(str(index + 1) for index in sorted(invalid_indexes))
+        raise RuntimeError(
+            f"Bản dịch còn ký tự lỗi hoặc nội dung không hợp lệ ở câu {labels} sau khi thử lại. "
+            "Hãy kiểm tra bản dịch trước khi tạo giọng và xuất video."
+        )
+    if suspect_indexes:
+        labels = ", ".join(str(index + 1) for index in sorted(suspect_indexes))
+        log_to_video(
+            video_id,
+            f"Translation review recommended for segment(s) {labels}; similarity alone does not block processing.",
+            level="WARNING", component="TRANSLATE",
+        )
+
+    translated_segments = []
+    total = len(segments)
+    for index, (segment, source_text, translated_text) in enumerate(
+        zip(segments, source_texts, translations),
+        start=1,
+    ):
+        warnings = []
+        if index - 1 in suspect_indexes:
+            warnings.append("invalid_text" if index - 1 in invalid_indexes else "review_translation")
+        if validation_mode == "manual" and index - 1 in invalid_indexes:
+            translated_text = "".join(character for character in translated_text
+                if character != "\ufffd" and unicodedata.category(character) not in {"Cs", "Cc"})
+            translated_text = translated_text.strip() or source_text
+        log_to_video(video_id, f"[{index}/{total}] Segment translation: '{source_text}' -> '{translated_text}'", level="INFO")
+        translated_segment = {
+                "start": segment["start"],
+                "end": segment["end"],
+                "text": translated_text or source_text,
+                "source_text": source_text,
+                "source_language": source_codes[index - 1],
+                "timing_source": segment.get("timing_source", "unknown"),
+            }
+        if segment.get("timing_source") == "imported-srt-v1" and segment.get("segment_id"):
+            translated_segment["segment_id"] = segment["segment_id"]
+        if warnings:
+            translated_segment["translation_warnings"] = warnings
+            translated_segment["translation_warning_text"] = translated_segment["text"]
+        translated_segments.append(translated_segment)
+
+    check_cancellation(video_id)
+    output_directory = os.path.dirname(os.path.abspath(output_json_path))
+    os.makedirs(output_directory, exist_ok=True)
+    handle, temporary_path = tempfile.mkstemp(
+        prefix=".translation-",
+        suffix=".json.tmp",
+        dir=output_directory,
+    )
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as file:
+            json.dump(translated_segments, file, ensure_ascii=False, indent=2)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary_path, output_json_path)
+    except Exception:
+        try:
+            os.remove(temporary_path)
+        except FileNotFoundError:
+            pass
+        raise
+    log_to_video(video_id, f"Saved translated segments to: {output_json_path}")
+    checkpoint.clear()
+    return translated_segments
+
+
+def _worker_command() -> list[str]:
+    from hflow.services.resource_packs import ResourcePackError, installed_engine_command
+
+    # On an 8 GB GPU, use the installed CPU speech pack's Q4 translator when
+    # available. The CUDA engine pack does not include llama_cpp, and loading
+    # full HY-MT2 alongside Whisper can exhaust both Windows commit and VRAM.
+    preference = translation_model_preference()
+    profile = runtime_profile() if preference == "auto" else None
+    if preference == "q4" or (preference == "auto" and profile.key == "cuda_low_memory"):
+        cpu_engine = installed_engine_command(
+            "translation", "hymt2_server", {"device": "cpu", "translation_model": "q4"}
+        )
+        if cpu_engine:
+            return cpu_engine
+        if (preference == "auto" and getattr(profile, "cuda_available", False)
+                and 0 < getattr(profile, "total_vram_bytes", 0) < 5 * 1024**3 and is_frozen()):
+            raise ResourcePackError("Card 4 GB cần gói HY-MT2 CPU Q4 để dịch. Hãy cài gói này trong Gói tài nguyên.")
+    external = installed_engine_command(
+        "translation",
+        "hymt2_server",
+        {
+            "device": "gpu" if preference == "full" else "cpu" if preference == "q4" else processing_device_preference(),
+            "translation_model": preference,
+        },
+    )
+    if external:
+        return external
+    if is_frozen():
+        # Core excludes Torch/llama.cpp: installed builds require a validated engine.
+        raise ResourcePackError("Chưa có môi trường HY-MT2 tương ứng. Hãy cài hoặc kiểm tra và sửa gói trong Cài đặt > Gói tài nguyên.")
+    return [sys.executable, "-m", "hflow.services.hymt2_worker", "--server"]
+
+
+def _discard_hymt2_worker(process=None) -> None:
+    global _WORKER_PROCESS, _WORKER_OUTPUT, _WORKER_READER, _WORKER_WARM, _WORKER_DIAGNOSTIC_PATH
+    if process is not None and process is not _WORKER_PROCESS:
+        return
+    discarded_process = _WORKER_PROCESS
+    _WORKER_PROCESS = None
+    _WORKER_OUTPUT = None
+    _WORKER_READER = None
+    _WORKER_WARM = False
+    _WORKER_DIAGNOSTIC_PATH = None
+    if discarded_process is not None and discarded_process.poll() is not None:
+        release_process_job(discarded_process)
+
+
+def _worker_diagnostic_path(process=None) -> str:
+    with _WORKER_LOCK:
+        if process is not None and process is not _WORKER_PROCESS:
+            return ""
+        return str(_WORKER_DIAGNOSTIC_PATH or "")
+
+
+def _prune_worker_diagnostics(directory: Path, keep: int = 25) -> None:
+    """Retain recent crash evidence without allowing worker logs to grow forever."""
+    try:
+        diagnostics = sorted(
+            directory.glob("hymt2-worker-*.log"),
+            key=lambda path: path.stat().st_mtime_ns,
+            reverse=True,
+        )
+    except OSError:
+        return
+    for stale_path in diagnostics[keep:]:
+        try:
+            stale_path.unlink()
+        except OSError:
+            pass
+
+
+def _last_worker_stage(worker_output: list[str]) -> str:
+    for line in reversed(worker_output):
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("event") == "diagnostic" and isinstance(event.get("detail"), dict):
+            stage = event["detail"].get("stage")
+            if stage:
+                return str(stage)
+        if event.get("event") == "status" and event.get("detail"):
+            return str(event["detail"])
+    return "worker startup"
+
+
+def _worker_error_message(error: str, diagnostic_path: str) -> str:
+    if "os error 1455" in error.lower() or "paging file is too small" in error.lower():
+        return (
+            "Windows không đủ bộ nhớ ảo để nạp HY-MT2 (lỗi 1455). "
+            "Đóng ứng dụng dùng nhiều bộ nhớ hoặc tăng dung lượng page file, "
+            "rồi chạy lại bước nhận dạng và dịch. Bước tạo giọng chưa bắt đầu. "
+            f"Log kỹ thuật: {diagnostic_path or 'unavailable'}"
+        )
+    if "CUDA error: unknown error" in error and diagnostic_path:
+        try:
+            diagnostic = Path(diagnostic_path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            diagnostic = ""
+        if "Memory allocation failure" in diagnostic:
+            return (
+                "Không đủ bộ nhớ hệ thống để HY-MT2 tiếp tục dịch trên GPU. "
+                "Hãy đóng ứng dụng đang dùng nhiều bộ nhớ rồi chạy lại bước dịch. "
+                f"Log kỹ thuật: {diagnostic_path}"
+            )
+    return f"{error} Diagnostic log: {diagnostic_path or 'unavailable'}"
+
+
+def _format_worker_exit(
+    return_code: int | None,
+    phase: str,
+    worker_output: list[str],
+    diagnostic_path: str,
+) -> str:
+    code = int(return_code or 0)
+    unsigned_code = code & 0xFFFFFFFF
+    hex_code = f"0x{unsigned_code:08X}"
+    classifications = {
+        0xC0000005: "Windows access violation in native code (Torch, CUDA, driver, or a native dependency)",
+        0xC0000017: "Windows could not reserve enough virtual memory",
+        0xC000009A: "Windows reported insufficient system resources",
+        0xC000012D: "Windows commit limit was reached",
+        0xC0000409: "Windows terminated the process after a native stack or security check failure",
+    }
+    classification = classifications.get(unsigned_code, "unexpected worker process termination")
+    last_stage = _last_worker_stage(worker_output)
+    non_json_tail = [line.strip() for line in worker_output[-30:] if line.strip() and not line.lstrip().startswith("{")]
+    tail = " | ".join(non_json_tail)[-1500:] or "no native stderr was emitted"
+    return (
+        f"HY-MT2 worker stopped unexpectedly during {phase}. Exit code: {code} ({hex_code}); "
+        f"classification: {classification}; last stage: {last_stage}. "
+        f"Diagnostic log: {diagnostic_path or 'unavailable'}. Native output: {tail}"
+    )
+
+
+def _terminate_hymt2_worker(process) -> None:
+    """Stop a failed worker so partial native model allocations are released."""
+    if process is not None and process.poll() is None:
+        try:
+            process.kill()
+            process.wait(timeout=1)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    if process is not None:
+        release_process_job(process, force=process.poll() is None)
+    with _WORKER_LOCK:
+        _discard_hymt2_worker(process)
+
+
+def _kill_hymt2_worker_immediately(process) -> None:
+    """Request immediate termination for UI shutdown without waiting on native code."""
+    if process is not None and process.poll() is None:
+        try:
+            process.kill()
+        except OSError:
+            pass
+    if process is not None:
+        release_process_job(process, force=True)
+    with _WORKER_LOCK:
+        _discard_hymt2_worker(process)
+
+
+def _collect_remaining_worker_output(process, output_queue, worker_output: list[str]) -> None:
+    """Wait briefly for the reader to persist native stderr after worker exit."""
+    with _WORKER_LOCK:
+        reader = _WORKER_READER if process is _WORKER_PROCESS else None
+    if reader is not None and reader.is_alive():
+        reader.join(timeout=2)
+    while True:
+        try:
+            worker_output.append(output_queue.get_nowait())
+        except queue.Empty:
+            return
+
+
+def _cancel_worker_idle_timer() -> None:
+    global _WORKER_IDLE_TIMER
+    timer = _WORKER_IDLE_TIMER
+    _WORKER_IDLE_TIMER = None
+    if timer is not None:
+        timer.cancel()
+
+
+def _schedule_worker_idle_shutdown() -> None:
+    global _WORKER_IDLE_TIMER
+    profile = runtime_profile()
+    if profile.is_cpu_only:
+        from hflow.core.hardware import cpu_runtime_profile
+
+        profile = cpu_runtime_profile(profile)
+    _cancel_worker_idle_timer()
+    if profile.translation_idle_seconds <= 0:
+        return
+    timer = threading.Timer(profile.translation_idle_seconds, shutdown_hymt2_worker)
+    timer.name = "hymt2-idle-shutdown"
+    timer.daemon = True
+    _WORKER_IDLE_TIMER = timer
+    timer.start()
+
+
+def is_hymt2_worker_warm() -> bool:
+    """Return whether the persistent worker has a live, loaded model."""
+    with _WORKER_LOCK:
+        return bool(
+            _WORKER_WARM
+            and _WORKER_PROCESS is not None
+            and _WORKER_PROCESS.poll() is None
+        )
+
+
+def _ensure_hymt2_worker():
+    with _WORKER_LOCK:
+        return _ensure_hymt2_worker_locked()
+
+
+def _ensure_hymt2_worker_locked():
+    global _WORKER_PROCESS, _WORKER_OUTPUT, _WORKER_READER, _WORKER_WARM, _WORKER_DIAGNOSTIC_PATH
+    if _WORKER_SHUTDOWN_EVENT.is_set():
+        raise RuntimeError("HY-MT2 worker startup was cancelled because HFlow is shutting down.")
+    _cancel_worker_idle_timer()
+    if processing_device_preference() == "cpu" or translation_model_preference() == "q4":
+        from hflow.core.memory import require_cpu_memory
+
+        require_cpu_memory("translation", resident=is_hymt2_worker_warm(), settle_seconds=2)
+    if _WORKER_PROCESS is not None and _WORKER_PROCESS.poll() is None and _WORKER_OUTPUT is not None:
+        return _WORKER_PROCESS, _WORKER_OUTPUT
+
+    _discard_hymt2_worker()
+    from hflow.core.paths import engine_environment
+
+    environment = engine_environment()
+    environment["PYTHONPATH"] = str(project_root() / "src") + os.pathsep + environment.get("PYTHONPATH", "")
+    environment["OMP_NUM_THREADS"] = "1"
+    environment["MKL_NUM_THREADS"] = "1"
+    environment["PYTHONFAULTHANDLER"] = "1"
+    environment["PYTHONIOENCODING"] = "utf-8"
+    startupinfo = None
+    if os.name == "nt":
+        # Hide the console window while retaining normal process semantics for
+        # CUDA and native Torch libraries.
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
+    process = subprocess.Popen(
+        _worker_command(),
+        cwd=str(project_root()),
+        env=environment,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+        startupinfo=startupinfo,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    from hflow.config import HYMT2_MODEL, LOGS_DIR
+
+    diagnostic_directory = Path(LOGS_DIR) / "hymt2-workers"
+    diagnostic_directory.mkdir(parents=True, exist_ok=True)
+    _prune_worker_diagnostics(diagnostic_directory)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    diagnostic_path = diagnostic_directory / f"hymt2-worker-{timestamp}-{process.pid}.log"
+    profile = runtime_profile()
+    diagnostic_path.write_text(
+        json.dumps(
+            {
+                "event": "worker_started",
+                "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                "launcher_pid": process.pid,
+                "command": _worker_command(),
+                "python": sys.version,
+                "model": HYMT2_MODEL,
+                "profile": profile.key,
+                "backend": profile.hymt2_backend,
+                "requested_device": profile.requested_device,
+                "cuda_name": profile.cuda_name,
+                "vram_gib": profile.total_vram_gib,
+                "ram_gib": profile.total_ram_gib,
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    output_queue = queue.Queue()
+
+    def read_output():
+        with diagnostic_path.open("a", encoding="utf-8") as diagnostic_file:
+            for line in process.stdout or []:
+                diagnostic_file.write(line)
+                diagnostic_file.flush()
+                output_queue.put(line)
+            try:
+                return_code = process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                return_code = process.poll()
+            diagnostic_file.write(
+                json.dumps(
+                    {
+                        "event": "worker_output_closed",
+                        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                        "return_code": return_code,
+                        "return_code_hex": f"0x{(int(return_code or 0) & 0xFFFFFFFF):08X}",
+                    }
+                )
+                + "\n"
+            )
+            diagnostic_file.flush()
+
+    _WORKER_PROCESS = process
+    _WORKER_OUTPUT = output_queue
+    _WORKER_DIAGNOSTIC_PATH = diagnostic_path
+    reader = threading.Thread(target=read_output, name="hymt2-worker-output", daemon=True)
+    _WORKER_READER = reader
+    _WORKER_WARM = False
+    reader.start()
+    return process, output_queue
+
+
+def shutdown_hymt2_worker(*, permanent: bool = False) -> None:
+    """Release the persistent translation model without waiting for inference."""
+    if permanent:
+        _WORKER_SHUTDOWN_EVENT.set()
+    with _WORKER_LOCK:
+        _cancel_worker_idle_timer()
+        process = _WORKER_PROCESS
+    if process is None:
+        return
+
+    # The worker handles requests serially.  A shutdown message would sit behind
+    # a warm-up/translation request, so terminate a busy worker immediately.
+    if _WORKER_OPERATION_LOCK.locked():
+        _kill_hymt2_worker_immediately(process)
+        return
+    try:
+        if process.poll() is None and process.stdin is not None:
+            process.stdin.write(json.dumps({"request_id": uuid.uuid4().hex, "command": "shutdown"}) + "\n")
+            process.stdin.flush()
+            process.wait(timeout=2)
+    except (BrokenPipeError, OSError, subprocess.TimeoutExpired):
+        _terminate_hymt2_worker(process)
+    finally:
+        release_process_job(process, force=process.poll() is None)
+        with _WORKER_LOCK:
+            _discard_hymt2_worker(process)
+
+
+def warm_hymt2_worker(status_callback=None, *, model_preference: str | None = None) -> None:
+    """Load HY-MT2 once in the persistent worker before the first video arrives."""
+    global _WORKER_WARM
+    with _WORKER_OPERATION_LOCK:
+        if model_preference is not None:
+            requested = str(model_preference).lower()
+            if requested not in {"auto", "q4", "full"}:
+                raise ValueError(f"Unsupported translation model: {model_preference}")
+            if requested != translation_model_preference():
+                from hflow.core.hardware import configure_translation_model
+
+                shutdown_hymt2_worker()
+                configure_translation_model(requested)
+        process, output_queue = _ensure_hymt2_worker()
+        request_id = uuid.uuid4().hex
+        worker_output = []
+        try:
+            if process.stdin is None:
+                raise RuntimeError("HY-MT2 worker input channel is unavailable.")
+            process.stdin.write(json.dumps({"request_id": request_id, "command": "warm"}) + "\n")
+            process.stdin.flush()
+            deadline = time.monotonic() + HYMT2_WARM_TIMEOUT_SECONDS
+            while True:
+                if time.monotonic() >= deadline:
+                    diagnostic_path = _worker_diagnostic_path(process)
+                    _terminate_hymt2_worker(process)
+                    raise RuntimeError(
+                        f"HY-MT2 warm-up produced no activity for {HYMT2_WARM_TIMEOUT_SECONDS} seconds. "
+                        f"Diagnostic log: {diagnostic_path or 'unavailable'}"
+                    )
+                try:
+                    line = output_queue.get(timeout=0.25)
+                except queue.Empty:
+                    if process.poll() is not None:
+                        break
+                    continue
+                worker_output.append(line)
+                deadline = time.monotonic() + HYMT2_WARM_TIMEOUT_SECONDS
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if event.get("event") == "status" and status_callback:
+                    status_callback(str(event.get("detail", "Preparing HY-MT2 translation model")))
+                if event.get("event") != "response" or event.get("request_id") != request_id:
+                    continue
+                if event.get("error"):
+                    error = str(event["error"])
+                    diagnostic_path = _worker_diagnostic_path(process)
+                    _terminate_hymt2_worker(process)
+                    raise RuntimeError(_worker_error_message(error, diagnostic_path))
+                if event.get("warmed"):
+                    with _WORKER_LOCK:
+                        if process is not _WORKER_PROCESS or process.poll() is not None:
+                            raise RuntimeError("HY-MT2 warm-up was stopped before it completed.")
+                        _WORKER_WARM = True
+                    return
+                raise RuntimeError("HY-MT2 worker returned an invalid warm-up response.")
+        except Exception:
+            if process.poll() is not None:
+                with _WORKER_LOCK:
+                    _discard_hymt2_worker(process)
+            raise
+
+        _collect_remaining_worker_output(process, output_queue, worker_output)
+        diagnostic_path = _worker_diagnostic_path(process)
+        error = _format_worker_exit(
+            process.returncode,
+            "model warm-up",
+            worker_output,
+            diagnostic_path,
+        )
+        with _WORKER_LOCK:
+            _discard_hymt2_worker(process)
+        raise RuntimeError(error)
+
+
+def _translate_with_hymt2_worker(
+    texts: list[str],
+    video_id: str,
+    source_languages: list[str],
+    target_language_name: str,
+    progress_callback=None,
+    *,
+    include_context: bool = True,
+    strict_source_only: bool = False,
+    translate_indices: list[int] | None = None,
+    initial_translations: list[str | None] | None = None,
+    result_callback=None,
+    speech_durations: list[float] | None = None,
+) -> list[str]:
+    global _WORKER_WARM
+    if not texts:
+        return []
+    if len(source_languages) != len(texts):
+        raise ValueError("Each translation segment must have a source language.")
+    if speech_durations is not None and len(speech_durations) != len(texts):
+        raise ValueError("Each source sentence must have a speech duration.")
+    if speech_durations is not None:
+        for duration in speech_durations:
+            timing_budget(duration, target_language_name)
+    with _WORKER_OPERATION_LOCK:
+        process, output_queue = _ensure_hymt2_worker()
+        request_id = uuid.uuid4().hex
+        payload = {
+            "request_id": request_id,
+            "payload": {
+                "texts": texts,
+                "source_languages": source_languages,
+                "target_language_name": target_language_name,
+                "include_context": bool(include_context),
+                "strict_source_only": bool(strict_source_only),
+                "translate_indices": translate_indices,
+                "initial_translations": initial_translations,
+                "speech_durations": speech_durations,
+            },
+        }
+        worker_output = []
+        log_to_video(video_id, "Sending translation request to persistent HY-MT2 worker.")
+        diagnostic_path = _worker_diagnostic_path(process)
+        log_to_video(video_id, f"HY-MT2 diagnostic log: {diagnostic_path or 'unavailable'}")
+        registered = False
+        try:
+            register_process(video_id, process)
+            registered = True
+            if process.stdin is None:
+                raise RuntimeError("HY-MT2 worker input channel is unavailable.")
+            # Frozen Windows interpreters can ignore PYTHONIOENCODING for
+            # stdin. ASCII JSON escapes preserve every language even when
+            # the child reads the pipe using its system code page.
+            process.stdin.write(json.dumps(payload, ensure_ascii=True) + "\n")
+            process.stdin.flush()
+            deadline = time.monotonic() + HYMT2_REQUEST_TIMEOUT_SECONDS
+            while True:
+                if time.monotonic() >= deadline:
+                    _terminate_hymt2_worker(process)
+                    raise RuntimeError(
+                        "HY-MT2 translation stopped producing progress for "
+                        f"{HYMT2_REQUEST_TIMEOUT_SECONDS} seconds."
+                    )
+                try:
+                    line = output_queue.get(timeout=0.25)
+                except queue.Empty:
+                    if process.poll() is not None:
+                        break
+                    continue
+                worker_output.append(line)
+                deadline = time.monotonic() + HYMT2_REQUEST_TIMEOUT_SECONDS
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if event.get("event") == "status":
+                    detail = str(event.get("detail", "Preparing HY-MT2 translation"))
+                    log_to_video(video_id, detail)
+                    if progress_callback:
+                        if initial_translations is not None:
+                            progress_callback(sum(value is not None for value in initial_translations), len(texts), detail)
+                        else:
+                            progress_callback(0, 0, detail)
+                    continue
+                if event.get("event") == "batch_started":
+                    total = int(event.get("total", len(texts)))
+                    completed = int(event.get("completed", 0))
+                    detail = f"Translating subtitles {event.get('start', completed + 1)}-{event.get('end', completed)} of {total}"
+                    log_to_video(video_id, detail)
+                    if progress_callback:
+                        progress_callback(completed, total, detail)
+                    continue
+                if event.get("event") == "progress":
+                    if result_callback and "translations" in event:
+                        result_callback(event.get("indices", []), event["translations"])
+                    current = int(event.get("current", 0))
+                    total = int(event.get("total", len(texts)))
+                    detail = f"Translated {current} of {total} subtitles"
+                    log_to_video(video_id, detail)
+                    if progress_callback:
+                        progress_callback(current, total, detail)
+                    continue
+                if event.get("event") != "response" or event.get("request_id") != request_id:
+                    continue
+                if event.get("error"):
+                    error = str(event["error"])
+                    diagnostic_path = _worker_diagnostic_path(process)
+                    _terminate_hymt2_worker(process)
+                    raise RuntimeError(_worker_error_message(error, diagnostic_path))
+                translations = event.get("translations")
+                if not isinstance(translations, list) or len(translations) != len(texts) or not all(isinstance(text, str) for text in translations):
+                    raise RuntimeError("HY-MT2 worker returned an invalid translation result.")
+                with _WORKER_LOCK:
+                    if process is not _WORKER_PROCESS or process.poll() is not None:
+                        raise RuntimeError("HY-MT2 translation worker was stopped before it completed.")
+                    _WORKER_WARM = True
+                    _schedule_worker_idle_shutdown()
+                if runtime_profile().translation_idle_seconds > 0:
+                    log_to_video(
+                        video_id,
+                        f"HY-MT2 model stays warm for {runtime_profile().translation_idle_seconds} seconds.",
+                    )
+                else:
+                    log_to_video(video_id, "HY-MT2 translation completed; model stays warm for the next video.")
+                return translations
+        except Exception:
+            _terminate_hymt2_worker(process)
+            raise
+        finally:
+            if registered:
+                # The worker is intentionally persistent. Keep its Windows Job
+                # Object handle alive between requests so closing the handle
+                # does not trigger JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE.
+                unregister_process(video_id, process)
+
+        _collect_remaining_worker_output(process, output_queue, worker_output)
+        return_code = process.returncode
+        diagnostic_path = _worker_diagnostic_path(process)
+        error = _format_worker_exit(
+            return_code,
+            "translation",
+            worker_output,
+            diagnostic_path,
+        )
+        with _WORKER_LOCK:
+            _discard_hymt2_worker(process)
+        raise RuntimeError(error)
+
+
+def clean_translation(text: str) -> str:
+    return " ".join(text.strip().strip('"').split())
+
+
+def is_suspicious_translation(source_text: str, translated_text: str, target_language_name: str) -> bool:
+    if _invalid_translation(translated_text):
+        return True
+    # Older prompts labelled neighbouring subtitles P1/N1. A rare model
+    # failure can copy that scaffolding into the answer (as happened in
+    # work4). Continue rejecting both historical and current prompt markers.
+    if re.search(r"(?:^|\s)[PN]\d+\s*\[[^\]]+\]\s*:", translated_text, re.IGNORECASE):
+        return True
+    if re.search(r"\[(?:source text|background context|translation)\]", translated_text, re.IGNORECASE):
+        return True
+    if re.search(r"\[(?:previous|following) subtitles?\]", translated_text, re.IGNORECASE):
+        return True
+    source_content = "".join(character for character in source_text if character.isalnum())
+    translated_content = "".join(character for character in translated_text if character.isalnum())
+    if source_content and not translated_content:
+        return True
+    if len(source_content) >= 35 and len(translated_content) < max(6, len(source_content) // 10):
+        return True
+    required_script = {
+        "Hindi": r"[\u0900-\u097f]",
+        "Arabic": r"[\u0600-\u06ff]",
+        "Russian": r"[\u0400-\u04ff]",
+        "Korean": r"[\uac00-\ud7af]",
+        "Thai": r"[\u0e00-\u0e7f]",
+    }.get(target_language_name)
+    if required_script and len(source_content) >= 12:
+        return re.search(required_script, translated_text) is None
+    return False
+
+
+def _invalid_translation(text: str) -> bool:
+    """Only objective corruption blocks Auto; linguistic heuristics need review."""
+    if not str(text or "").strip():
+        return True
+    if any(character == "\ufffd" or unicodedata.category(character) in {"Cs", "Cc"}
+           for character in text):
+        return True
+    return bool(re.search(
+        r"(?:^|\s)[PN]\d+\s*\[[^\]]+\]\s*:|\[(?:source text|background context|translation|previous subtitles?|following subtitles?)\]",
+        text, re.IGNORECASE,
+    ))
+
+
+def _comparison_text(value: str) -> str:
+    return "".join(character.casefold() for character in str(value or "") if character.isalnum())
+
+
+def _text_similarity(first: str, second: str) -> float:
+    normalized_first = _comparison_text(first)
+    normalized_second = _comparison_text(second)
+    if not normalized_first or not normalized_second:
+        return 0.0
+    return SequenceMatcher(None, normalized_first, normalized_second, autojunk=False).ratio()
+
+
+def _suspicious_translation_indexes(
+    source_texts: list[str],
+    translated_texts: list[str],
+    target_language_name: str,
+) -> set[int]:
+    """Find invalid outputs and context-copy duplicates without rejecting repetition in the source."""
+    suspects = {
+        index
+        for index, (source, translated) in enumerate(zip(source_texts, translated_texts))
+        if is_suspicious_translation(source, translated, target_language_name)
+    }
+    for index, translated in enumerate(translated_texts):
+        if len(_comparison_text(translated)) < 12:
+            continue
+        for other_index in range(index):
+            other_translation = translated_texts[other_index]
+            if len(_comparison_text(other_translation)) < 12:
+                continue
+            if _text_similarity(translated, other_translation) < 0.88:
+                continue
+            # Repeated dialogue is legitimate. It is only suspicious when the
+            # source sentences themselves clearly describe different content.
+            if _text_similarity(source_texts[index], source_texts[other_index]) < 0.45:
+                # The earlier accepted result is context for the later one;
+                # retrying both can replace a correct translation.  Treat the
+                # later result as the copy unless it has its own validation
+                # failure, which was already recorded above.
+                suspects.add(index)
+    return suspects

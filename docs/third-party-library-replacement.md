@@ -2,12 +2,12 @@
 
 This document is for developers modifying Qt, PySide or another independently
 licensed component. It does not change the component's license or restrict its
-modification, debugging, reverse-engineering or redistribution rights. HaizFlow's
+modification, debugging, reverse-engineering or redistribution rights. HFlow's
 application license expressly preserves those rights.
 
 ## Qt and PySide
 
-HaizFlow uses dynamically linked Qt/PySide 6.11.1 on Windows x64, under the LGPLv3
+HFlow uses dynamically linked Qt/PySide 6.11.1 on Windows x64, under the LGPLv3
 option. Sources, component licenses and copyright/attribution records are
 provided with the release. Qt's bundled third-party code keeps its own terms.
 
@@ -16,13 +16,13 @@ to build a compatible Windows x64 release configuration with MSVC 2022.
 [Qt's build instructions](https://doc.qt.io/qt-6/windows-building.html) and
 [PySide's build instructions](https://doc.qt.io/qtforpython-6/building_from_source/index.html)
 describe the supported compiler, Windows SDK, CMake and binding-generator setup.
-Changing Qt APIs or ABI can require rebuilding PySide or HaizFlow as well.
+Changing Qt APIs or ABI can require rebuilding PySide or HFlow as well.
 
 The installed version has this structure:
 
 ```text
-HaizFlow/versions/0.1.0/
-  HaizFlowCore.exe
+HFlow/versions/0.1.0/
+  HFlowCore.exe
   _internal/PySide6/       Qt DLLs, Python bindings and plugins
   _internal/shiboken6/     Shiboken library
 ```
@@ -31,18 +31,18 @@ For a local modified build:
 
 1. Close the application. Copy the **Core version directory**, not the entire
    installation or its runtime data, to a separate directory such as
-   `D:\HaizFlow-Qt-Test`.
+   `D:\HFlow-Qt-Test`.
 2. Replace the relevant DLLs, bindings and plugins in that copy with your
    compatible rebuilt components. Keep the original library filenames and
    architecture. Copy any additional dependencies required by your build.
-3. Run `D:\HaizFlow-Qt-Test\HaizFlowCore.exe` directly. No HaizFlow publisher
+3. Run `D:\HFlow-Qt-Test\HFlowCore.exe` directly. No HFlow publisher
    signature or secret key is required to run this standalone local copy.
 
 The official launcher checks the inventory of official Core versions. It is
 not the entry point for this standalone modified copy. Do not run an official
 installer over a customized copy: it replaces libraries with the official
 versions. Source builds can also be run directly
-through `haizflow_desktop.py` using the modified PySide environment.
+through `hflow_desktop.py` using the modified PySide environment.
 
 This procedure keeps the original installation and its projects unchanged.
 Windows' own security policies and ABI compatibility still apply.
@@ -50,7 +50,7 @@ Windows' own security policies and ABI compatibility still apply.
 ## FFmpeg
 
 FFmpeg/FFprobe run as separate programs, not as GPL libraries linked into the
-HaizFlow Python application. Their sources, linked-library sources, build
+HFlow Python application. Their sources, linked-library sources, build
 recipes and independent GPL/LGPL/permissive notices must be retained.
 Qt Multimedia's separate LGPL FFmpeg backend is inventoried separately.
 
@@ -79,5 +79,5 @@ string alone.
 
 - [Qt's LGPL obligations](https://www.qt.io/development/open-source-lgpl-obligations)
 - [FFmpeg's legal information](https://ffmpeg.org/legal.html)
-- [HaizFlow license and independent-rights exceptions](../LICENSE)
+- [HFlow license and independent-rights exceptions](../LICENSE)
 - [Third-party inventory](../THIRD_PARTY_NOTICES.md)

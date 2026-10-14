@@ -1,0 +1,7648 @@
+import copy
+import json
+import os
+import queue
+import re
+import shutil
+import threading
+import uuid
+from datetime import UTC, datetime
+from pathlib import Path
+
+from PySide6.QtCore import Property, QEvent, QEventLoop, QObject, QTimer, QUrl, Signal, Slot
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QmlNamedElement, QmlSingleton
+
+from hflow import __version__
+from hflow.config import RUNTIME_DATA_DIR
+from hflow.core.events import subscribe_log, unsubscribe_log
+from hflow.core.hardware import (
+    basic_hardware_capabilities,
+    clear_runtime_profile_cache,
+    configure_processing_device,
+    detect_hardware_capabilities,
+    recommended_processing_device,
+    runtime_profile_for,
+    validate_processing_device,
+)
+from hflow.desktop.activity_log import ActivityLogBuffer
+from hflow.desktop.audio_preview_controller import AudioPreviewController
+from hflow.desktop.catalog import POPULAR_TARGET_LANGUAGES
+from hflow.desktop.catalog_media_controller import CatalogMediaController
+from hflow.desktop.channel_import import ChannelImportCoordinator
+from hflow.desktop.diagnostics_controller import DiagnosticsController
+from hflow.desktop.editor_preview_controller import EditorPreviewController
+from hflow.desktop.external_links import open_external_url
+from hflow.desktop.localization import QMessageBox, _set_ui_language
+from hflow.desktop.manual_edit_history import AppEditHistory
+from hflow.desktop.manual_editor_document_model import ManualEditorDocumentModel
+from hflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
+from hflow.desktop.manual_preview_composition_controller import ManualPreviewCompositionController
+from hflow.desktop.manual_subtitle_model import ManualSubtitleModel
+from hflow.desktop.media import (
+    collect_batch_video_paths,
+    create_video_thumbnail_path,
+    normalize_video_path,
+    open_path,
+    resolve_video_file,
+    thumbnail_source,
+)
+from hflow.desktop.media_download_controller import MediaDownloadController
+from hflow.desktop.media_probe import VideoDimensionProbe
+from hflow.desktop.models import (
+    ActivityEventModel,
+    DownloadProjectSourceListModel,
+    ProjectBrowserProxyModel,
+    ProjectGridModel,
+    ProjectListModel,
+    SocialProjectSourceListModel,
+    SocialPublishListModel,
+    VideoListModel,
+)
+from hflow.desktop.presenters import (
+    build_project_summaries,
+    format_duration,
+    format_memory_size,
+    language_label,
+    stage_label,
+    voice_options_for_language,
+)
+from hflow.desktop.preview_media_controller import PreviewMediaController
+from hflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
+from hflow.desktop.project_commands_controller import ProjectCommandsController
+from hflow.desktop.project_import_controller import ProjectImportController
+from hflow.desktop.project_workspace_controller import ProjectWorkspaceController
+from hflow.desktop.resource_pack_controller import ResourcePackController
+from hflow.desktop.runtime_device_controller import RuntimeDeviceController
+from hflow.desktop.settings_controller import SettingsController
+from hflow.desktop.smart_warmup_controller import SmartWarmupController
+from hflow.desktop.social_publish_controller import SocialPublishController
+from hflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
+from hflow.desktop.url_import import ProjectUrlImportRegistry
+from hflow.desktop.voice_clone_recorder import VoiceCloneRecorder
+from hflow.desktop.video_export_controller import VideoExportController
+from hflow.pipeline.process_registry import pause_video
+from hflow.schemas.editor import (
+    EditorClip,
+    EditorDocument,
+    EditorKeyframe,
+    EditorMarker,
+    EditorTextStyle,
+    SourceEditDecision,
+)
+from hflow.schemas.video import CropSettings, SubtitleStyle, VideoConfig
+from hflow.services import (
+    desktop_settings,
+    editor_documents,
+    gemini_translation,
+    manual_artifacts,
+    project_store,
+    video_store,
+)
+from hflow.services.desktop_videos import (
+    create_desktop_video,
+    set_desktop_background_music,
+    set_desktop_voice_reference,
+    set_desktop_watermark_image,
+    set_desktop_watermark_video,
+)
+from hflow.services.processing_queue import SerialProcessingQueue
+from hflow.services.translation import shutdown_hymt2_worker
+
+QML_IMPORT_NAME = "HFlow"
+QML_IMPORT_MAJOR_VERSION = 1
+
+
+@QmlNamedElement("AppController")
+@QmlSingleton
+class HFlowController(QObject):
+    _qml_instance = None
+    _THUMBNAIL_RETRY_MAX_ATTEMPTS = 3
+    _THUMBNAIL_RETRY_INITIAL_DELAY_SECONDS = 15.0
+    _EDITABLE_VIDEO_SETTING_FIELDS = (
+        "target_language",
+        "speech_recognition_model",
+        "translation_model",
+        "tts_provider",
+        "tts_voice",
+        "speaker_mode",
+        "subtitle_style",
+        "subtitle_layout_override",
+        "remove_original_subtitles",
+        "original_subtitle_removal_mode",
+        "output_format",
+        "output_speed",
+        "crop",
+        "enable_audio_separation",
+        "original_video_volume",
+        "background_music_volume",
+        "background_music_loop",
+        "audio_ducking_enabled",
+        "audio_ducking_reduction_db",
+        "tts_volume",
+        "watermark_text",
+        "watermark_scale_percent",
+        "watermark_kind",
+        "watermark_opacity_percent",
+        "watermark_outline_percent",
+        "watermark_font_family",
+        "watermark_text_color",
+        "watermark_bold",
+        "watermark_italic",
+    )
+
+    videoPathChanged = Signal()
+    sourceReplacementRequested = Signal(str)
+    videoThumbnailChanged = Signal()
+    targetLanguageChanged = Signal()
+    speechRecognitionModelChanged = Signal()
+    translationModelChanged = Signal()
+    speechRecognitionModelOptionsChanged = Signal()
+    ttsProviderChanged = Signal()
+    ttsProviderOptionsChanged = Signal()
+    ttsVoiceChanged = Signal()
+    ttsVoiceOptionsChanged = Signal()
+    speakerModeChanged = Signal()
+    enableAudioSeparationChanged = Signal()
+    originalVolumeChanged = Signal()
+    backgroundMusicVolumeChanged = Signal()
+    audioMixOptionsChanged = Signal()
+    ttsVolumeChanged = Signal()
+    watermarkTextChanged = Signal()
+    watermarkScalePercentChanged = Signal()
+    watermarkKindChanged = Signal()
+    watermarkOpacityPercentChanged = Signal()
+    watermarkOutlinePercentChanged = Signal()
+    watermarkImageChanged = Signal()
+    watermarkVideoChanged = Signal()
+    watermarkStyleChanged = Signal()
+    subtitleSettingsChanged = Signal()
+    cropSettingsChanged = Signal()
+    outputFormatChanged = Signal()
+    outputSpeedChanged = Signal()
+    backgroundMusicChanged = Signal()
+    backgroundMusicImportChanged = Signal()
+    batchBackgroundMusicDraftReady = Signal(str)
+    audioPreviewChanged = Signal()
+    workflowModeChanged = Signal()
+    selectedVideoChanged = Signal()
+    selectedElapsedChanged = Signal()
+    processingChanged = Signal()
+    logsChanged = Signal()
+    statusMessageChanged = Signal()
+    runtimeStateChanged = Signal()
+    modelSetupChanged = Signal()
+    videoDeleted = Signal()
+    batchDeleted = Signal()
+    batchChanged = Signal()
+    settingsChanged = Signal()
+    hardwareChanged = Signal()
+    languageOptionsChanged = Signal()
+    projectSetupChanged = Signal()
+    projectPrepared = Signal()
+    projectRenameRequested = Signal(str, str)
+    urlImportFinished = Signal()
+    channelImportChanged = Signal()
+    mediaImportChanged = Signal()
+    socialPublishStateChanged = Signal()
+    downloadProjectSourcesChanged = Signal()
+    zernioAccountsChanged = Signal()
+    zernioPostOptionsChanged = Signal()
+    # Kept as a coarse compatibility signal for Python-side observers. QML
+    # properties use the narrower signals above so upload progress does not
+    # invalidate every Zernio binding on the page.
+    tiktokPublishChanged = Signal()
+    appAlertRequested = Signal(str, str, str)
+    resourcePacksRequested = Signal(str)
+    geminiSetupRequested = Signal()
+    apiKeySettingsRequested = Signal(str)
+    apiKeyGuideRequested = Signal(str)
+    geminiKeyChanged = Signal()
+    appConfirmationRequested = Signal(str, str)
+    editorPreviewChanged = Signal()
+    previewMediaChanged = Signal()
+    manualToolStateChanged = Signal(str)
+    manualExportCompleted = Signal(str, str)
+    videoExportCompleted = Signal(str, str)
+    exportStateChanged = Signal()
+    videoExportRequested = Signal()
+    videoExportProgressRequested = Signal()
+    autoProcessingRequested = Signal()
+    batchProcessingRequested = Signal(bool)
+    videoExportStarted = Signal()
+    manualSubtitleSaved = Signal(str, int, str)
+    manualSubtitleSaveFailed = Signal(str, str, str)
+    manualSubtitleDocumentChanged = Signal()
+    manualEditorDocumentChanged = Signal()
+    manualVoiceRefreshStateChanged = Signal(str, int, str)
+    manualEditHistoryChanged = Signal()
+    editHistoryChanged = Signal()
+    editorKeyframeClipboardChanged = Signal()
+    warmupChanged = Signal()
+    resourcePacksChanged = Signal()
+
+    def __init__(self):
+        super().__init__()
+        type(self)._qml_instance = self
+        self.videos = VideoListModel()
+        self.activity_events = ActivityEventModel()
+        self.projects = ProjectListModel()
+        self.project_browser = ProjectBrowserProxyModel(self.projects)
+        self.single_projects = ProjectGridModel()
+        self.manual_projects = ProjectGridModel()
+        self.batch_projects = ProjectGridModel()
+        self.download_projects = ProjectGridModel()
+        self.publish_projects = ProjectGridModel()
+        self.batch_videos = VideoListModel()
+        self.tiktok_publish_items = SocialPublishListModel()
+        self.tiktok_project_sources = SocialProjectSourceListModel()
+        self.download_project_sources = DownloadProjectSourceListModel()
+        self._video_path = ""
+        self._video_thumbnail_source = ""
+        self._target_language = "vi"
+        self._speech_recognition_model = "small"
+        self._translation_model = "q4"
+        self._tts_provider = "vieneu-gpu"
+        self._tts_voice = "vieneu:Hải Đăng"
+        self._speaker_mode = "single"
+        self._enable_audio_separation = True
+        self._output_format = "keep_ratio"
+        self._output_speed = 1.0
+        self._original_volume = 60
+        self._background_music_volume = 30
+        self._background_music_loop = True
+        self._audio_ducking_enabled = False
+        self._audio_ducking_reduction_db = -12.0
+        self._tts_volume = 100
+        self._watermark_text = ""
+        self._watermark_scale_percent = 100
+        self._watermark_kind = "text"
+        self._watermark_opacity_percent = 46
+        self._watermark_outline_percent = 100
+        self._watermark_image_path = ""
+        self._watermark_video_path = ""
+        self._watermark_font_family = "Arial"
+        self._watermark_text_color = "#FFFFFF"
+        self._watermark_bold = True
+        self._watermark_italic = True
+        self._remove_original_subtitles = True
+        self._original_subtitle_removal_mode = "patch"
+        self._subtitle_style = SubtitleStyle()
+        self._subtitle_layout_override = False
+        self._crop_settings = CropSettings()
+        self._background_music_path = ""
+        self._background_music_import_busy = False
+        self._background_music_import_status = ""
+        self._audio_preview_events = queue.Queue()
+        self._audio_preview_source = ""
+        self._audio_preview_original_source = ""
+        self._audio_preview_background_music_source = ""
+        self._audio_preview_state = "idle"
+        self._workflow_mode = "A"
+        self._selected_video_id = None
+        # Identifies the video whose settings are currently loaded into the
+        # shared QML editor fields.  It prevents a delayed autosave from a
+        # previously selected card from being written into the next video.
+        self._settings_owner_video_id = None
+        self._manual_settings_drafts = {}
+        self._selected_video_snapshot = None
+        self.selectedVideoChanged.connect(self._refresh_selected_video_snapshot)
+        self.selectedVideoChanged.connect(self.previewMediaChanged.emit)
+        self.selectedVideoChanged.connect(self.selectedElapsedChanged.emit)
+        self._selected_project_key = ""
+        self._project_session_notices: set[tuple[str, str]] = set()
+        self._device_switching = False
+        self._pending_processing_device = ""
+        self._model_runtime_lock = threading.Lock()
+        self._initial_model_warmup_done = threading.Event()
+        self._runtime_probe_error = ""
+        self._deleted_video_ids = set()
+        self._confirmation_loop = None
+        self._confirmation_accepted = False
+        self._shutdown_started = False
+        self._close_confirmed = False
+        self._warmup_thread: threading.Thread | None = None
+        self._model_setup_cancel_event = threading.Event()
+        self._model_setup_events = queue.Queue()
+        self._model_setup_state = "ready"
+        self._model_setup_component = ""
+        self._model_setup_detail = ""
+        self._model_setup_completed_bytes = 0
+        self._model_setup_total_bytes = 0
+        self._model_setup_target_device = ""
+        self._startup_maintenance_thread: threading.Thread | None = None
+        self._startup_maintenance_events = queue.Queue()
+        self._manual_cache_events = queue.Queue()
+        self._manual_cache_jobs: set[str] = set()
+        self._manual_cache_indexed: set[str] = set()
+        self._manual_cache_jobs_lock = threading.Lock()
+        self._hardware_probe_events = queue.Queue()
+        self._hardware_probe_lock = threading.Lock()
+        self._hardware_probe_running = False
+        self._startup_hardware_resolved = False
+        self._startup_hardware_done = threading.Event()
+        self._startup_hardware_thread: threading.Thread | None = None
+        self._background_shutdown_event = threading.Event()
+        self._processing_lifecycle = ProcessingLifecycleController(self)
+        self._processing_queue = SerialProcessingQueue(
+            self._execute_pipeline,
+            on_started=self._on_queue_video_started,
+            on_finished=self._on_queue_video_finished,
+            on_idle=self._on_processing_queue_idle,
+            on_error=self._on_processing_queue_error,
+        )
+        self._batch_video_ids = []
+        self._catalog_videos = {}
+        self._project_summaries_by_key = {}
+        self._batch_running = False
+        self._batch_stop_requested = False
+        self._log_buffer = ActivityLogBuffer()
+        self._logs = ""
+        self._status_message = "Ready"
+        self._runtime_state = "ready"
+        self._warmup_state = "idle"
+        self._warmup_capability = ""
+        self._warmup_detail = ""
+        self._preview_media = PreviewMediaController(self)
+        self._editor_preview = EditorPreviewController(self)
+        self._edit_history_scope = "none"
+        self._edit_history_recording_suspended = 0
+        self._edit_history_asset_directories: set[str] = set()
+        self._manual_edit_history = AppEditHistory(self)
+        self._manual_edit_history.changed.connect(self.manualEditHistoryChanged)
+        self._manual_edit_history.changed.connect(self.editHistoryChanged)
+        self.selectedVideoChanged.connect(self._sync_edit_history_context)
+        self.projectSetupChanged.connect(self._sync_edit_history_context)
+        self._manual_subtitles = ManualSubtitleModel(self, self._manual_edit_history)
+        self._manual_editor_document = ManualEditorDocumentModel(self)
+        self._manual_preview_composition = ManualPreviewCompositionController(
+            self._manual_editor_document,
+            self,
+        )
+        self._manual_editor_document.changed.connect(self.manualEditorDocumentChanged)
+        self._editor_transform_drafts: dict[str, dict] = {}
+        self._editor_keyframe_clipboard: list[dict] = []
+        self._subtitle_overlay = SubtitleOverlayRenderer(self)
+        self._manual_audio = ManualPreviewAudioController(self)
+        self._last_manual_preview_audio_error = ""
+        self._manual_audio.errorChanged.connect(self._report_manual_preview_audio_error)
+        self.selectedVideoChanged.connect(self._clear_manual_preview_audio_error)
+        self._manual_subtitles.changed.connect(self.refreshManualPreviewAudio)
+        self._manual_editor_document.changed.connect(self.refreshManualPreviewAudio)
+        self.selectedVideoChanged.connect(self.refreshManualPreviewAudio)
+        self._manual_subtitles.saved.connect(self.manualSubtitleSaved)
+        self._manual_subtitles.saveFailed.connect(self.manualSubtitleSaveFailed)
+        from hflow.desktop.subtitle_voice_edit_notice import SubtitleVoiceEditNotice
+
+        self._subtitle_voice_edit_notice = SubtitleVoiceEditNotice(self._show_app_alert)
+        self._manual_subtitles.saved.connect(self._subtitle_voice_edit_saved)
+        self._manual_subtitles.saveFailed.connect(self._subtitle_voice_edit_failed)
+        self._manual_subtitles.changed.connect(self.manualSubtitleDocumentChanged)
+        self.selectedVideoChanged.connect(self.manualSubtitleDocumentChanged)
+        self._manual_subtitles.published.connect(self._manual_subtitles_published)
+        self._manual_voice_refresh_pending = False
+        self._manual_voice_refresh_enabled = False
+        self._manual_voice_video_id = ""
+        # Preview controllers are relatively expensive and receive several
+        # global video/status signals.  Keep them dormant unless the Manual
+        # workspace is actually mounted; otherwise a background progress
+        # update can decode audio again after the user has left the editor.
+        self._manual_editor_active = False
+        self._manual_editing_segment_id = ""
+        self._manual_voice_refresh_timer = QTimer(self)
+        self._manual_voice_refresh_timer.setSingleShot(True)
+        self._manual_voice_refresh_timer.setInterval(800)
+        self._manual_voice_refresh_timer.timeout.connect(self._refresh_manual_voice)
+        self._audio_preview = AudioPreviewController(self)
+        self._media_downloader = MediaDownloadController(self)
+        self._tiktok_publisher = SocialPublishController(self)
+        self._settings_controller = SettingsController(self)
+        self._project_workspace = ProjectWorkspaceController(self)
+        self._project_commands = ProjectCommandsController(self)
+        self._project_import = ProjectImportController(self)
+        self._catalog_media = CatalogMediaController(self)
+        self._diagnostics = DiagnosticsController(self)
+        self._runtime_device = RuntimeDeviceController(self)
+        settings = desktop_settings.load_settings()
+        self._settings_theme = settings["theme"]
+        self._settings_language = settings["language"]
+        self._settings_processing_device = settings["processing_device"]
+        from hflow.core.model_choices import project_model_defaults
+
+        for attribute, value in project_model_defaults(self._settings_processing_device).items():
+            setattr(self, attribute, value)
+        self._draft_processing_device = self._settings_processing_device
+        self._processing_device_origin = settings["processing_device_origin"]
+        self._settings_translation_model = settings["translation_model"]
+        from hflow.core.hardware import configure_translation_model
+
+        configure_translation_model(self._settings_translation_model)
+        self._keep_models_warm = settings["keep_models_warm"]
+        self._manual_project_cache_gib = settings["manual_project_cache_gib"]
+        self._manual_global_cache_gib = settings["manual_global_cache_gib"]
+        self._manual_editor_layout = {
+            "inspectorWidth": int(settings.get("manual_editor_inspector_width", 356)),
+            "timelineHeight": int(settings.get("manual_editor_timeline_height", 280)),
+            "compare": bool(settings.get("manual_editor_compare", False)),
+        }
+        self._manual_editor_workspace = dict(settings.get("manual_editor_workspace") or {})
+        self._resource_packs = ResourcePackController(self)
+        self._resource_packs.changed.connect(self.resourcePacksChanged.emit)
+        self.hardwareChanged.connect(self.resourcePacksChanged.emit)
+        self.hardwareChanged.connect(self.ttsProviderOptionsChanged.emit)
+        self._video_exports = VideoExportController(self)
+        from hflow.services.temporary_cleanup import resume_pending_cleanup
+
+        resume_pending_cleanup()
+        self._smart_warmup = SmartWarmupController(self, self._resource_packs.manager)
+        self.selectedVideoChanged.connect(self._smart_warmup.request_project_prediction)
+        self.speechRecognitionModelChanged.connect(self._smart_warmup.request_setup_prediction)
+        self.settingsChanged.connect(self._sync_project_model_defaults)
+        self.settingsChanged.connect(self.speechRecognitionModelOptionsChanged.emit)
+        self.settingsChanged.connect(self.speechRecognitionModelChanged.emit)
+        self.settingsChanged.connect(self.ttsProviderOptionsChanged.emit)
+        _set_ui_language(self._settings_language)
+        self.activity_events.set_language(self._settings_language)
+        # Keep the first frame independent from Torch/CUDA initialization.  The
+        # warm-up worker replaces this cheap snapshot with a full probe before
+        # it selects or loads any model runtime.
+        clear_runtime_profile_cache()
+        capabilities = basic_hardware_capabilities()
+        self._hardware_capabilities = capabilities
+        self._hardware_telemetry_active = False
+        configure_processing_device(self._settings_processing_device)
+        self._active_processing_device = self._settings_processing_device
+        self._whisper_turbo_model_ready = self._detect_whisper_turbo_model_ready()
+        self._project_directory = settings.get("default_project_directory") or os.path.join(RUNTIME_DATA_DIR, "projects")
+        self._project_name = ""
+        self._project_type = "single"
+        self._log_queue = queue.Queue()
+        self._media_import_events = queue.Queue()
+        self._media_import_busy = False
+        self._media_import_total = 0
+        self._media_import_completed = 0
+        self._media_import_status = ""
+        self._thumbnail_refresh_running = False
+        self._thumbnail_refresh_thread: threading.Thread | None = None
+        self._thumbnail_retry_failures: dict[str, tuple[str, int, float]] = {}
+        self._thumbnail_retry_lock = threading.Lock()
+        self._dimension_probe = VideoDimensionProbe(self._on_video_dimensions_ready)
+        from hflow.desktop.douyin_session_controller import DouyinSessionController
+        self._douyin_session = DouyinSessionController(self)
+        self._project_url_imports = ProjectUrlImportRegistry(
+            self, self._douyin_session.request_error,
+            lambda owner, path, workspace, mode: HFlowController._project_import_for(self).handle_url_download_ready(
+                path, workspace, mode, importer=owner),
+            lambda owner: self.urlImportFinished.emit() if owner is self._url_importer else None,
+        )
+        self._media_downloader.set_request_guard(self._douyin_session.request_error)
+        self._channel_importer = ChannelImportCoordinator(self)
+        self._channel_importer.set_worker_limit_provider(lambda: 1 if self._processing_queue.active_video_id else 2)
+        self._channel_import_targets = {}
+        self._channel_importer.changed.connect(self.channelImportChanged.emit)
+        self._channel_importer.videoReady.connect(self._handle_channel_video_ready)
+        self._channel_importer.downloadsFinished.connect(self._finish_channel_import_target)
+
+        if os.getenv("HFLOW_SMOKE_TEST") == "1":
+            self._startup_hardware_resolved = True
+            self._startup_hardware_done.set()
+            self._initial_model_warmup_done.set()
+        else:
+            # Render Home first. Optional engines and models warm in their own
+            # low-priority worker only after the Qt event loop is responsive.
+            QTimer.singleShot(1250, self._start_smart_warmup_after_hardware)
+            # Smart warm-up is speculative, never a prerequisite for a user
+            # command. Foreground work either reuses the resident model or
+            # preempts the prediction and starts with the installed engine.
+            self._initial_model_warmup_done.set()
+
+        subscribe_log(self._on_video_log)
+        self._log_timer = QTimer(self)
+        self._log_timer.timeout.connect(self._drain_log_queue)
+        self._log_timer.start(500)
+
+        # These coordinators only transfer already-computed worker results to
+        # Qt.  One dispatcher avoids five independent 100 ms wake-ups on the
+        # GUI thread while preserving the same response latency.
+        self._background_events_timer = QTimer(self)
+        self._background_events_timer.timeout.connect(self._drain_background_events)
+        self._background_events_timer.start(100)
+
+        self._status_timer = QTimer(self)
+        self._status_timer.timeout.connect(self.poll_videos)
+        self._status_timer.start(1000)
+
+        self._elapsed_timer = QTimer(self)
+        self._elapsed_timer.timeout.connect(self._refresh_selected_elapsed)
+        self._elapsed_timer.start(1000)
+
+        self._hardware_timer = QTimer(self)
+        self._hardware_timer.timeout.connect(self._refresh_live_hardware)
+        self._hardware_timer.start(5000)
+        if os.getenv("HFLOW_SMOKE_TEST") != "1":
+            QTimer.singleShot(0, self._start_startup_hardware_probe)
+
+        self.refreshVideos()
+        self._last_video_metadata_revision = video_store.metadata_revision()
+        # Let Qt render the first frame before migrations touch large workspaces or invoke FFmpeg.
+        QTimer.singleShot(0, self._start_startup_maintenance)
+
+    def _drain_media_import_events(self) -> None:
+        self._project_import.drain_background_events()
+
+    def _drain_tiktok_publish_events(self) -> None:
+        self._tiktok_publisher.drain_events()
+
+    def _drain_audio_preview_events(self) -> None:
+        self._audio_preview.drain_events()
+
+    def _drain_background_events(self) -> None:
+        self._drain_media_import_events()
+        self._drain_tiktok_publish_events()
+        self._drain_audio_preview_events()
+        self._drain_startup_maintenance_events()
+        self._drain_manual_cache_events()
+        self._drain_model_setup_events()
+        self._resource_packs.drain_events()
+        self._smart_warmup.drain_events()
+        HFlowController._runtime_device_for(self).drain_hardware_events()
+
+    def _start_startup_hardware_probe(self) -> None:
+        """Resolve CUDA once after the first frame, independently of Settings."""
+        if self._shutdown_started or self._startup_hardware_thread is not None:
+            return
+
+        def probe() -> None:
+            try:
+                HFlowController._runtime_device_for(self)._resolve_startup_processing_device()
+            except Exception as exc:
+                self._hardware_probe_events.put({"kind": "error", "message": str(exc)})
+            finally:
+                self._startup_hardware_done.set()
+
+        self._startup_hardware_thread = threading.Thread(
+            target=probe, name="hardware-startup-probe", daemon=True
+        )
+        self._startup_hardware_thread.start()
+
+    def _start_smart_warmup_after_hardware(self) -> None:
+        if self._shutdown_started:
+            return
+        if not self._startup_hardware_done.is_set():
+            QTimer.singleShot(500, self._start_smart_warmup_after_hardware)
+            return
+        self._smart_warmup.start()
+
+    def _ensure_hardware_ready_for_action(self) -> bool:
+        """Wait only on an explicit GPU action, never while painting a page."""
+        if self._startup_hardware_resolved:
+            return True
+        if self._startup_hardware_thread is None:
+            self._start_startup_hardware_probe()
+        self._startup_hardware_done.wait(timeout=4.0)
+        if self._startup_hardware_resolved:
+            return True
+        self._show_app_alert(
+            "Đang kiểm tra máy",
+            "Chưa xác minh xong GPU NVIDIA. Hãy thử lại sau vài giây.",
+            "info",
+        )
+        return False
+
+    def _refresh_selected_elapsed(self) -> None:
+        video = self._selected_video()
+        if video and video.status == "processing" and video.started_at:
+            self.selectedElapsedChanged.emit()
+
+    def _start_startup_maintenance(self) -> None:
+        if self._shutdown_started or self._startup_maintenance_thread:
+            return
+        self._startup_maintenance_thread = threading.Thread(
+            target=self._run_startup_maintenance,
+            name="hflow-startup-maintenance",
+            daemon=True,
+        )
+        self._startup_maintenance_thread.start()
+
+    def _run_startup_maintenance(self) -> None:
+        try:
+            migrated = video_store.migrate_legacy_project_data()
+            if self._background_shutdown_event.is_set():
+                return
+            recovered = video_store.recover_interrupted_videos()
+            if self._background_shutdown_event.is_set():
+                return
+            self._migrate_legacy_project_thumbnails()
+            if self._background_shutdown_event.is_set():
+                return
+            # Index every Manual workspace in one low-priority background
+            # pass.  Opening a Download/Auto project first must not leave the
+            # next Manual editor dependent on a settings change to rediscover
+            # its active voice, music and separation artifacts.
+            for video in video_store.list_videos():
+                if self._background_shutdown_event.is_set():
+                    return
+                if getattr(video, "project_type", "single") in {"single", "batch"}:
+                    from hflow.services.video_export import adopt_legacy_render
+
+                    adopt_legacy_render(video)
+                    continue
+                if getattr(video, "project_type", "single") != "manual":
+                    continue
+                video_id = str(video.video_id or "")
+                if not video_id:
+                    continue
+                # A legacy import can fingerprint and register several large
+                # files.  Defer that one-time conversion until its workspace
+                # has painted; modern projects still get a cheap all-project
+                # cache index during startup.
+                if int(getattr(video, "manual_artifact_migration_version", 0) or 0) < 1:
+                    continue
+                with self._manual_cache_jobs_lock:
+                    if video_id in self._manual_cache_jobs:
+                        continue
+                    self._manual_cache_jobs.add(video_id)
+                changed = False
+                restored: list[str] = []
+                error = ""
+                try:
+                    from hflow.pipeline.manual_tools import (
+                        migrate_legacy_artifacts,
+                        restore_cached_variants,
+                    )
+
+                    changed = bool(migrate_legacy_artifacts(video_id))
+                    # Startup only needs to rediscover structurally complete
+                    # variants.  Full SHA-256 verification stays in the
+                    # worker that actually consumes an artifact; hashing
+                    # multi-gigabyte media here competes with the first editor
+                    # frame and makes Windows report the app as unresponsive.
+                    restored = restore_cached_variants(video_id, validate=False)
+                except (OSError, RuntimeError, ValueError) as exc:
+                    error = str(exc)
+                finally:
+                    self._manual_cache_events.put(
+                        {
+                            "video_id": video_id,
+                            "changed": changed,
+                            "restored": restored,
+                            "error": error,
+                        }
+                    )
+            self._startup_maintenance_events.put({"migrated": migrated, "recovered": recovered})
+        except Exception as exc:
+            self._startup_maintenance_events.put({"error": str(exc)})
+
+    def _drain_startup_maintenance_events(self) -> None:
+        try:
+            result = self._startup_maintenance_events.get_nowait()
+        except queue.Empty:
+            return
+        if result.get("error"):
+            self._status_message = f"Startup maintenance could not finish: {result['error']}"
+        else:
+            migrated = result.get("migrated") or []
+            recovered = result.get("recovered") or []
+            if recovered:
+                self._status_message = (
+                    f"Recovered {len(recovered)} interrupted video(s). They are paused and ready to resume."
+                )
+            elif migrated:
+                self._status_message = f"Organized {len(migrated)} video workspace(s) into their projects."
+            self.refreshVideos()
+        self.statusMessageChanged.emit()
+
+    def _schedule_manual_cache_migration(self, video_id: str) -> None:
+        """Migrate one Manual workspace after Qt has rendered the editor.
+
+        Legacy registration can checksum large media. It must never run in
+        ``selectVideo`` because that slot executes on the GUI thread.
+        """
+        normalized_id = str(video_id or "")
+        if not normalized_id or self._shutdown_started:
+            return
+        video = video_store.get_video(normalized_id)
+        needs_migration = bool(
+            video
+            and int(getattr(video, "manual_artifact_migration_version", 0) or 0) < 1
+        )
+        with self._manual_cache_jobs_lock:
+            if normalized_id in self._manual_cache_jobs or (
+                normalized_id in self._manual_cache_indexed and not needs_migration
+            ):
+                return
+            self._manual_cache_jobs.add(normalized_id)
+
+        def migrate() -> None:
+            error = ""
+            changed = False
+            restored: list[str] = []
+            try:
+                from hflow.pipeline.manual_tools import (
+                    migrate_legacy_artifacts,
+                    restore_cached_variants,
+                )
+
+                changed = bool(migrate_legacy_artifacts(normalized_id))
+                restored = restore_cached_variants(normalized_id, validate=False)
+            except (OSError, RuntimeError, ValueError) as exc:
+                error = str(exc)
+            finally:
+                self._manual_cache_events.put(
+                    {
+                        "video_id": normalized_id,
+                        "changed": changed,
+                        "restored": restored,
+                        "error": error,
+                    }
+                )
+
+        threading.Thread(
+            target=migrate,
+            name=f"manual-cache-migration-{normalized_id[:8]}",
+            daemon=True,
+        ).start()
+
+    def _drain_manual_cache_events(self) -> None:
+        changed_selected = False
+        while True:
+            try:
+                event = self._manual_cache_events.get_nowait()
+            except queue.Empty:
+                break
+            video_id = str(event.get("video_id") or "")
+            error = str(event.get("error") or "")
+            with self._manual_cache_jobs_lock:
+                self._manual_cache_jobs.discard(video_id)
+                if not error:
+                    self._manual_cache_indexed.add(video_id)
+            if error:
+                video_store.log_to_video(video_id, f"Manual cache migration deferred: {error}")
+            if video_id != str(self._selected_video_id or ""):
+                continue
+            self._selected_video_snapshot = video_store.get_video(video_id)
+            changed_selected = True
+        if changed_selected:
+            # One coalesced refresh is enough even if several worker messages
+            # arrived during the same dispatcher tick.  Do not emit the broad
+            # selectedVideoChanged signal here: it rebuilds bindings across
+            # the Manual workspace just after the user starts interacting.
+            self.manualToolStateChanged.emit("")
+            self._manual_subtitles.load(
+                str(self._selected_video_id or ""),
+                self.reviewSegments,
+            )
+            selected = self._selected_video_snapshot
+            if selected and getattr(selected, "project_type", "") == "manual":
+                try:
+                    document = editor_documents.ensure(selected)
+                    document = editor_documents.sync_subtitle_clips(
+                        selected,
+                        self._manual_subtitles.segments,
+                    )
+                    self._manual_editor_document.set_document(document)
+                    self._manual_preview_composition.refresh()
+                except (OSError, RuntimeError, TypeError, ValueError):
+                    # Cache recovery must not make the workspace unusable. The
+                    # next explicit project load retries the same reconciliation.
+                    pass
+            self.manualSubtitleDocumentChanged.emit()
+            self.refreshManualPreviewAudio()
+            self.previewMediaChanged.emit()
+
+    def _drain_model_setup_events(self) -> None:
+        changed = False
+        turbo_state_may_have_changed = False
+        while True:
+            try:
+                event = self._model_setup_events.get_nowait()
+            except queue.Empty:
+                break
+            state = event.get("state", self._model_setup_state)
+            self._model_setup_state = state
+            self._model_setup_component = event.get("component", "")
+            self._model_setup_detail = event.get("detail", "")
+            self._model_setup_completed_bytes = max(
+                0, int(event.get("completed_bytes", self._model_setup_completed_bytes))
+            )
+            self._model_setup_total_bytes = max(0, int(event.get("total_bytes", self._model_setup_total_bytes)))
+            if state == "ready":
+                turbo_state_may_have_changed = True
+            changed = True
+        if changed:
+            self.modelSetupChanged.emit()
+        if turbo_state_may_have_changed:
+            self._refresh_whisper_turbo_model_ready()
+
+    def _detect_whisper_turbo_model_ready(self) -> bool:
+        """Use the fast pack inventory; full hashes belong to install/first use."""
+
+        resource_packs = getattr(self, "_resource_packs", None)
+        if resource_packs is None:
+            return False
+        try:
+            return resource_packs.manager.status("model-whisper-turbo") in {"installed", "bundled"}
+        except (KeyError, OSError):
+            return False
+
+    def _refresh_whisper_turbo_model_ready(self) -> bool:
+        """Refresh the cached integrity result after a model or device event."""
+        ready = self._detect_whisper_turbo_model_ready()
+        if ready != self._whisper_turbo_model_ready:
+            self._whisper_turbo_model_ready = ready
+            self.speechRecognitionModelOptionsChanged.emit()
+        return ready
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.Close and not self._close_confirmed:
+            if not self._confirm_application_close():
+                event.ignore()
+                return True
+        return super().eventFilter(watched, event)
+
+    def _confirm_application_close(self) -> bool:
+        return HFlowController._runtime_device_for(self)._confirm_application_close()
+
+    def shutdown(self):
+        douyin_session = getattr(self, "_douyin_session", None)
+        if douyin_session is not None:
+            douyin_session.shutdown()
+        HFlowController.cancelBatchVoiceRecording(self)
+        exporter = getattr(self, "_video_exports", None)
+        if exporter is not None:
+            exporter.shutdown()
+        smart_warmup = getattr(self, "_smart_warmup", None)
+        if smart_warmup is not None:
+            smart_warmup.stop()
+        resource_packs = getattr(self, "_resource_packs", None)
+        if resource_packs is not None:
+            resource_packs.shutdown()
+        audio = getattr(self, "_manual_audio", None)
+        if audio is not None:
+            audio.close()
+        overlay = getattr(self, "_subtitle_overlay", None)
+        if overlay is not None:
+            overlay.close()
+        sample_overlay = getattr(self, "_subtitle_sample_overlay", None)
+        if sample_overlay is not None:
+            sample_overlay.close()
+        subtitles = getattr(self, "_manual_subtitles", None)
+        if subtitles is not None:
+            subtitles.close()
+        editor_document = getattr(self, "_manual_editor_document", None)
+        if editor_document is not None:
+            editor_document.close()
+        composition = getattr(self, "_manual_preview_composition", None)
+        if composition is not None:
+            composition.close()
+        editor_preview = getattr(self, "_editor_preview", None)
+        if editor_preview is not None:
+            editor_preview.release()
+        # Smart warm-up owns all resident model processes in the current
+        # architecture. Keep the direct cleanup only for legacy controller
+        # doubles that do not construct that owner.
+        if smart_warmup is None:
+            from hflow.pipeline.omnivoice_tts import clear_runtime as clear_omnivoice_runtime
+
+            clear_omnivoice_runtime()
+        publisher = getattr(self, "_tiktok_publisher", None)
+        if publisher is not None:
+            publisher.shutdown()
+        return HFlowController._runtime_device_for(self).shutdown()
+
+    def _warm_models(self):
+        return HFlowController._runtime_device_for(self)._warm_models()
+
+    def _warm_models_at_startup(self):
+        return HFlowController._runtime_device_for(self)._warm_models_at_startup()
+
+    def _warm_models_unlocked(self):
+        return HFlowController._runtime_device_for(self)._warm_models_unlocked()
+
+    def _switch_processing_device(self, preference: str):
+        return HFlowController._runtime_device_for(self)._switch_processing_device(preference)
+
+    def _pipeline_is_active(self) -> bool:
+        return HFlowController._runtime_device_for(self)._pipeline_is_active()
+
+    def _activate_pending_device_for_next_video(self, video_id: str) -> None:
+        return HFlowController._runtime_device_for(self)._activate_pending_device_for_next_video(video_id)
+
+    def _refresh_live_hardware(self):
+        return HFlowController._runtime_device_for(self)._refresh_live_hardware()
+
+    @Slot(bool)
+    def setHardwareTelemetryActive(self, active: bool):
+        return HFlowController._runtime_device_for(self).setHardwareTelemetryActive(active)
+
+    def _apply_detected_processing_device(self, device: str):
+        return HFlowController._runtime_device_for(self)._apply_detected_processing_device(device)
+
+    def _set_warmup_status(self, detail: str):
+        return HFlowController._runtime_device_for(self)._set_warmup_status(detail)
+
+    @Slot()
+    def retryModelSetup(self):
+        return HFlowController._runtime_device_for(self).retryModelSetup()
+
+    @Slot()
+    def cancelModelSetup(self):
+        return HFlowController._runtime_device_for(self).cancelModelSetup()
+
+    @Property(QObject, constant=True)
+    def videoModel(self):
+        return self.videos
+
+    @Property(QObject, constant=True)
+    def projectModel(self):
+        return self.projects
+
+    @Property(QObject, constant=True)
+    def projectBrowserModel(self):
+        return self.project_browser
+
+    @Property(QObject, constant=True)
+    def activityEventModel(self):
+        return self.activity_events
+
+    @Property(QObject, constant=True)
+    def singleProjectModel(self):
+        return self.single_projects
+
+    @Property(QObject, constant=True)
+    def manualProjectModel(self):
+        return self.manual_projects
+
+    @Property(QObject, constant=True)
+    def batchProjectModel(self):
+        return self.batch_projects
+
+    @Property(QObject, constant=True)
+    def downloadProjectModel(self):
+        return self.download_projects
+
+    @Property(QObject, constant=True)
+    def publishProjectModel(self):
+        return self.publish_projects
+
+    @Property(QObject, constant=True)
+    def tiktokPublishModel(self):
+        return self.tiktok_publish_items
+
+    @Property(QObject, constant=True)
+    def tiktokProjectSourceModel(self):
+        return self.tiktok_project_sources
+
+    @Property(QObject, constant=True)
+    def downloadProjectSourceModel(self):
+        return self.download_project_sources
+
+    @Property(int, notify=downloadProjectSourcesChanged)
+    def downloadProjectSourceSelectedCount(self):
+        return self.download_project_sources.selected_count
+
+    @Property(bool, notify=socialPublishStateChanged)
+    def tiktokPublishBusy(self):
+        return self._tiktok_publisher.busy
+
+    @Property(bool, notify=zernioAccountsChanged)
+    def zernioAccountSyncing(self):
+        return self._tiktok_publisher.account_syncing
+
+    @Property(str, notify=socialPublishStateChanged)
+    def tiktokPublishStatus(self):
+        return self._tiktok_publisher.status
+
+    @Property(str, notify=socialPublishStateChanged)
+    def tiktokDefaultCaption(self):
+        return self._tiktok_publisher.default_caption
+
+    @Property(str, notify=socialPublishStateChanged)
+    def tiktokDefaultHashtags(self):
+        return self._tiktok_publisher.default_hashtags
+
+    @Property(int, notify=socialPublishStateChanged)
+    def tiktokPublishCount(self):
+        return self._tiktok_publisher.count
+
+    @Property(int, notify=socialPublishStateChanged)
+    def tiktokPostedCount(self):
+        return self._tiktok_publisher.posted_count
+
+    @Property(int, notify=socialPublishStateChanged)
+    def tiktokWaitingCount(self):
+        return self._tiktok_publisher.waiting_count
+
+    @Property(int, notify=socialPublishStateChanged)
+    def tiktokProjectSourceSelectedCount(self):
+        return self._tiktok_publisher.project_source_selected_count
+
+    @Property(bool, notify=zernioAccountsChanged)
+    def zernioApiKeyConfigured(self):
+        return self._tiktok_publisher.api_key_configured
+
+    @Property("QVariantList", notify=zernioAccountsChanged)
+    def zernioApiKeys(self):
+        return self._tiktok_publisher.api_keys
+
+    @Property(bool, notify=zernioAccountsChanged)
+    def zernioApiKeyVerified(self):
+        return self._tiktok_publisher.api_key_verified
+
+    @Property(bool, notify=zernioAccountsChanged)
+    def zernioCredentialBusy(self):
+        return self._tiktok_publisher.credential_busy
+
+    @Property(str, notify=zernioAccountsChanged)
+    def zernioCredentialResult(self):
+        return self._tiktok_publisher.credential_result
+
+    @Property(int, notify=zernioAccountsChanged)
+    def zernioConnectedAccountCount(self):
+        return self._tiktok_publisher.connected_account_count
+
+    @Property(int, notify=zernioAccountsChanged)
+    def zernioProfileCount(self):
+        return self._tiktok_publisher.profile_count
+
+    @Property(str, notify=zernioAccountsChanged)
+    def zernioConnectionProfileName(self):
+        return self._tiktok_publisher.connection_profile_name
+
+    @Property(bool, notify=zernioAccountsChanged)
+    def zernioOauthSyncPending(self):
+        return self._tiktok_publisher.oauth_sync_pending
+
+    @Property(bool, notify=zernioAccountsChanged)
+    def zernioAccountReady(self):
+        return self._tiktok_publisher.account_ready
+
+    @Property(bool, notify=zernioAccountsChanged)
+    def zernioCanPostMore(self):
+        return self._tiktok_publisher.can_post_more
+
+    @Property("QStringList", notify=zernioAccountsChanged)
+    def zernioTikTokAccounts(self):
+        return self._tiktok_publisher.account_names
+
+    @Property("QStringList", notify=zernioAccountsChanged)
+    def zernioConnections(self):
+        return self._tiktok_publisher.account_names
+
+    @Property("QStringList", notify=zernioAccountsChanged)
+    def zernioConnectionPlatforms(self):
+        return self._tiktok_publisher.account_platforms
+
+    @Property(str, notify=zernioAccountsChanged)
+    def zernioSelectedPlatform(self):
+        return self._tiktok_publisher.selected_platform
+
+    @Property(str, notify=zernioAccountsChanged)
+    def zernioSelectedPlatformLabel(self):
+        return self._tiktok_publisher.selected_platform_label
+
+    @Property(int, notify=zernioAccountsChanged)
+    def zernioSelectedAccountIndex(self):
+        return self._tiktok_publisher.selected_account_index
+
+    @Property(str, notify=zernioAccountsChanged)
+    def zernioSelectedAccountName(self):
+        return self._tiktok_publisher.selected_account_name
+
+    @Property("QStringList", notify=zernioPostOptionsChanged)
+    def zernioPrivacyLevels(self):
+        return self._tiktok_publisher.privacy_levels
+
+    @Property(str, notify=zernioPostOptionsChanged)
+    def zernioPrivacyLevel(self):
+        return self._tiktok_publisher.privacy_level
+
+    @Property(bool, notify=zernioPostOptionsChanged)
+    def zernioPublishNow(self):
+        return self._tiktok_publisher.publish_now
+
+    @Property(bool, notify=zernioPostOptionsChanged)
+    def zernioAllowComment(self):
+        return self._tiktok_publisher.allow_comment
+
+    @Property(bool, notify=zernioPostOptionsChanged)
+    def zernioAllowDuet(self):
+        return self._tiktok_publisher.allow_duet
+
+    @Property(bool, notify=zernioPostOptionsChanged)
+    def zernioAllowStitch(self):
+        return self._tiktok_publisher.allow_stitch
+
+    @Property(bool, notify=zernioPostOptionsChanged)
+    def zernioShareToFeed(self):
+        return self._tiktok_publisher.share_to_feed
+
+    @Property(bool, notify=zernioPostOptionsChanged)
+    def zernioAiGenerated(self):
+        return self._tiktok_publisher.ai_generated
+
+    @Property(str, notify=zernioPostOptionsChanged)
+    def zernioFirstComment(self):
+        return self._tiktok_publisher.first_comment
+
+    @Property(bool, notify=zernioPostOptionsChanged)
+    def zernioCommentAvailable(self):
+        return self._tiktok_publisher.comment_available
+
+    @Property(bool, notify=zernioPostOptionsChanged)
+    def zernioDuetAvailable(self):
+        return self._tiktok_publisher.duet_available
+
+    @Property(bool, notify=zernioPostOptionsChanged)
+    def zernioStitchAvailable(self):
+        return self._tiktok_publisher.stitch_available
+
+    @Property(bool, notify=socialPublishStateChanged)
+    def zernioPublishConsentConfirmed(self):
+        return self._tiktok_publisher.consent_confirmed
+
+    @Property(QObject, constant=True)
+    def channelImporter(self):
+        return self._channel_importer
+
+    @Property(QObject, constant=True)
+    def mediaDownloader(self):
+        return self._media_downloader
+
+    @Property(bool, notify=mediaImportChanged)
+    def mediaImportBusy(self):
+        return self._media_import_busy
+
+    @Property(int, notify=mediaImportChanged)
+    def mediaImportTotal(self):
+        return self._media_import_total
+
+    @Property(int, notify=mediaImportChanged)
+    def mediaImportCompleted(self):
+        return self._media_import_completed
+
+    @Property(str, notify=mediaImportChanged)
+    def mediaImportStatus(self):
+        return self._media_import_status
+
+    @Property(bool, notify=channelImportChanged)
+    def hasChannelImportSession(self):
+        return bool(self._channel_importer.sessionId)
+
+    @Property(bool, notify=channelImportChanged)
+    def channelImportBusy(self):
+        return self._channel_importer.busy
+
+    @Property(int, notify=channelImportChanged)
+    def channelImportProgress(self):
+        return self._channel_importer.progress
+
+    @Property(str, notify=channelImportChanged)
+    def channelImportStatus(self):
+        return self._channel_importer.status
+
+    @Property(str, notify=channelImportChanged)
+    def channelImportName(self):
+        return self._channel_importer.channelName
+
+    @Property(int, notify=channelImportChanged)
+    def channelImportCandidateCount(self):
+        return self._channel_importer.candidateCount
+
+    @Property(int, notify=channelImportChanged)
+    def channelImportImportedCount(self):
+        return self._channel_importer.importedCount
+
+    @Property(int, notify=channelImportChanged)
+    def channelImportFailedCount(self):
+        return self._channel_importer.failedCount
+
+    @Property(QObject, constant=True)
+    def batchVideoModel(self):
+        return self.batch_videos
+
+    @Property(bool, notify=batchChanged)
+    def isBatchRunning(self):
+        return any(self._processing_queue.contains(video_id) for video_id in self._batch_video_ids)
+
+    @Property(bool, notify=batchChanged)
+    def isBatchPausing(self):
+        return bool(self._batch_stop_requested and self.isBatchRunning)
+
+    @Property(int, notify=batchChanged)
+    def batchCount(self):
+        return len(self._batch_video_ids)
+
+    def _batch_catalog_videos(self):
+        catalog = getattr(self, "_catalog_videos", {})
+        videos = []
+        for video_id in self._batch_video_ids:
+            video = catalog.get(video_id)
+            if video is None:
+                video = video_store.get_video(video_id)
+            if video is not None:
+                videos.append(video)
+        return videos
+
+    @Property(int, notify=batchChanged)
+    def batchCompletedCount(self):
+        completed_states = {"done"}
+        videos = self._batch_catalog_videos()
+        return sum(1 for video in videos if video and video.status in completed_states)
+
+    @Property(int, notify=batchChanged)
+    def batchPendingCount(self):
+        videos = self._batch_catalog_videos()
+        return sum(
+            1
+            for video in videos
+            if video and video.status == "pending" and not self._processing_queue.contains(video.video_id)
+        )
+
+    @Property(int, notify=batchChanged)
+    def batchPausedCount(self):
+        videos = self._batch_catalog_videos()
+        return sum(1 for video in videos if video and video.status == "paused")
+
+    @Property(int, notify=batchChanged)
+    def batchProgress(self):
+        videos = self._batch_catalog_videos()
+        return round(sum(100 if video.status in {"done", "failed", "cancelled"} else video.progress
+                         for video in videos) / len(videos)) if videos else 0
+
+    @Property(str, notify=batchChanged)
+    def batchTargetLanguageLabel(self):
+        if not self._batch_video_ids:
+            return self._language_label(self._target_language)
+        videos = self._batch_catalog_videos()
+        languages = {video.target_language for video in videos if video}
+        if len(languages) > 1:
+            return "Cài đặt khác nhau" if self._settings_language == "vi" else "Mixed settings"
+        return self._language_label(next(iter(languages))) if languages else self._language_label(self._target_language)
+
+    @Property(str, notify=videoPathChanged)
+    def videoPath(self):
+        return self._video_path
+
+    @videoPath.setter
+    def videoPath(self, value):
+        self._set_video_path(value)
+
+    def _set_video_path(self, value: str, *, refresh_thumbnail: bool = False) -> None:
+        path_changed = self._video_path != value
+        if not path_changed and not refresh_thumbnail:
+            return
+        self._video_path = value
+        thumbnail_path = (
+            self._video_thumbnail_path(self._selected_video_id)
+            if self._selected_video_id
+            else self._draft_thumbnail_path()
+        )
+        self._video_thumbnail_source = self._create_video_thumbnail(value, thumbnail_path)
+        self.videoPathChanged.emit()
+        self.videoThumbnailChanged.emit()
+
+    @Property(str, notify=videoThumbnailChanged)
+    def videoThumbnailSource(self):
+        return self._video_thumbnail_source
+
+    @Property("QVariantList", notify=languageOptionsChanged)
+    def targetLanguageOptions(self):
+        return [
+            {
+                "code": code,
+                "englishName": english_name,
+                "nativeName": native_name,
+                "label": self._language_label(code),
+                "search": f"{code} {english_name} {native_name}".lower(),
+            }
+            for code, english_name, native_name in POPULAR_TARGET_LANGUAGES
+        ]
+
+    @Property(str, notify=targetLanguageChanged)
+    def targetLanguage(self):
+        return self._target_language
+
+    @targetLanguage.setter
+    def targetLanguage(self, value):
+        language = str(value or "vi")
+        language_changed = self._target_language != language
+        current_provider = getattr(self, "_tts_provider", "omnivoice")
+        normalized_provider = HFlowController._normalized_tts_provider(language, current_provider)
+        manual = getattr(self, "_project_type", "single") == "manual"
+        voice_language = HFlowController._selected_voice_language(self) if manual else language
+        if not manual and not HFlowController.validateTtsProviderForLanguage(self, language, normalized_provider):
+            return
+        provider_changed = current_provider != normalized_provider
+        normalized_voice = self._normalized_voice_for_language(voice_language, self._tts_voice, normalized_provider)
+        voice_changed = self._tts_voice != normalized_voice
+        if not language_changed and not provider_changed and not voice_changed:
+            return
+
+        self._target_language = language
+        self._tts_provider = normalized_provider
+        self._tts_voice = normalized_voice
+        # A preview includes a rendered narration file, so it is invalid as
+        # soon as its language, provider, or selected voice changes.
+        preview = getattr(self, "_audio_preview", None)
+        if preview is not None:
+            preview.invalidate()
+        if language_changed:
+            self.targetLanguageChanged.emit()
+            self.languageOptionsChanged.emit()
+        if voice_changed:
+            self.ttsVoiceChanged.emit()
+        if provider_changed:
+            signal = getattr(self, "ttsProviderChanged", None)
+            if signal:
+                signal.emit()
+        signal = getattr(self, "ttsProviderOptionsChanged", None)
+        if signal:
+            signal.emit()
+        # The option model and selected index depend on both language and voice.
+        self.ttsVoiceOptionsChanged.emit()
+
+    def _project_gpu_available(self) -> bool:
+        if getattr(self, "_settings_processing_device", "cpu") != "gpu":
+            return False
+        capabilities = getattr(self, "_hardware_capabilities", None)
+        if capabilities is not None and getattr(self, "_startup_hardware_resolved", True):
+            return validate_processing_device("gpu", capabilities)[0]
+        return True  # The asynchronous probe has not confirmed the adapter yet.
+
+    @staticmethod
+    def _heavy_gpu_models_available(host) -> bool:
+        capabilities = getattr(host, "_hardware_capabilities", None)
+        return HFlowController._project_gpu_available(host) and (
+            capabilities is None or not getattr(host, "_startup_hardware_resolved", True)
+            or getattr(
+                capabilities,
+                "heavy_gpu_models_supported",
+                getattr(capabilities, "total_vram_bytes", 0) >= 5 * 1024**3,
+            )
+        )
+
+    @Property(bool, notify=ttsProviderOptionsChanged)
+    def gpuModelsAvailable(self):
+        return HFlowController._heavy_gpu_models_available(self)
+
+    @Property(str, notify=speechRecognitionModelChanged)
+    def speechRecognitionModel(self):
+        return self._speech_recognition_model
+
+    @speechRecognitionModel.setter
+    def speechRecognitionModel(self, value):
+        requested = str(value or "small").strip().lower()
+        if requested not in {"small", "small-cpu", "small-gpu", "large-v3-turbo"}:
+            requested = "small"
+        if requested in {"small-gpu", "large-v3-turbo"} and getattr(self, "_settings_processing_device", "cpu") != "gpu":
+            self._show_app_alert("Đang dùng chế độ CPU", "Chọn Whisper CPU hoặc chuyển sang GPU trong Cài đặt → Chung.", "warning")
+            return
+        if requested in {"small-gpu", "large-v3-turbo"} and not self._ensure_hardware_ready_for_action():
+            return
+        capabilities = getattr(self, "_hardware_capabilities", None)
+        gpu_available = HFlowController._project_gpu_available(self)
+        if requested in {"small-gpu", "large-v3-turbo"} and not gpu_available:
+            reason = validate_processing_device("gpu", capabilities)[1] if capabilities else "GPU NVIDIA chưa khả dụng."
+            self._show_app_alert("Máy không đáp ứng", reason, "warning")
+            return
+        if requested == "large-v3-turbo" and not HFlowController._heavy_gpu_models_available(self):
+            self._show_app_alert("Máy không đáp ứng", "Card 4 GB dùng Whisper Small trên GPU.", "warning")
+            return
+        if requested == "large-v3-turbo" and not getattr(self, "_whisper_turbo_model_ready", False):
+            self._show_app_alert(
+                "Thiếu Whisper Turbo",
+                "Hãy cài Whisper Turbo trong Gói tài nguyên trước khi nhận dạng.",
+                "warning",
+            )
+        resource_packs = getattr(self, "_resource_packs", None)
+        if requested in {"small", "small-cpu", "small-gpu"} and resource_packs is not None:
+            if resource_packs.manager.status("model-whisper-small") not in {"installed", "bundled"}:
+                self._show_app_alert(
+                    "Thiếu Whisper Small", "Hãy cài Whisper Small trong Gói tài nguyên trước khi nhận dạng.", "warning"
+                )
+        if self._speech_recognition_model != requested:
+            self._speech_recognition_model = requested
+            self.speechRecognitionModelChanged.emit()
+
+    @Property("QVariantList", notify=speechRecognitionModelOptionsChanged)
+    def speechRecognitionModelOptions(self):
+        # The cheap startup probe deliberately avoids importing Torch and
+        # therefore reports CUDA as unavailable.  This property is evaluated
+        # after the asynchronous hardware probe as well, so use its cached,
+        # authoritative result instead of permanently disabling Turbo.
+        gpu_available = HFlowController._project_gpu_available(self)
+        turbo_available = HFlowController._heavy_gpu_models_available(self)
+        if getattr(self, "_settings_language", "en") == "vi":
+            return [
+                {"value": "small-cpu", "label": "Whisper Small · CPU", "available": True},
+                {"value": "small-gpu", "label": "Whisper Small · GPU", "available": gpu_available},
+                {
+                    "value": "large-v3-turbo",
+                    "label": "Whisper Turbo · GPU NVIDIA",
+                    "available": turbo_available,
+                },
+            ]
+        return [
+            {"value": "small-cpu", "label": "Whisper Small · CPU", "available": True},
+            {"value": "small-gpu", "label": "Whisper Small · GPU", "available": gpu_available},
+            {
+                "value": "large-v3-turbo",
+                "label": "Whisper Turbo · NVIDIA GPU",
+                "available": turbo_available,
+            },
+        ]
+
+    @Property(int, notify=speechRecognitionModelChanged)
+    def speechRecognitionModelIndex(self):
+        if self._speech_recognition_model == "large-v3-turbo":
+            return 2
+        return 1 if self._speech_recognition_model == "small-gpu" or (
+            self._speech_recognition_model == "small" and self._settings_processing_device == "gpu"
+        ) else 0
+
+    @Property(str, notify=languageOptionsChanged)
+    def targetLanguageLabel(self):
+        return self._language_label(self._target_language)
+
+    @Property(str, notify=ttsProviderChanged)
+    def ttsProvider(self):
+        return self._tts_provider
+
+    @ttsProvider.setter
+    def ttsProvider(self, value):
+        language = HFlowController._selected_voice_language(self)
+        provider = self._normalized_tts_provider(language, value)
+        if not HFlowController.validateTtsProviderForLanguage(self, language, provider):
+            return
+        if provider.endswith("-gpu") and getattr(self, "_settings_processing_device", "cpu") != "gpu":
+            self._show_app_alert("Đang dùng chế độ CPU", "Chọn backend CPU hoặc chuyển sang GPU trong Cài đặt → Chung.", "warning")
+            return
+        if provider.endswith("-gpu"):
+            if not self._ensure_hardware_ready_for_action():
+                return
+            if not HFlowController._project_gpu_available(self):
+                self._show_app_alert("Máy không đáp ứng", "Backend GPU cần GPU NVIDIA tương thích.", "warning")
+                return
+        normalized_voice = self._normalized_voice_for_language(language, self._tts_voice, provider)
+        provider_changed = self._tts_provider != provider
+        voice_changed = self._tts_voice != normalized_voice
+        if not provider_changed and not voice_changed:
+            return
+        self._tts_provider = provider
+        self._tts_voice = normalized_voice
+        speaker_changed = not provider.startswith(("omnivoice", "vieneu")) and getattr(self, "_speaker_mode", "single") != "single"
+        if speaker_changed:
+            self._speaker_mode = "single"
+        preview = getattr(self, "_audio_preview", None)
+        if preview is not None:
+            preview.invalidate()
+        if provider_changed:
+            self.ttsProviderChanged.emit()
+        if voice_changed:
+            self.ttsVoiceChanged.emit()
+        if speaker_changed:
+            self.speakerModeChanged.emit()
+        self.ttsProviderOptionsChanged.emit()
+        self.ttsVoiceOptionsChanged.emit()
+
+    @Property("QVariantList", notify=ttsProviderOptionsChanged)
+    def ttsProviderOptions(self):
+        return self._tts_provider_options_for_language(HFlowController._selected_voice_language(self))
+
+    def _selected_voice_language(self):
+        if getattr(self, "_project_type", "single") != "manual":
+            return self._target_language
+        from hflow.services.subtitle_language import manual_subtitle_language
+
+        video = self._selected_video()
+        if not video:
+            return "vi"
+        model = getattr(self, "_manual_subtitles", None)
+        segments = model.segments if model is not None and model.video_id == video.video_id else None
+        return manual_subtitle_language(video, segments)
+
+    @Property(str, notify=manualSubtitleDocumentChanged)
+    def manualVoiceLanguage(self):
+        return HFlowController._selected_voice_language(self)
+
+    @Slot(str, result="QVariantList")
+    def ttsProviderOptionsForLanguage(self, language_code: str):
+        return self._tts_provider_options_for_language(str(language_code or "vi"))
+
+    @Slot(str, str, result=bool)
+    def validateTtsProviderForLanguage(self, language_code, provider):
+        from hflow.core.vieneu_voices import unsupported_language_notice
+        from hflow.services.subtitle_import import has_import, voice_notice
+
+        video = self._selected_video() if callable(getattr(self, "_selected_video", None)) else None
+        if has_import(video):
+            from hflow.pipeline.manual_tools import _load_segments
+
+            notice = voice_notice(video, provider, _load_segments(video, validate=False), getattr(self, "_settings_language", "vi"))
+            if notice:
+                HFlowController._show_app_alert(self, *notice, "warning")
+                return False
+
+        notice = unsupported_language_notice(provider, language_code, getattr(self, "_settings_language", "vi"))
+        if notice:
+            HFlowController._show_app_alert(self, *notice, "warning")
+            return False
+        return True
+
+    @Slot()
+    def enableInAppAlerts(self) -> None:
+        QMessageBox.set_alert_handler(self._show_app_alert)
+        QMessageBox.set_question_handler(self._show_app_question)
+
+    @Slot(bool)
+    def respondToAppConfirmation(self, accepted: bool) -> None:
+        if self._confirmation_loop is None or getattr(self, "_confirmation_responded", False):
+            return
+        self._confirmation_accepted = bool(accepted)
+        self._confirmation_responded = True
+        if self._confirmation_loop is not None and self._confirmation_loop.isRunning():
+            self._confirmation_loop.quit()
+
+    @Slot(str, str, str)
+    def showAppAlert(self, title: str, message: str, severity: str = "information") -> None:
+        self._show_app_alert(title, message, severity)
+
+    @Slot(str, str, str, str, result=bool)
+    def showProjectSessionAlertOnce(self, notice_key: str, title: str, message: str, severity: str) -> bool:
+        if not notice_key:
+            return False
+        context = str(self._selected_project_key or self._selected_video_id or "project-setup")
+        key = (context, notice_key)
+        if key in self._project_session_notices:
+            return False
+        self._project_session_notices.add(key)
+        self._show_app_alert(title, message, severity)
+        return True
+
+    @Property(int, notify=ttsProviderOptionsChanged)
+    def ttsProviderIndex(self):
+        for index, item in enumerate(self.ttsProviderOptions):
+            if item["provider"] == self._tts_provider:
+                return index
+        return 0
+
+    @Property(str, notify=ttsVoiceChanged)
+    def ttsVoice(self):
+        return self._tts_voice
+
+    @ttsVoice.setter
+    def ttsVoice(self, value):
+        normalized_voice = self._normalized_voice_for_language(
+            HFlowController._selected_voice_language(self), value, getattr(self, "_tts_provider", "omnivoice")
+        )
+        if self._tts_voice != normalized_voice:
+            self._tts_voice = normalized_voice
+            preview = getattr(self, "_audio_preview", None)
+            if preview is not None:
+                preview.invalidate()
+            self.ttsVoiceChanged.emit()
+            self.ttsVoiceOptionsChanged.emit()
+
+    @Property(str, notify=speakerModeChanged)
+    def speakerMode(self):
+        return self._speaker_mode
+
+    @speakerMode.setter
+    def speakerMode(self, value):
+        normalized = (
+            "multiple"
+            if self._tts_provider.startswith(("omnivoice", "vieneu"))
+            and str(value or "").strip().lower() == "multiple"
+            else "single"
+        )
+        if self._speaker_mode != normalized:
+            self._speaker_mode = normalized
+            self.speakerModeChanged.emit()
+
+    @Property("QVariantList", notify=ttsVoiceOptionsChanged)
+    def ttsVoiceOptions(self):
+        language = HFlowController._selected_voice_language(self)
+        options = self._voice_options_for_language(language, self._tts_provider)
+        # Selecting the clone entry opens its setup dialog.  Do not disable the
+        # entry before a sample exists, otherwise the user has no path to add
+        # an authorised reference recording.
+        return [
+            {
+                **item,
+                "available": True,
+                "previewAvailable": self._audio_preview.has_voice_sample(
+                    self._tts_provider,
+                    item.get("voice", ""),
+                    language,
+                    selected_video_id=str(self._selected_video_id or ""),
+                ),
+            }
+            for item in options
+        ]
+
+    @Property(str, notify=selectedVideoChanged)
+    def voiceCloneReferencePath(self):
+        video = self._selected_video()
+        path = str(((video.files if video else {}) or {}).get("voice_reference") or "")
+        return path if path and os.path.isfile(path) else ""
+
+    @Property(str, notify=selectedVideoChanged)
+    def voiceCloneReferenceTranscript(self):
+        video = self._selected_video()
+        return str(((video.files if video else {}) or {}).get("voice_reference_transcript") or "")
+
+    @Slot(str, result="QVariantList")
+    def voiceOptionsForLanguage(self, language_code: str):
+        language = str(language_code or "vi")
+        return [
+            {
+                **item,
+                "available": item.get("voice") not in {"omnivoice:clone", "vieneu:clone"},
+                "previewAvailable": self._audio_preview.has_voice_sample(
+                    "omnivoice", item.get("voice", ""), language
+                ),
+            }
+            for item in self._voice_options_for_language(language, "omnivoice")
+        ]
+
+    @Slot(str, str, result="QVariantList")
+    def voiceOptionsForLanguageAndProvider(self, language_code: str, provider: str):
+        options = self._voice_options_for_language(
+            str(language_code or "vi"),
+            self._normalized_tts_provider(language_code, provider),
+        )
+        # This method supplies the project-wide and batch editors. Voice
+        # cloning is deliberately per-video because every source needs its own
+        # authorised reference recording. The selected-video property above
+        # enables it only when that file actually exists.
+        effective_provider = self._normalized_tts_provider(language_code, provider)
+        return [
+            {
+                **item,
+                "available": item.get("voice") not in {"omnivoice:clone", "vieneu:clone"},
+                "previewAvailable": self._audio_preview.has_voice_sample(
+                    effective_provider, item.get("voice", ""), str(language_code or "vi")
+                ),
+            }
+            for item in options
+        ]
+
+    @Slot(str, result="QVariantList")
+    def manualVoiceOptionsForProvider(self, provider: str):
+        """Return voice choices for the Manual dialog without mutating its draft."""
+        language = HFlowController._selected_voice_language(self)
+        effective_provider = self._normalized_tts_provider(language, provider)
+        reference_available = bool(self.voiceCloneReferencePath)
+        return [
+            {
+                **item,
+                "available": (
+                    item.get("voice") not in {"omnivoice:clone", "vieneu:clone"} or reference_available
+                ),
+                "previewAvailable": self._audio_preview.has_voice_sample(
+                    effective_provider,
+                    item.get("voice", ""),
+                    language,
+                    selected_video_id=str(self._selected_video_id or ""),
+                ),
+            }
+            for item in self._voice_options_for_language(
+                language,
+                effective_provider,
+            )
+        ]
+
+    @Property(int, notify=ttsVoiceOptionsChanged)
+    def ttsVoiceIndex(self):
+        voices = self._voice_options_for_language(HFlowController._selected_voice_language(self), self._tts_provider)
+        for index, item in enumerate(voices):
+            if item["voice"] == self._tts_voice:
+                return index
+        return 0
+
+    @Property(str, notify=outputFormatChanged)
+    def outputFormat(self):
+        return getattr(self, "_output_format", "keep_ratio")
+
+    @outputFormat.setter
+    def outputFormat(self, value):
+        if value not in {"keep_ratio", "blur_background_9_16", "tiktok_9_16_crop"}:
+            return
+        if self.outputFormat != value:
+            self._output_format = value
+            self.outputFormatChanged.emit()
+
+    @Property(float, notify=outputSpeedChanged)
+    def outputSpeed(self):
+        return getattr(self, "_output_speed", 1.0)
+
+    @outputSpeed.setter
+    def outputSpeed(self, value):
+        value = VideoConfig(output_speed=value).output_speed
+        if self.outputSpeed != value:
+            self._output_speed = value
+            self.outputSpeedChanged.emit()
+
+    @Slot(float, result=bool)
+    def setManualOutputSpeed(self, value, record_history=True):
+        value = VideoConfig(output_speed=value).output_speed
+        video = video_store.get_video(str(self._selected_video_id or ""))
+        if (not video or video.project_type != "manual"
+                or self._processing_queue.contains(video.video_id)
+                or getattr(self, "videoExportBusy", False)
+                or str(self._settings_owner_video_id or "") != video.video_id):
+            return False
+        before = float(getattr(video, "output_speed", 1.0))
+        if before != value:
+            video_store.update_video(video.video_id, output_speed=value)
+            manual_artifacts.deactivate(video.video_id, {"export"})
+            if record_history:
+                self._record_video_settings_change(video.video_id, {"output_speed": before},
+                                                   {"output_speed": value}, "Tốc độ đầu ra")
+        self._selected_video_snapshot = video_store.get_video(video.video_id)
+        self.outputSpeed = value
+        draft = self._manual_settings_drafts.get(video.video_id)
+        if draft is not None:
+            self._manual_settings_drafts[video.video_id] = draft.model_copy(update={"output_speed": value})
+        # No selectedVideoChanged, settingsCommitted, subtitle/audio reload or
+        # preview scheduling: output speed changes only the next export.
+        return True
+
+    @Property(bool, notify=enableAudioSeparationChanged)
+    def enableAudioSeparation(self):
+        return self._enable_audio_separation
+
+    @enableAudioSeparation.setter
+    def enableAudioSeparation(self, value):
+        if self._enable_audio_separation != value:
+            self._enable_audio_separation = value
+            self.enableAudioSeparationChanged.emit()
+
+    @Property(int, notify=originalVolumeChanged)
+    def originalVolume(self):
+        return self._original_volume
+
+    @originalVolume.setter
+    def originalVolume(self, value):
+        value = max(0, min(100, int(value)))
+        if self._original_volume != value:
+            self._original_volume = value
+            self.originalVolumeChanged.emit()
+
+    @Property(int, notify=backgroundMusicVolumeChanged)
+    def backgroundMusicVolume(self):
+        return self._background_music_volume
+
+    @backgroundMusicVolume.setter
+    def backgroundMusicVolume(self, value):
+        value = max(0, min(100, int(value)))
+        if self._background_music_volume != value:
+            self._background_music_volume = value
+            self.backgroundMusicVolumeChanged.emit()
+
+    @Property(int, notify=ttsVolumeChanged)
+    def ttsVolume(self):
+        return self._tts_volume
+
+    @ttsVolume.setter
+    def ttsVolume(self, value):
+        value = max(0, min(100, int(value)))
+        if self._tts_volume != value:
+            self._tts_volume = value
+            self.ttsVolumeChanged.emit()
+
+    @Property(bool, notify=audioMixOptionsChanged)
+    def backgroundMusicLoop(self):
+        return self._background_music_loop
+
+    @backgroundMusicLoop.setter
+    def backgroundMusicLoop(self, value):
+        if self._background_music_loop != bool(value):
+            self._background_music_loop = bool(value)
+            self.audioMixOptionsChanged.emit()
+
+    @Property(bool, notify=audioMixOptionsChanged)
+    def audioDuckingEnabled(self):
+        return self._audio_ducking_enabled
+
+    @audioDuckingEnabled.setter
+    def audioDuckingEnabled(self, value):
+        if self._audio_ducking_enabled != bool(value):
+            self._audio_ducking_enabled = bool(value)
+            self.audioMixOptionsChanged.emit()
+
+    @Property(float, notify=audioMixOptionsChanged)
+    def audioDuckingReductionDb(self):
+        return self._audio_ducking_reduction_db
+
+    @audioDuckingReductionDb.setter
+    def audioDuckingReductionDb(self, value):
+        value = max(-36.0, min(0.0, float(value)))
+        if self._audio_ducking_reduction_db != value:
+            self._audio_ducking_reduction_db = value
+            self.audioMixOptionsChanged.emit()
+
+    @Property(str, notify=watermarkTextChanged)
+    def watermarkText(self):
+        return self._watermark_text
+
+    @watermarkText.setter
+    def watermarkText(self, value):
+        normalized = " ".join(str(value or "").split())[:80]
+        if self._watermark_text != normalized:
+            self._watermark_text = normalized
+            self.watermarkTextChanged.emit()
+
+    @Property(int, notify=watermarkScalePercentChanged)
+    def watermarkScalePercent(self):
+        return self._watermark_scale_percent
+
+    @watermarkScalePercent.setter
+    def watermarkScalePercent(self, value):
+        normalized = max(25, min(300, int(value)))
+        if self._watermark_scale_percent != normalized:
+            self._watermark_scale_percent = normalized
+            self.watermarkScalePercentChanged.emit()
+
+    @Property(str, notify=watermarkKindChanged)
+    def watermarkKind(self):
+        return self._watermark_kind
+
+    @watermarkKind.setter
+    def watermarkKind(self, value):
+        requested = str(value or "").strip().lower()
+        normalized = requested if requested in {"text", "image", "video"} else "text"
+        if self._watermark_kind != normalized:
+            self._watermark_kind = normalized
+            self.watermarkKindChanged.emit()
+
+    @Property(int, notify=watermarkOpacityPercentChanged)
+    def watermarkOpacityPercent(self):
+        return self._watermark_opacity_percent
+
+    @watermarkOpacityPercent.setter
+    def watermarkOpacityPercent(self, value):
+        normalized = max(0, min(100, int(value)))
+        if self._watermark_opacity_percent != normalized:
+            self._watermark_opacity_percent = normalized
+            self.watermarkOpacityPercentChanged.emit()
+
+    @Property(int, notify=watermarkOutlinePercentChanged)
+    def watermarkOutlinePercent(self):
+        return self._watermark_outline_percent
+
+    @watermarkOutlinePercent.setter
+    def watermarkOutlinePercent(self, value):
+        normalized = max(0, min(300, int(value)))
+        if self._watermark_outline_percent != normalized:
+            self._watermark_outline_percent = normalized
+            self.watermarkOutlinePercentChanged.emit()
+
+    @Property(str, notify=watermarkImageChanged)
+    def watermarkImagePath(self):
+        return self._watermark_image_path
+
+    @Property(QUrl, notify=watermarkImageChanged)
+    def watermarkImageSource(self):
+        path = str(self._watermark_image_path or "")
+        return QUrl.fromLocalFile(path) if path and os.path.isfile(path) else QUrl()
+
+    @Property(str, notify=watermarkVideoChanged)
+    def watermarkVideoPath(self):
+        return self._watermark_video_path
+
+    @Property(QUrl, notify=watermarkVideoChanged)
+    def watermarkVideoSource(self):
+        path = str(self._watermark_video_path or "")
+        return QUrl.fromLocalFile(path) if path and os.path.isfile(path) else QUrl()
+
+    @Property(str, notify=watermarkStyleChanged)
+    def watermarkFontFamily(self):
+        return self._watermark_font_family
+
+    @watermarkFontFamily.setter
+    def watermarkFontFamily(self, value):
+        normalized = str(value or "Arial").strip()[:80] or "Arial"
+        if self._watermark_font_family != normalized:
+            self._watermark_font_family = normalized
+            self.watermarkStyleChanged.emit()
+
+    @Property(str, notify=watermarkStyleChanged)
+    def watermarkTextColor(self):
+        return self._watermark_text_color
+
+    @watermarkTextColor.setter
+    def watermarkTextColor(self, value):
+        normalized = str(value or "#FFFFFF").upper()
+        if not re.fullmatch(r"#[0-9A-F]{6}", normalized):
+            return
+        if self._watermark_text_color != normalized:
+            self._watermark_text_color = normalized
+            self.watermarkStyleChanged.emit()
+
+    @Property(bool, notify=watermarkStyleChanged)
+    def watermarkBold(self):
+        return self._watermark_bold
+
+    @watermarkBold.setter
+    def watermarkBold(self, value):
+        normalized = bool(value)
+        if self._watermark_bold != normalized:
+            self._watermark_bold = normalized
+            self.watermarkStyleChanged.emit()
+
+    @Property(bool, notify=watermarkStyleChanged)
+    def watermarkItalic(self):
+        return self._watermark_italic
+
+    @watermarkItalic.setter
+    def watermarkItalic(self, value):
+        normalized = bool(value)
+        if self._watermark_italic != normalized:
+            self._watermark_italic = normalized
+            self.watermarkStyleChanged.emit()
+
+    @Property(bool, notify=subtitleSettingsChanged)
+    def removeOriginalSubtitles(self):
+        return self._remove_original_subtitles
+
+    @removeOriginalSubtitles.setter
+    def removeOriginalSubtitles(self, value):
+        normalized = bool(value)
+        changed = self._remove_original_subtitles != normalized
+        # Choosing cover resets Auto to its OCR-derived placement. The user
+        # can then drag or resize the translated subtitle explicitly.
+        if changed:
+            self._remove_original_subtitles = normalized
+            if normalized and getattr(self, "_project_type", "single") != "manual":
+                self._subtitle_layout_override = False
+            self.subtitleSettingsChanged.emit()
+
+    @Property(str, notify=subtitleSettingsChanged)
+    def originalSubtitleRemovalMode(self):
+        return self._original_subtitle_removal_mode
+
+    @originalSubtitleRemovalMode.setter
+    def originalSubtitleRemovalMode(self, value):
+        normalized = str(value or "").strip().lower()
+        if normalized == "inpaint":
+            normalized = "patch"
+        if normalized not in {"blur", "patch"}:
+            normalized = "patch"
+        if self._original_subtitle_removal_mode != normalized:
+            self._original_subtitle_removal_mode = normalized
+            self.subtitleSettingsChanged.emit()
+
+    def _set_subtitle_style_value(self, key: str, value: int, minimum: int, maximum: int) -> None:
+        normalized = max(minimum, min(maximum, int(value)))
+        if int(getattr(self._subtitle_style, key)) == normalized:
+            return
+        style = self._subtitle_style.model_dump()
+        style[key] = normalized
+        self._subtitle_style = SubtitleStyle(**style)
+        self._subtitle_layout_override = True
+        self.subtitleSettingsChanged.emit()
+
+    @Property(int, notify=subtitleSettingsChanged)
+    def subtitleFontSize(self):
+        return self._subtitle_style.font_size
+
+    @subtitleFontSize.setter
+    def subtitleFontSize(self, value):
+        self._set_subtitle_style_value("font_size", value, 10, 240)
+
+    def _set_subtitle_style_option(self, key: str, value) -> None:
+        if getattr(self._subtitle_style, key) == value:
+            return
+        style = self._subtitle_style.model_dump()
+        style[key] = value
+        self._subtitle_style = SubtitleStyle(**style)
+        self._subtitle_layout_override = True
+        self.subtitleSettingsChanged.emit()
+
+    @Property(str, notify=subtitleSettingsChanged)
+    def subtitleFontFamily(self):
+        return self._subtitle_style.font_family
+
+    @subtitleFontFamily.setter
+    def subtitleFontFamily(self, value):
+        from hflow.schemas.video import SUBTITLE_FONT_FAMILY
+        self._set_subtitle_style_option("font_family", SUBTITLE_FONT_FAMILY)
+
+    @Property(str, notify=subtitleSettingsChanged)
+    def subtitleTextColor(self):
+        return self._subtitle_style.text_color
+
+    @subtitleTextColor.setter
+    def subtitleTextColor(self, value):
+        normalized = str(value or "").upper()
+        if re.fullmatch(r"#[0-9A-F]{6}", normalized):
+            self._set_subtitle_style_option("text_color", normalized)
+
+    @Property(str, notify=subtitleSettingsChanged)
+    def subtitleKaraokeColor(self):
+        return self._subtitle_style.karaoke_color
+
+    @subtitleKaraokeColor.setter
+    def subtitleKaraokeColor(self, value):
+        normalized = str(value or "").upper()
+        if re.fullmatch(r"#[0-9A-F]{6}", normalized):
+            self._set_subtitle_style_option("karaoke_color", normalized)
+
+    @Property(str, notify=subtitleSettingsChanged)
+    def subtitleOutlineColor(self):
+        return self._subtitle_style.outline_color
+
+    @subtitleOutlineColor.setter
+    def subtitleOutlineColor(self, value):
+        normalized = str(value or "").upper()
+        if re.fullmatch(r"#[0-9A-F]{6}", normalized):
+            self._set_subtitle_style_option("outline_color", normalized)
+
+    @Property(bool, notify=subtitleSettingsChanged)
+    def subtitleBold(self):
+        return self._subtitle_style.bold
+
+    @subtitleBold.setter
+    def subtitleBold(self, value):
+        self._set_subtitle_style_option("bold", bool(value))
+
+    @Property(bool, notify=subtitleSettingsChanged)
+    def subtitleItalic(self):
+        return self._subtitle_style.italic
+
+    @subtitleItalic.setter
+    def subtitleItalic(self, value):
+        self._set_subtitle_style_option("italic", bool(value))
+
+    @Property(bool, notify=subtitleSettingsChanged)
+    def subtitleUppercase(self):
+        return self._subtitle_style.uppercase
+
+    @subtitleUppercase.setter
+    def subtitleUppercase(self, value):
+        self._set_subtitle_style_option("uppercase", bool(value))
+
+    @Property(int, notify=subtitleSettingsChanged)
+    def subtitleShadow(self):
+        return self._subtitle_style.shadow
+
+    @subtitleShadow.setter
+    def subtitleShadow(self, value):
+        self._set_subtitle_style_value("shadow", value, 0, 10)
+
+    @Property(bool, notify=subtitleSettingsChanged)
+    def subtitleLayoutOverride(self):
+        """Use the saved caption layout instead of automatic OCR placement."""
+        return self._subtitle_layout_override
+
+    @subtitleLayoutOverride.setter
+    def subtitleLayoutOverride(self, value):
+        normalized = bool(value)
+        if self._subtitle_layout_override != normalized:
+            self._subtitle_layout_override = normalized
+            self.subtitleSettingsChanged.emit()
+
+    @Property("QVariantMap", notify=subtitleSettingsChanged)
+    def subtitleAppearance(self):
+        return self._subtitle_style.model_dump()
+
+    @Slot("QVariantMap", result=bool)
+    def applySubtitleAppearance(self, patch):
+        allowed = {"font_family", "font_size", "text_color", "karaoke_color", "outline_color",
+                   "outline", "bold", "italic", "uppercase", "shadow", "letter_spacing", "alignment"}
+        if not isinstance(patch, dict) or not patch or set(patch) - allowed:
+            return False
+        try:
+            style = SubtitleStyle.model_validate({**self._subtitle_style.model_dump(), **patch})
+        except (ValueError, TypeError):
+            return False
+        if style.font_size > 240:
+            return False
+        if style != self._subtitle_style:
+            # Appearance changes must not disable OCR alignment or replace
+            # geometry. The dialog's checkbox owns that independent choice.
+            self._subtitle_style = style
+            self.subtitleSettingsChanged.emit()
+        return True
+
+    @Property(QObject, constant=True)
+    def subtitleSampleOverlayRenderer(self):
+        renderer = getattr(self, "_subtitle_sample_overlay", None)
+        if renderer is None:
+            renderer = self._subtitle_sample_overlay = SubtitleOverlayRenderer(self)
+        return renderer
+
+    @Property(float, notify=subtitleSettingsChanged)
+    def subtitlePreviewFontScale(self):
+        from hflow.pipeline.render import _ass_font_em_scale, _font_path_details
+
+        style = self._subtitle_style
+        path, _exact = _font_path_details(style.font_family, style.bold, style.italic)
+        return _ass_font_em_scale(str(path))
+
+    @Slot(str, int, int, int, int, int, result=str)
+    @Slot(str, int, int, int, int, int, "QVariantMap", result=str)
+    def subtitleSampleText(self, text, font_size, box_width, box_height, width, height, appearance=None):
+        from datetime import timedelta
+        import srt
+        from hflow.pipeline.render import SubtitleRegionLayout, _subtitle_parts_for_region
+
+        style = SubtitleStyle.model_validate({**self._subtitle_style.model_dump(), **(appearance or {}),
+                                             "font_size": max(10, min(240, font_size))})
+        cue = srt.Subtitle(1, timedelta(0), timedelta(seconds=10), str(text))
+        parts = _subtitle_parts_for_region(cue, SubtitleRegionLayout(
+            0, 0, max(24, width * box_width / 100), max(20, height * box_height / 100)),
+            style, fixed_font_size=True)
+        content = parts[0][2] if parts else ""
+        return content.upper() if style.uppercase else content
+
+    @Property(int, notify=subtitleSettingsChanged)
+    def subtitlePositionXPercent(self):
+        return self._subtitle_style.position_x_percent
+
+    @subtitlePositionXPercent.setter
+    def subtitlePositionXPercent(self, value):
+        self._set_subtitle_style_value("position_x_percent", value, 0, 100)
+
+    @Property(int, notify=subtitleSettingsChanged)
+    def subtitlePositionYPercent(self):
+        return self._subtitle_style.position_y_percent
+
+    @subtitlePositionYPercent.setter
+    def subtitlePositionYPercent(self, value):
+        self._set_subtitle_style_value("position_y_percent", value, 0, 100)
+
+    @Property(int, notify=subtitleSettingsChanged)
+    def subtitleBoxWidthPercent(self):
+        return self._subtitle_style.box_width_percent
+
+    @subtitleBoxWidthPercent.setter
+    def subtitleBoxWidthPercent(self, value):
+        self._set_subtitle_style_value("box_width_percent", value, 20, 100)
+
+    @Property(int, notify=subtitleSettingsChanged)
+    def subtitleBoxHeightPercent(self):
+        return self._subtitle_style.box_height_percent
+
+    @subtitleBoxHeightPercent.setter
+    def subtitleBoxHeightPercent(self, value):
+        self._set_subtitle_style_value("box_height_percent", value, 1, 100)
+
+    def _set_crop_value(self, key: str, value: float) -> None:
+        """Update one crop edge while preserving a usable visible region."""
+        normalized = round(max(0.0, min(84.0, float(value))), 4)
+        crop = self._crop_settings.model_dump()
+        opposite = {
+            "left_percent": "right_percent",
+            "right_percent": "left_percent",
+            "top_percent": "bottom_percent",
+            "bottom_percent": "top_percent",
+        }[key]
+        # A crop smaller than 8% is almost impossible to manipulate and can
+        # produce invalid even-sized FFmpeg geometry on small proxy frames.
+        normalized = round(min(normalized, 92.0 - float(crop[opposite])), 4)
+        if abs(float(crop[key]) - normalized) < 0.0001:
+            return
+        crop[key] = normalized
+        # Direct manipulation uses edge crop. Clear the legacy zoom/pan mode
+        # so the QML frame and FFmpeg always describe the same rectangle.
+        crop.update(zoom_percent=100, pan_x_percent=0, pan_y_percent=0)
+        self._crop_settings = CropSettings(**crop)
+        self.cropSettingsChanged.emit()
+
+    @Property(float, notify=cropSettingsChanged)
+    def cropLeftPercent(self):
+        return self._crop_settings.left_percent
+
+    @cropLeftPercent.setter
+    def cropLeftPercent(self, value):
+        self._set_crop_value("left_percent", value)
+
+    @Property(float, notify=cropSettingsChanged)
+    def cropRightPercent(self):
+        return self._crop_settings.right_percent
+
+    @cropRightPercent.setter
+    def cropRightPercent(self, value):
+        self._set_crop_value("right_percent", value)
+
+    @Property(float, notify=cropSettingsChanged)
+    def cropTopPercent(self):
+        return self._crop_settings.top_percent
+
+    @cropTopPercent.setter
+    def cropTopPercent(self, value):
+        self._set_crop_value("top_percent", value)
+
+    @Property(float, notify=cropSettingsChanged)
+    def cropBottomPercent(self):
+        return self._crop_settings.bottom_percent
+
+    @cropBottomPercent.setter
+    def cropBottomPercent(self, value):
+        self._set_crop_value("bottom_percent", value)
+
+    @Slot(float, float, float, float)
+    def setCropDraft(self, left, top, right, bottom):
+        """Publish one atomic crop-frame update from the QML drag handler."""
+        left = round(max(0.0, min(84.0, float(left))), 4)
+        top = round(max(0.0, min(84.0, float(top))), 4)
+        right = round(max(0.0, min(84.0, float(right), 92.0 - left)), 4)
+        bottom = round(max(0.0, min(84.0, float(bottom), 92.0 - top)), 4)
+        next_crop = CropSettings(
+            left_percent=left,
+            top_percent=top,
+            right_percent=right,
+            bottom_percent=bottom,
+        )
+        if self._crop_settings == next_crop:
+            return
+        self._crop_settings = next_crop
+        self.cropSettingsChanged.emit()
+
+    @Slot()
+    def resetCropDraft(self):
+        if self._crop_settings == CropSettings():
+            return
+        self._crop_settings = CropSettings()
+        self.cropSettingsChanged.emit()
+
+    @Property(str, notify=backgroundMusicChanged)
+    def backgroundMusicPath(self):
+        return self._background_music_path
+
+    @Property(bool, notify=backgroundMusicImportChanged)
+    def backgroundMusicImportBusy(self):
+        return self._background_music_import_busy
+
+    @Property(str, notify=backgroundMusicImportChanged)
+    def backgroundMusicImportStatus(self):
+        return self._background_music_import_status
+
+    @Property(str, notify=audioPreviewChanged)
+    def audioPreviewSource(self):
+        return self._audio_preview_source
+
+    @Property(str, notify=audioPreviewChanged)
+    def audioPreviewOriginalSource(self):
+        return self._audio_preview_original_source
+
+    @Property(str, notify=audioPreviewChanged)
+    def audioPreviewBackgroundMusicSource(self):
+        return self._audio_preview_background_music_source
+
+    @Property(str, notify=audioPreviewChanged)
+    def audioPreviewState(self):
+        return self._audio_preview_state
+
+    @Property(str, notify=workflowModeChanged)
+    def workflowMode(self):
+        return self._workflow_mode
+
+    @workflowMode.setter
+    def workflowMode(self, value):
+        value = "review" if value == "review" else "A"
+        if self._workflow_mode != value:
+            self._workflow_mode = value
+            self.workflowModeChanged.emit()
+
+    @Property(bool, notify=processingChanged)
+    def isProcessing(self):
+        return self._processing_queue.has_work or self._device_switching
+
+    @Property(bool, notify=processingChanged)
+    def isSwitchingProcessingDevice(self):
+        return self._device_switching
+
+    @Property(bool, notify=processingChanged)
+    def isSelectedVideoProcessing(self):
+        return bool(self._selected_video_id and self._selected_video_id == self._processing_queue.active_video_id)
+
+    @Property(bool, notify=selectedVideoChanged)
+    def isSelectedVideoQueued(self):
+        return bool(self._selected_video_id and self._processing_queue.contains(self._selected_video_id))
+
+    @Property(bool, notify=selectedVideoChanged)
+    def canEditSelectedVideo(self):
+        """Only freeze the video whose immutable pipeline snapshot is queued."""
+        return not (self._selected_video_id and self._processing_queue.contains(self._selected_video_id))
+
+    @Property(str, notify=processingChanged)
+    def processingText(self):
+        active_video_id = self._processing_queue.active_video_id
+        video = video_store.get_video(active_video_id) if active_video_id else None
+        return f"{video.original_filename} | {video.step_detail or video.status}" if video else "No active video"
+
+    def _refresh_selected_video_snapshot(self) -> None:
+        self._selected_video_snapshot = (
+            video_store.get_video(self._selected_video_id) if self._selected_video_id else None
+        )
+        editor = getattr(self, "_manual_editor_document", None)
+        if editor is not None and editor.video_id == self._selected_video_id:
+            editor.changed.emit()
+
+    def _selected_video(self):
+        if not self._selected_video_id:
+            return None
+        if (
+            self._selected_video_snapshot is not None
+            and self._selected_video_snapshot.video_id == self._selected_video_id
+        ):
+            return self._selected_video_snapshot
+        self._refresh_selected_video_snapshot()
+        return self._selected_video_snapshot
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedTitle(self):
+        video = self._selected_video()
+        return f"{video.original_filename} | {video.status}" if video else "No video selected"
+
+    @Property(bool, notify=selectedVideoChanged)
+    def hasSelectedVideo(self):
+        return self._selected_video() is not None
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedVideoId(self):
+        return str(self._selected_video_id or "")
+
+    @Property(bool, notify=projectSetupChanged)
+    def hasOpenProject(self):
+        if not self._selected_project_key:
+            return False
+        try:
+            return os.path.isdir(project_store.project_root_for_key(self._selected_project_key))
+        except (RuntimeError, ValueError):
+            return False
+
+    @staticmethod
+    def _video_project_key(video) -> str:
+        key = str(getattr(video, "project_key", "") or "")
+        if key:
+            return key
+        return project_store.resolve_project_key(
+            str(getattr(video, "project_name", "") or ""),
+            str(getattr(video, "project_directory", "") or ""),
+            project_store.normalize_project_type(getattr(video, "project_type", "single")),
+        )
+
+    def _selected_project_root(self) -> str:
+        return project_store.project_root_for_key(self._selected_project_key)
+
+    @Property(bool, notify=selectedVideoChanged)
+    def isSelectedBatchVideo(self):
+        video = self._selected_video()
+        return bool(video and video.project_type == "batch" and video.video_id in self._batch_video_ids)
+
+    @Property("QVariantList", notify=selectedVideoChanged)
+    def reviewSegments(self):
+        video = self._selected_video()
+        if not video:
+            return []
+        if getattr(video, "project_type", "auto") != "manual" and video.status not in {
+            "awaiting_review",
+            "manual_ready",
+            "done",
+        }:
+            return []
+        transcript_path = (video.files or {}).get("translation_review_draft") or (video.files or {}).get(
+            "transcript_json"
+        )
+        if not isinstance(transcript_path, str) or not transcript_path.strip():
+            return []
+        try:
+            with open(transcript_path, encoding="utf-8") as file:
+                segments = json.load(file)
+            return segments if isinstance(segments, list) else []
+        except (OSError, json.JSONDecodeError):
+            return []
+
+    @Property("QVariantMap", notify=previewMediaChanged)
+    def reviewPreviewMedia(self):
+        """Describe the real media layers used by the subtitle editor preview.
+
+        Keeping this mapping in Python avoids duplicating workspace discovery
+        rules in QML.  A completed run uses its already-mixed final audio.  A
+        pre-TTS review instead previews the source/Demucs bed and optional
+        background music with the same persisted volume settings as render.
+        """
+        return HFlowController._review_preview_media_for(self, self._selected_video())
+
+    def _review_preview_media_for(self, video):
+        if not video:
+            return {}
+
+        files = dict(getattr(video, "files", {}) or {})
+
+        def existing_url(*candidates: str) -> str:
+            for candidate in candidates:
+                path = str(candidate or "").strip()
+                if path and os.path.isfile(path) and os.path.getsize(path) > 0:
+                    return QUrl.fromLocalFile(os.path.abspath(path)).toString()
+            return ""
+
+        video_dir = video_store.get_video_dir(video.video_id)
+        from hflow.services.video_export import render_path
+
+        rendered_video_source = existing_url(render_path(video))
+        if getattr(video, "output_speed", 1.0) != 1.0:
+            # An export runs on a scaled clock; editor proxies/audio remain
+            # on the original timeline and must never fall back to this mix.
+            rendered_video_source = ""
+        voice_source = existing_url(
+            files.get("voice_output") or "",
+            os.path.join(video_dir, "temp", "voice_final.wav"),
+        )
+        separated_background_source = existing_url(files.get("background_audio") or "")
+        background_music_source = existing_url(files.get("background_music") or "")
+
+        ocr_region = {}
+        ocr_cache = str(files.get("ocr_region") or os.path.join(video_dir, "temp", "original_subtitle_region.json"))
+        try:
+            with open(ocr_cache, encoding="utf-8") as cache_file:
+                payload = json.load(cache_file)
+            candidate = payload.get("region", payload) if isinstance(payload, dict) else {}
+            if isinstance(candidate, dict):
+                required = {"x_percent", "y_percent", "width_percent", "height_percent"}
+                if required.issubset(candidate):
+                    ocr_region = candidate
+        except (OSError, json.JSONDecodeError, TypeError):
+            pass
+
+        separation_enabled = bool(getattr(video, "enable_audio_separation", False))
+        from hflow.services.ocr_regions import effective_region, source_frame_in_output
+
+        detected_ocr_region = ocr_region
+        ocr_region = effective_region(video, ocr_region) or {}
+        subtitle_style = getattr(video, "subtitle_style", None)
+        crop = getattr(video, "crop", None)
+
+        def serializable_settings(value) -> dict:
+            """Return an immutable QML-friendly snapshot of a Pydantic setting."""
+            if value is None:
+                return {}
+            if isinstance(value, dict):
+                return dict(value)
+            model_dump = getattr(value, "model_dump", None)
+            if callable(model_dump):
+                payload = model_dump()
+                return dict(payload) if isinstance(payload, dict) else {}
+            legacy_dict = getattr(value, "dict", None)
+            if callable(legacy_dict):
+                payload = legacy_dict()
+                return dict(payload) if isinstance(payload, dict) else {}
+            return {}
+
+        # A completed output is the only authoritative final mix: voice_final
+        # is the timeline WAV and may not reflect the newest editor draft.
+        # QML initially opens this published output for instant, exact video
+        # and audio while a new visual proxy is prepared in the background.
+        final_mix_source = rendered_video_source
+        use_final_mix = bool(final_mix_source)
+        use_separated_background = bool(not use_final_mix and separation_enabled and separated_background_source)
+        from hflow.pipeline.render import effective_output_format, resolve_subtitle_preview_layout
+
+        subtitle_render_layout = resolve_subtitle_preview_layout(
+            ocr_region,
+            max(0, int(getattr(video, "video_width", 0) or 0)),
+            max(0, int(getattr(video, "video_height", 0) or 0)),
+            str(getattr(video, "output_format", "keep_ratio") or "keep_ratio"),
+            crop or CropSettings(),
+            subtitle_style or SubtitleStyle(),
+            bool(getattr(video, "subtitle_layout_override", False)),
+        )
+        return {
+            "renderedVideoSource": rendered_video_source,
+            "outputSpeed": getattr(video, "output_speed", 1.0),
+            "finalMixSource": final_mix_source,
+            "voiceSource": voice_source if not use_final_mix else "",
+            "backgroundSource": separated_background_source if use_separated_background else "",
+            "musicSource": background_music_source if not use_final_mix else "",
+            "useVideoAudio": not use_final_mix and not use_separated_background,
+            "videoVolume": max(0.0, min(1.0, float(getattr(video, "original_video_volume", 60)) / 100.0)),
+            "backgroundVolume": max(0.0, min(1.0, float(getattr(video, "original_video_volume", 60)) / 100.0)),
+            "musicVolume": max(0.0, min(1.0, float(getattr(video, "background_music_volume", 30)) / 100.0)),
+            "ttsVolume": max(0.0, min(1.0, float(getattr(video, "tts_volume", 100)) / 100.0)),
+            # Visual settings are copied from the selected video rather than
+            # read from the controller's current draft.  This prevents an
+            # editor opened for video B from inheriting video A's subtitle
+            # position, size or crop while navigation/settings signals race.
+            "subtitleStyle": serializable_settings(subtitle_style),
+            "subtitleLayoutOverride": bool(getattr(video, "subtitle_layout_override", False)),
+            "subtitleRenderLayout": subtitle_render_layout,
+            "subtitleAutoCoverLayout": resolve_subtitle_preview_layout(
+                ocr_region, max(0, int(getattr(video, "video_width", 0) or 0)),
+                max(0, int(getattr(video, "video_height", 0) or 0)),
+                str(getattr(video, "output_format", "keep_ratio") or "keep_ratio"),
+                crop or CropSettings(), subtitle_style or SubtitleStyle(), False),
+            "outputFormat": str(getattr(video, "output_format", "keep_ratio") or "keep_ratio"),
+            "liveOutputFormat": effective_output_format(
+                int(getattr(video, "video_width", 0) or 0), int(getattr(video, "video_height", 0) or 0),
+                str(getattr(video, "output_format", "keep_ratio") or "keep_ratio"), crop or CropSettings()),
+            "crop": serializable_settings(crop),
+            "audioSeparationEnabled": separation_enabled,
+            "speakerMode": str(getattr(video, "speaker_mode", "single") or "single"),
+            "ttsProvider": str(getattr(video, "tts_provider", "omnivoice") or "omnivoice"),
+            "ttsVoice": str(getattr(video, "tts_voice", "") or ""),
+            "removeOriginalSubtitles": bool(getattr(video, "remove_original_subtitles", True)),
+            "removalMode": str(getattr(video, "original_subtitle_removal_mode", "patch") or "patch"),
+            "watermarkText": str(getattr(video, "watermark_text", "") or ""),
+            "ocrRegion": ocr_region,
+            "detectedOcrRegion": detected_ocr_region,
+            "ocrSourceFrameInOutput": source_frame_in_output(
+                max(1, int(getattr(video, "video_width", 0) or 1920)),
+                max(1, int(getattr(video, "video_height", 0) or 1080)),
+                str(getattr(video, "output_format", "keep_ratio") or "keep_ratio"),
+                crop or CropSettings(),
+            ),
+            "videoWidth": max(0, int(getattr(video, "video_width", 0) or 0)),
+            "videoHeight": max(0, int(getattr(video, "video_height", 0) or 0)),
+        }
+
+    @Property(str, notify=editorPreviewChanged)
+    def editorPreviewSource(self):
+        return self._editor_preview.source
+
+    @Property(str, notify=editorPreviewChanged)
+    def editorPreviewBaseSource(self):
+        """Return the current subtitle-free A/V proxy for direct transforms."""
+        return self._editor_preview.base_source
+
+    @Property(str, notify=editorPreviewChanged)
+    def editorPreviewAudioSource(self):
+        """Return the atomically published editor mix for the current draft."""
+        return self._editor_preview.audio_source
+
+    @Property(bool, notify=editorPreviewChanged)
+    def editorPreviewBusy(self):
+        return self._editor_preview.busy
+
+    @Property(str, notify=editorPreviewChanged)
+    def editorPreviewError(self):
+        return self._editor_preview.error
+
+    @Property(float, notify=editorPreviewChanged)
+    def editorPreviewStart(self):
+        return self._editor_preview.start_seconds
+
+    @Property(float, notify=editorPreviewChanged)
+    def editorPreviewDuration(self):
+        return self._editor_preview.duration_seconds
+
+    @Property(float, notify=editorPreviewChanged)
+    def editorPreviewProgress(self):
+        return self._editor_preview.progress
+
+    @Property(str, notify=editorPreviewChanged)
+    def editorPreviewStage(self):
+        return self._editor_preview.stage
+
+    @Slot(str, float, float, float, int, int, int, result=str)
+    def subtitlePreviewFragment(
+        self,
+        text,
+        start_seconds,
+        end_seconds,
+        playhead_seconds,
+        font_size,
+        box_width_percent,
+        output_width,
+    ):
+        """Resolve the same timed phrase used by the production ASS render."""
+        from hflow.pipeline.render import subtitle_preview_fragment
+
+        return subtitle_preview_fragment(
+            text,
+            start_seconds,
+            end_seconds,
+            playhead_seconds,
+            font_size,
+            box_width_percent,
+            output_width,
+            self._subtitle_style.outline,
+        )
+
+    @Slot(str, float, float, float, int, int, int, result="QVariantMap")
+    def subtitlePreviewFrame(
+        self,
+        text,
+        start_seconds,
+        end_seconds,
+        playhead_seconds,
+        font_size,
+        layout_width,
+        outline,
+    ):
+        """Resolve the active phrase and karaoke fill used by Manual preview."""
+        from hflow.pipeline.render import subtitle_preview_frame_for_layout
+
+        return subtitle_preview_frame_for_layout(
+            text,
+            start_seconds,
+            end_seconds,
+            playhead_seconds,
+            font_size,
+            layout_width,
+            outline,
+        )
+
+    @Slot(result=bool)
+    def adoptSubtitlePreviewLayout(self):
+        """Atomically turn the current rendered layout into an editable layout."""
+        preview = self.reviewPreviewMedia
+        layout = dict(preview.get("subtitleRenderLayout") or {}) if isinstance(preview, dict) else {}
+        if not layout:
+            return False
+        style = self._subtitle_style.model_dump()
+        style.update(
+            font_size=int(layout.get("fontSize", style["font_size"])),
+            outline=int(layout.get("outline", style["outline"])),
+            position_x_percent=int(layout.get("positionXPercent", style["position_x_percent"])),
+            position_y_percent=int(layout.get("positionYPercent", style["position_y_percent"])),
+            box_width_percent=int(layout.get("boxWidthPercent", style["box_width_percent"])),
+            box_height_percent=int(layout.get("boxHeightPercent", style["box_height_percent"])),
+        )
+        self._subtitle_style = SubtitleStyle(**style)
+        self._subtitle_layout_override = True
+        self.subtitleSettingsChanged.emit()
+        return self.saveSelectedVideoSettings()
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedFileName(self):
+        video = self._selected_video()
+        return video.original_filename if video else ""
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedStatus(self):
+        video = self._selected_video()
+        return video.status if video else "none"
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedFailureMessage(self):
+        from hflow.core.processing_errors import describe_failure
+
+        video = self._selected_video()
+        if not video or video.status != "failed":
+            return ""
+        return describe_failure(video.error or video.step_detail, self._settings_language)["message"]
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedFailureTitle(self):
+        from hflow.core.processing_errors import describe_failure
+
+        video = self._selected_video()
+        if not video or video.status != "failed":
+            return ""
+        return describe_failure(video.error or video.step_detail, self._settings_language)["title"]
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedStep(self):
+        video = self._selected_video()
+        return video.step_detail or video.step if video else "pending"
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedStepId(self):
+        video = self._selected_video()
+        return str(video.step or "") if video else ""
+
+    @Property(int, notify=selectedVideoChanged)
+    def selectedProgress(self):
+        video = self._selected_video()
+        return video.progress if video else 0
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedStageLabel(self):
+        video = self._selected_video()
+        if not video:
+            return "Sẵn sàng" if self._settings_language == "vi" else "Ready"
+        if video.status == "processing":
+            active_manual_labels = {
+                "manual_translation": ("Transcribing and translating", "Đang nhận dạng và dịch"),
+                "manual_subtitles": ("Preparing subtitles", "Đang chuẩn bị phụ đề"),
+                "manual_voice": ("Generating voice", "Đang tạo giọng"),
+                "manual_timeline": ("Mixing audio", "Đang phối âm"),
+            }
+            label = active_manual_labels.get(video.step)
+            if label:
+                return label[1] if self._settings_language == "vi" else label[0]
+        return stage_label(video.step, self._settings_language, video.step_detail or video.status)
+
+    @Property(str, notify=selectedVideoChanged)
+    def manualCompletedStage(self):
+        video = self._selected_video()
+        return str(getattr(video, "manual_completed_stage", "") or "") if video else ""
+
+    @Property("QVariantList", notify=selectedVideoChanged)
+    def manualCompletedStages(self):
+        video = self._selected_video()
+        return list(getattr(video, "manual_completed_stages", []) or []) if video else []
+
+    @Property(str, notify=selectedVideoChanged)
+    def manualTargetStage(self):
+        video = self._selected_video()
+        return str(getattr(video, "manual_target_stage", "") or "") if video else ""
+
+    @Property(str, notify=selectedVideoChanged)
+    def manualTargetTool(self):
+        video = self._selected_video()
+        return str(getattr(video, "manual_target_tool", "") or "") if video else ""
+
+    @Property("QVariantList", notify=manualSubtitleDocumentChanged)
+    def manualToolModel(self):
+        video = self._selected_video()
+        if not video or getattr(video, "project_type", "single") != "manual":
+            return []
+        try:
+            from hflow.pipeline.manual_tools import tool_states
+
+            display_video = video
+            if (
+                video.status in {"pending", "processing"}
+                and getattr(video, "manual_target_tool", "")
+                and not self._processing_queue.contains(video.video_id)
+            ):
+                # A terminated worker can leave a durable processing snapshot
+                # behind. The queue is authoritative for live UI state; do not
+                # block every Manual control with a phantom "other tool".
+                display_video = video.model_copy(
+                    update={"status": "manual_ready", "manual_target_tool": ""}
+                )
+            return tool_states(display_video, language=self._settings_language)
+        except (OSError, RuntimeError, ValueError):
+            return []
+
+    @Property("QVariantMap", notify=selectedVideoChanged)
+    def manualArtifactSummary(self):
+        video = self._selected_video()
+        if not video or getattr(video, "project_type", "single") != "manual":
+            return {"count": 0, "sizeBytes": 0, "activeCount": 0, "activeKinds": []}
+        manifest = manual_artifacts.load_manifest(video.video_id)
+        records = list(manifest.get("artifacts", {}).values())
+        return {
+            "count": len(records),
+            "sizeBytes": manual_artifacts.cache_size(video.video_id),
+            "activeCount": len(getattr(video, "active_artifacts", {}) or {}),
+            "activeKinds": list((getattr(video, "active_artifacts", {}) or {}).keys()),
+        }
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedProgressDetail(self):
+        video = self._selected_video()
+        if not video:
+            return ""
+        item_detail = f"{video.current_item}/{video.total_items}" if video.total_items else ""
+        return " | ".join(part for part in (video.step_detail, item_detail) if part)
+
+    @Property(str, notify=selectedElapsedChanged)
+    def selectedElapsed(self):
+        video = self._selected_video()
+        if not video:
+            return ""
+        seconds = max(0.0, float(getattr(video, "processing_elapsed_seconds", 0.0) or 0.0))
+        try:
+            if video.status == "processing" and video.started_at:
+                started_at = datetime.fromisoformat(video.started_at.replace("Z", "+00:00"))
+                seconds += max(0.0, (datetime.now(UTC) - started_at).total_seconds())
+            elif seconds <= 0 and video.started_at:
+                # Compatibility with metadata not yet migrated on disk.
+                started_at = datetime.fromisoformat(video.started_at.replace("Z", "+00:00"))
+                finished_at = datetime.fromisoformat(video.updated_at.replace("Z", "+00:00"))
+                seconds = max(0.0, (finished_at - started_at).total_seconds())
+            return self._format_duration(max(0, seconds))
+        except (TypeError, ValueError):
+            return self._format_duration(seconds) if seconds else ""
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedUpdatedAt(self):
+        video = self._selected_video()
+        return video.updated_at if video else ""
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedOutputFormat(self):
+        video = self._selected_video()
+        return video.output_format if video else ""
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedTargetLanguageLabel(self):
+        video = self._selected_video()
+        return self._language_label(video.target_language) if video else ""
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedTranslatorProvider(self):
+        video = self._selected_video()
+        return video.translator_provider if video else ""
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedInputPath(self):
+        video = self._selected_video()
+        return self._resolve_video_file(video, ("video_input", "input_video"), ("input", "video.mp4"))
+
+    @Property(QUrl, notify=selectedVideoChanged)
+    def selectedInputSource(self):
+        path = self.selectedInputPath
+        return QUrl.fromLocalFile(path) if path else QUrl()
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedOutputPath(self):
+        video = self._selected_video()
+        from hflow.services.video_export import render_path
+
+        return render_path(video)
+
+    @Property(QUrl, notify=selectedVideoChanged)
+    def selectedOutputSource(self):
+        path = self.selectedOutputPath
+        return QUrl.fromLocalFile(path) if path and os.path.isfile(path) else QUrl()
+
+    @Property(bool, notify=selectedVideoChanged)
+    def hasSelectedOutput(self):
+        return bool(self.selectedOutputPath)
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedSrtPath(self):
+        video = self._selected_video()
+        return self._resolve_video_file(video, ("srt_output", "subtitle_output"), ("temp", "vi.srt"))
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedVoicePath(self):
+        video = self._selected_video()
+        return self._resolve_video_file(video, ("voice_output", "dubbed_audio"), ("temp", "voice_final.wav"))
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedLogsPath(self):
+        return video_store.get_video_logs_path(self._selected_video_id) if self._selected_video_id else ""
+
+    @Property(str, notify=logsChanged)
+    def logs(self):
+        return self._logs
+
+    @Property(str, notify=statusMessageChanged)
+    def statusMessage(self):
+        return self._status_message
+
+    @Property(str, notify=runtimeStateChanged)
+    def runtimeState(self):
+        return self._runtime_state
+
+    @Property(bool, notify=modelSetupChanged)
+    def modelSetupVisible(self):
+        return self._model_setup_state != "ready"
+
+    @Property(bool, notify=modelSetupChanged)
+    def modelSetupBusy(self):
+        return self._model_setup_state in {"checking", "downloading", "verifying", "warming"}
+
+    @Property(bool, notify=modelSetupChanged)
+    def modelSetupCanCancel(self):
+        return self._model_setup_state in {"checking", "downloading", "verifying"}
+
+    @Property(int, notify=modelSetupChanged)
+    def modelSetupProgress(self):
+        if self._model_setup_total_bytes <= 0:
+            return 0
+        return min(
+            100,
+            round(self._model_setup_completed_bytes * 100 / self._model_setup_total_bytes),
+        )
+
+    @Property(str, notify=modelSetupChanged)
+    def modelSetupState(self):
+        return self._model_setup_state
+
+    @Property(str, notify=modelSetupChanged)
+    def modelSetupComponent(self):
+        return self._model_setup_component
+
+    @Property(str, notify=modelSetupChanged)
+    def modelSetupDetail(self):
+        return self._model_setup_detail
+
+    @Property(str, notify=modelSetupChanged)
+    def modelSetupSizeText(self):
+        completed = format_memory_size(self._model_setup_completed_bytes)
+        total = format_memory_size(self._model_setup_total_bytes)
+        return f"{completed} / {total}"
+
+    @Property(str, notify=modelSetupChanged)
+    def modelSetupDirectory(self):
+        from hflow.config import MODELS_DIR
+
+        return MODELS_DIR
+
+    @property
+    def _url_importer(self):
+        return self._project_url_imports.for_project(self._selected_project_key)
+
+    @property
+    def _url_import_target(self):
+        return self._url_importer.import_target
+
+    @_url_import_target.setter
+    def _url_import_target(self, value):
+        self._url_importer.import_target = value
+
+    @Property(QObject, notify=projectSetupChanged)
+    def urlImporter(self):
+        return self._url_importer
+
+    @Property(QObject, constant=True)
+    def douyinSession(self):
+        return self._douyin_session
+
+    @Property(QObject, constant=True)
+    def resourcePackModel(self):
+        return self._resource_packs.model
+
+    @Property("QVariantList", notify=resourcePacksChanged)
+    def resourcePackageRows(self):
+        return self._resource_packs.displayRows
+
+    @Property(QObject, constant=True)
+    def resourcePackController(self):
+        return self._resource_packs
+
+    @Property(str, notify=resourcePacksChanged)
+    def resourcePackStorageLocation(self):
+        return self._resource_packs.storageLocation
+
+    @Property(str, notify=resourcePacksChanged)
+    def resourcePackInstalledText(self):
+        return self._resource_packs.totalInstalledText
+
+    @Property(str, notify=resourcePacksChanged)
+    def resourcePackFreeSpaceText(self):
+        return self._resource_packs.freeSpaceText
+
+    @Property(bool, notify=resourcePacksChanged)
+    def resourcePackBusy(self):
+        return self._resource_packs.busy
+
+    @Property(bool, notify=resourcePacksChanged)
+    def resourcePackStorageMoving(self):
+        return self._resource_packs.storageMoving
+
+    @Property(str, notify=resourcePacksChanged)
+    def resourcePackActivityText(self):
+        return self._resource_packs.activityText
+
+    @Property(float, notify=resourcePacksChanged)
+    def resourcePackActivityProgress(self):
+        return self._resource_packs.activityProgress
+
+    @Property(str, constant=True)
+    def currentAppVersion(self):
+        return str(__version__)
+
+    @Property(str, notify=settingsChanged)
+    def settingsTheme(self):
+        return self._settings_theme
+
+    @Property(str, notify=settingsChanged)
+    def settingsLanguage(self):
+        return self._settings_language
+
+    @Property(str, notify=settingsChanged)
+    def processingDevice(self):
+        return self._settings_processing_device
+
+    @Slot(str, result=bool)
+    def setProcessingDevice(self, preference):
+        return HFlowController._settings_delegate_for(self).set_processing_device(str(preference))
+
+    @Slot(str, str, bool, result=bool)
+    def applyGeneralSettings(self, language, device, keep_warm):
+        return HFlowController._settings_delegate_for(self).apply_general(str(language), str(device), bool(keep_warm))
+
+    @Property(bool, notify=geminiKeyChanged)
+    def geminiKeyConfigured(self):
+        try:
+            return gemini_translation.key_configured()
+        except OSError:
+            return False
+
+    @Property("QVariantList", notify=geminiKeyChanged)
+    def geminiApiKeys(self):
+        try:
+            return gemini_translation.list_keys()
+        except OSError:
+            return []
+
+    @Slot(str, str, result=bool)
+    def addGeminiApiKey(self, label, value):
+        try:
+            gemini_translation.add_named_key(label, value)
+        except (OSError, ValueError) as exc:
+            self._show_app_alert("Gemini API key", str(exc), "warning")
+            return False
+        self.geminiKeyChanged.emit()
+        return True
+
+    @Slot(str, result=bool)
+    def selectGeminiApiKey(self, key_id):
+        try:
+            gemini_translation.select_key(key_id)
+        except (OSError, ValueError) as exc:
+            self._show_app_alert("Gemini API key", str(exc), "warning")
+            return False
+        self.geminiKeyChanged.emit()
+        return True
+
+    @Slot(str, result=bool)
+    def removeGeminiApiKey(self, key_id):
+        try:
+            gemini_translation.remove_key(key_id)
+        except OSError as exc:
+            self._show_app_alert("Gemini API key", str(exc), "warning")
+            return False
+        self.geminiKeyChanged.emit()
+        return True
+
+    @Slot(str, result=bool)
+    def saveGeminiApiKey(self, value):
+        try:
+            gemini_translation.save_key(value)
+        except (OSError, ValueError) as exc:
+            self._show_app_alert("Gemini API key", str(exc), "warning")
+            return False
+        self.geminiKeyChanged.emit()
+        return True
+
+    @Slot(result=bool)
+    def clearGeminiApiKey(self):
+        try:
+            gemini_translation.clear_key()
+        except OSError as exc:
+            self._show_app_alert("Gemini API key", str(exc), "warning")
+            return False
+        self.geminiKeyChanged.emit()
+        return True
+
+    @Slot(result=bool)
+    def openGeminiApiKeys(self):
+        return open_external_url(gemini_translation.API_KEYS_URL)
+
+    @Slot()
+    def requestGeminiSetup(self):
+        from hflow.desktop.resource_progress import gemini_key_notice
+
+        title, message = gemini_key_notice(self._settings_language)
+        self.appAlertRequested.emit(title, message, "warning")
+
+    @Slot(str)
+    def requestApiKeySettings(self, provider: str):
+        if provider in {"gemini", "zernio"}:
+            self.apiKeySettingsRequested.emit(provider)
+
+    @Slot(str)
+    def requestApiKeyGuide(self, provider: str):
+        if provider in {"gemini", "zernio"}:
+            self.apiKeySettingsRequested.emit(provider)
+            self.apiKeyGuideRequested.emit(provider)
+
+    @Property(str, notify=translationModelChanged)
+    def translationModel(self):
+        return self._translation_model
+
+    @translationModel.setter
+    def translationModel(self, value):
+        normalized = str(value or "").lower()
+        if normalized not in {"q4", "full", *gemini_translation.MODELS}:
+            return
+        if normalized in gemini_translation.MODELS:
+            if normalized != self._translation_model:
+                self._translation_model = normalized
+                self.translationModelChanged.emit()
+            if not self.geminiKeyConfigured:
+                self.requestGeminiSetup()
+            return
+        if normalized == "full" and not self._ensure_hardware_ready_for_action():
+            return
+        if normalized == "full" and self._settings_processing_device != "gpu":
+            self._show_app_alert("Máy không đáp ứng", "HY-MT2 GPU cần GPU NVIDIA tương thích.", "warning")
+            return
+        if normalized == "full" and not HFlowController._heavy_gpu_models_available(self):
+            self._show_app_alert("GPU không đủ VRAM", "HY-MT2 GPU đầy đủ cần ít nhất 5 GiB VRAM. Chọn HY-MT2 CPU Q4 để dịch trên máy này.", "warning")
+            return
+        resource_packs = getattr(self, "_resource_packs", None)
+        if resource_packs is not None:
+            pack_id = "model-hymt2-gpu" if normalized == "full" else "model-hymt2-cpu"
+            compatible, reason = resource_packs._hardware_compatibility(pack_id)
+            if not compatible:
+                self._show_app_alert("Máy không đáp ứng", reason, "warning")
+                return
+            if resource_packs.manager.status(pack_id) not in {"installed", "bundled"}:
+                self._show_app_alert(
+                    "Thiếu model dịch",
+                    f"Hãy cài {resource_packs.manager.definitions[pack_id].label} trong Gói tài nguyên trước khi dịch.",
+                    "warning",
+                )
+        if normalized != self._translation_model:
+            self._translation_model = normalized
+            self.translationModelChanged.emit()
+
+    @Property(bool, notify=settingsChanged)
+    def keepModelsWarm(self):
+        return bool(self._keep_models_warm)
+
+    @Property(int, notify=settingsChanged)
+    def manualProjectCacheGiB(self):
+        return int(self._manual_project_cache_gib)
+
+    @Property(int, notify=settingsChanged)
+    def manualGlobalCacheGiB(self):
+        return int(self._manual_global_cache_gib)
+
+    @Property("QVariantMap", notify=settingsChanged)
+    def manualEditorLayout(self):
+        return dict(self._manual_editor_layout)
+
+    @Property("QVariantMap", notify=settingsChanged)
+    def manualEditorWorkspace(self):
+        return dict(self._manual_editor_workspace)
+
+    @Slot(str, result="QVariantMap")
+    def editorViewState(self, video_id):
+        from hflow.services import editor_view_state
+
+        return editor_view_state.load(str(video_id or ""))
+
+    @Slot(str, "QVariantMap", result=bool)
+    def saveEditorViewState(self, video_id, state):
+        from hflow.services import editor_view_state
+
+        return editor_view_state.save(str(video_id or ""), dict(state or {}))
+
+    @Slot("QVariantMap")
+    def saveManualEditorWorkspace(self, workspace):
+        saved = desktop_settings.save_settings({"manual_editor_workspace": dict(workspace or {})})
+        normalized = dict(saved["manual_editor_workspace"])
+        if normalized != self._manual_editor_workspace:
+            self._manual_editor_workspace = normalized
+            self.settingsChanged.emit()
+
+    @Slot(int, int, bool)
+    def saveManualEditorLayout(self, inspector_width, timeline_height, compare):
+        layout = {
+            "inspectorWidth": max(300, min(520, int(inspector_width))),
+            "timelineHeight": max(200, min(520, int(timeline_height))),
+            "compare": bool(compare),
+        }
+        if layout == self._manual_editor_layout:
+            return
+        desktop_settings.save_settings({
+            "manual_editor_inspector_width": layout["inspectorWidth"],
+            "manual_editor_timeline_height": layout["timelineHeight"],
+            "manual_editor_compare": layout["compare"],
+        })
+        self._manual_editor_layout = layout
+
+    @Property(str, notify=warmupChanged)
+    def warmupState(self):
+        return self._warmup_state
+
+    @Property(str, notify=warmupChanged)
+    def warmupCapability(self):
+        return self._warmup_capability
+
+    @Property(str, notify=warmupChanged)
+    def warmupDetail(self):
+        return self._warmup_detail
+
+    @Property(bool, notify=settingsChanged)
+    def cpuOnly(self):
+        return self._active_processing_device != "gpu"
+
+    @Property(str, notify=settingsChanged)
+    def performanceProfileLabel(self):
+        return runtime_profile_for(
+            self._hardware_capabilities,
+            self._active_processing_device,
+        ).label
+
+    @Property(str, notify=settingsChanged)
+    def performanceProfileDetail(self):
+        profile = runtime_profile_for(
+            self._hardware_capabilities,
+            self._active_processing_device,
+        )
+        if self._settings_language == "vi":
+            if profile.cuda_available:
+                return f"Tăng tốc GPU - {profile.cuda_name or 'CUDA'}"
+            ram = f"{profile.total_ram_gib:.1f} GiB RAM sử dụng được" if profile.total_ram_bytes else "không rõ RAM"
+            return f"Chế độ CPU - {ram}, {profile.cpu_threads} luồng"
+        return profile.summary
+
+    @Property("QVariantMap", notify=hardwareChanged)
+    def hardwareInfo(self):
+        """Expose the active graphics adapter and detailed CPU telemetry."""
+        capabilities = self._hardware_capabilities
+        profile = runtime_profile_for(capabilities, self._active_processing_device)
+        active_gpu_name = capabilities.cuda_name if profile.cuda_available else capabilities.active_display_gpu_name
+        return {
+            "activeGpuName": active_gpu_name,
+            "activeGpuRole": "GPU compute" if profile.cuda_available else "Windows display adapter",
+            "activeGpuResolution": capabilities.active_display_gpu_resolution,
+            "usingGpu": profile.cuda_available,
+            "gpuSafe": capabilities.gpu_supported,
+            "availableGpuName": capabilities.cuda_name if capabilities.gpu_supported else "",
+            "totalVram": (
+                self._format_memory_size(capabilities.total_vram_bytes)
+                if capabilities.cuda_available
+                else "--"
+            ),
+            "freeVram": (
+                self._format_memory_size(capabilities.free_vram_bytes)
+                if capabilities.cuda_available
+                else "--"
+            ),
+            "systemRam": (
+                f"{capabilities.installed_ram_bytes / (1024**3):.1f} GiB / Windows: {capabilities.total_ram_bytes / (1024**3):.1f} GiB"
+                if capabilities.installed_ram_bytes is not None and capabilities.total_ram_bytes
+                else f"Windows: {capabilities.total_ram_bytes / (1024**3):.1f} GiB" if capabilities.total_ram_bytes else "--"
+            ),
+            "logicalCpuCount": capabilities.logical_cpu_count,
+            "cpuName": capabilities.cpu_name or "",
+            "cpuPhysicalCores": capabilities.cpu_physical_cores or 0,
+            "cpuMaxMhz": capabilities.cpu_max_mhz or 0,
+            "acPowered": capabilities.ac_powered,
+            "batteryPercent": capabilities.battery_percent if capabilities.battery_percent is not None else -1,
+            "recommendedDevice": recommended_processing_device(capabilities),
+            "profileLabel": profile.label,
+        }
+
+    @Slot(str, result=bool)
+    def processingDeviceCompatible(self, preference):
+        if not self._startup_hardware_resolved:
+            return True  # Unknown is not the same as unsupported.
+        compatible, _message = validate_processing_device(str(preference), self._hardware_capabilities)
+        return compatible
+
+    @Slot(str, result=str)
+    def processingDeviceStatus(self, preference):
+        preference = str(preference)
+        if not self._startup_hardware_resolved:
+            return "Đang kiểm tra cấu hình máy…" if self._settings_language == "vi" else "Checking hardware…"
+        capabilities = self._hardware_capabilities
+        compatible, message = validate_processing_device(preference, capabilities, language=self._settings_language)
+        if self._settings_language != "vi":
+            return message
+        if preference == "gpu":
+            if not compatible:
+                return message
+            status = message
+            if capabilities.free_vram_bytes and capabilities.free_vram_bytes < 5 * 1024**3:
+                status += " VRAM trống đang thấp; tác vụ lớn có thể cần đóng bớt ứng dụng."
+            if capabilities.ac_powered is False:
+                status += " Nên cắm sạc để xử lý ổn định."
+            return status
+        if preference == "cpu":
+            return message
+        if capabilities.gpu_supported:
+            return f"Chế độ tự động sẽ dùng {capabilities.cuda_name}."
+        if capabilities.cpu_supported:
+            return "Chế độ tự động sẽ dùng CPU vì GPU hiện không đủ an toàn."
+        return "Máy không đáp ứng yêu cầu bộ nhớ tối thiểu của CPU hoặc GPU."
+
+    @Property(str, notify=projectSetupChanged)
+    def projectDirectory(self):
+        return self._project_directory
+
+    @Property(str, notify=projectSetupChanged)
+    def projectName(self):
+        return self._project_name
+
+    @Property(str, notify=projectSetupChanged)
+    def projectKey(self):
+        return str(self._selected_project_key or "")
+
+    @Slot(str)
+    def requestProjectRename(self, key):
+        project = project_store.get_project(str(key or ""))
+        if project:
+            self.projectRenameRequested.emit(project["key"], project["project_name"])
+
+    @Slot(str, str, result=bool)
+    def renameProject(self, key, name):
+        return HFlowController._project_commands_for(self).rename_project(str(key), str(name))
+
+    @Property(str, notify=projectSetupChanged)
+    def projectType(self):
+        return self._project_type
+
+    @Property(str, notify=projectSetupChanged)
+    def projectRoot(self):
+        if not self._selected_project_key:
+            return ""
+        try:
+            return project_store.project_root_for_key(self._selected_project_key)
+        except (RuntimeError, ValueError):
+            return ""
+
+    @Property(str, notify=projectSetupChanged)
+    def downloadOutputRoot(self):
+        if self._project_type != "download" or not self._selected_project_key:
+            return ""
+        try:
+            return project_store.project_downloads_dir_for_key(self._selected_project_key)
+        except (RuntimeError, ValueError):
+            return ""
+
+    @Slot()
+    def downloadInspectedVideo(self):
+        HFlowController._project_import_for(self).download_inspected_video()
+
+    def _handle_url_download_ready(self, path, _workspace, mode):
+        HFlowController._project_import_for(self).handle_url_download_ready(path, _workspace, mode)
+
+    def _import_downloaded_video(self, path: str, mode: str, target) -> bool:
+        return HFlowController._project_import_for(self).import_downloaded_video(path, mode, target)
+
+    def _current_project_media_keys(self) -> set[str]:
+        return HFlowController._project_import_for(self).current_project_media_keys()
+
+    @Slot(result=bool)
+    def prepareChannelImport(self):
+        return HFlowController._project_import_for(self).prepare_channel_import()
+
+    @Slot(result=bool)
+    def startChannelDownloads(self):
+        return HFlowController._project_import_for(self).start_channel_downloads()
+
+    def _remember_channel_import_target(self, session_id: str) -> None:
+        HFlowController._project_import_for(self).remember_channel_import_target(session_id)
+
+    @Slot(int, result=bool)
+    def retryChannelVideo(self, row):
+        return HFlowController._project_import_for(self).retry_channel_video(row)
+
+    def _handle_channel_video_ready(self, path, _workspace, candidate_payload, project_key, session_id):
+        HFlowController._project_import_for(self).handle_channel_video_ready(
+            path, _workspace, candidate_payload, project_key, session_id
+        )
+
+    @Slot(str)
+    def _finish_channel_import_target(self, session_id):
+        HFlowController._project_import_for(self).finish_channel_import_target(session_id)
+
+    @Slot()
+    def browseVideo(self):
+        HFlowController._project_import_for(self).browse_video()
+
+    @Slot()
+    def browseBackgroundMusic(self):
+        HFlowController._project_import_for(self).browse_background_music()
+
+    @Slot(result=str)
+    def chooseWatermarkImage(self):
+        return HFlowController._project_import_for(self).choose_watermark_image()
+
+    @Slot(str, result=bool)
+    def setWatermarkImage(self, path):
+        return HFlowController._project_import_for(self).set_watermark_image(path)
+
+    @Slot(result=str)
+    def chooseWatermarkVideo(self):
+        return HFlowController._project_import_for(self).choose_watermark_video()
+
+    @Slot(str, result=bool)
+    def setWatermarkVideo(self, path):
+        return HFlowController._project_import_for(self).set_watermark_video(path)
+
+    @Slot(result=str)
+    def chooseVoiceCloneReference(self):
+        return HFlowController._project_import_for(self).choose_voice_reference()
+
+    @Slot(str, str, result=bool)
+    def setVoiceCloneReference(self, path, transcript):
+        return HFlowController._project_import_for(self).set_voice_reference(path, transcript)
+
+    @Slot(str, str, result=bool)
+    def applyVoiceCloneReference(self, video_id, provider):
+        return HFlowController._project_import_for(self).apply_voice_reference(video_id, provider)
+
+    @Slot(str, int, result="QVariantMap")
+    def voiceCloneReferenceAnalysis(self, path, bucket_count):
+        return HFlowController._project_import_for(self).analyze_voice_reference(path, bucket_count)
+
+    def _voice_clone_capture(self) -> VoiceCloneRecorder:
+        recorder = getattr(self, "_voice_clone_recorder", None)
+        if recorder is None:
+            recorder = VoiceCloneRecorder()
+            self._voice_clone_recorder = recorder
+        return recorder
+
+    @Slot(result=bool)
+    def startVoiceCloneRecording(self):
+        self.cancelVoiceCloneRecording()
+        path = HFlowController._project_import_for(self).prepare_voice_reference_recording()
+        if not path:
+            return False
+        recorder = self._voice_clone_capture()
+        if recorder.start(path, str(getattr(self, "_voice_clone_input_id", ""))):
+            self._voice_clone_recording_video_id = str(self._selected_video_id or "")
+            return True
+        HFlowController._project_import_for(self).discard_voice_reference_recording(path)
+        return False
+
+    @Slot(result="QVariantList")
+    def voiceCloneInputDevices(self):
+        selected = str(getattr(self, "_voice_clone_input_id", ""))
+        devices = [{**item, "selected": item["id"] == selected} for item in VoiceCloneRecorder.input_devices()]
+        if selected and not any(item["selected"] for item in devices):
+            devices.append({"id": selected, "label": "Microphone đã ngắt kết nối — chọn thiết bị khác", "selected": True})
+        return devices
+
+    @Slot(str, result=bool)
+    def selectVoiceCloneInputDevice(self, device_id):
+        if self._voice_clone_capture().active or (getattr(self, "_batch_voice_recorder", None)
+                                                  and self._batch_voice_recorder.active):
+            return False
+        self._voice_clone_input_id = str(device_id)
+        return True
+
+    @Slot(result="QVariantMap")
+    def voiceCloneRecordingState(self):
+        return self._voice_clone_capture().poll()
+
+    @Slot(result=bool)
+    def finishVoiceCloneRecording(self):
+        if str(getattr(self, "_voice_clone_recording_video_id", "")) != str(self._selected_video_id or ""):
+            self.cancelVoiceCloneRecording()
+            return False
+        recorder = self._voice_clone_capture()
+        path = recorder.stop()
+        if not path:
+            return False
+        saved = HFlowController._project_import_for(self).save_recorded_voice_reference(path)
+        if saved:
+            recorder.cancel()
+        return saved
+
+    @Slot()
+    def cancelVoiceCloneRecording(self):
+        path = self._voice_clone_capture().cancel()
+        if path:
+            HFlowController._project_import_for(self).discard_voice_reference_recording(
+                path, str(getattr(self, "_voice_clone_recording_video_id", "")))
+        self._voice_clone_recording_video_id = ""
+
+    @Slot(result=bool)
+    def clearVoiceCloneReference(self):
+        return HFlowController._project_import_for(self).clear_voice_reference()
+
+    @Slot(result=str)
+    def chooseBatchBackgroundMusic(self):
+        return HFlowController._project_import_for(self).choose_batch_background_music()
+
+    @Slot(str, result=bool)
+    def importBackgroundMusicFromLink(self, url):
+        return HFlowController._project_import_for(self).import_background_music_link(url)
+
+    @Slot(str, result=bool)
+    def importBatchBackgroundMusicFromLink(self, url):
+        return HFlowController._project_import_for(self).import_batch_background_music_link(url)
+
+    @Slot()
+    def cancelBackgroundMusicLinkImport(self):
+        HFlowController._project_import_for(self).cancel_background_music_link_import()
+
+    @Slot(result=bool)
+    def clearBackgroundMusic(self):
+        return HFlowController._project_import_for(self).set_background_music("")
+
+    @Slot(result=bool)
+    def previewAudioMix(self):
+        return self._audio_preview.start()
+
+    @Slot(str, str, str, result=bool)
+    def previewVoiceSample(self, provider: str, voice: str, target_language: str):
+        """Prepare a short, cached sample for a voice-library row."""
+        return self._audio_preview.start(
+            provider=provider,
+            voice=voice,
+            target_language=target_language,
+            voice_only=True,
+        )
+
+    @Slot(str, str, str, bool, int, int, int, str, result=bool)
+    def previewBatchAudioMix(
+        self,
+        target_language: str,
+        tts_provider: str,
+        tts_voice: str,
+        enable_audio_separation: bool,
+        original_volume: int,
+        background_music_volume: int,
+        tts_volume: int,
+        background_music_path: str,
+        voice_reference_path: str = "",
+    ):
+        """Preview a batch draft without applying it to each video."""
+        preview_video_id = next(
+            (
+                video_id
+                for video_id in self._batch_video_ids
+                if (video := video_store.get_video(video_id))
+                and os.path.isfile(str((video.files or {}).get("video_input") or ""))
+            ),
+            "",
+        )
+        if not preview_video_id:
+            self._status_message = "Add a video to the batch before previewing the audio mix."
+            self.statusMessageChanged.emit()
+            return False
+        return self._audio_preview.start(
+            video_id=preview_video_id,
+            enable_audio_separation=enable_audio_separation,
+            background_music_path=background_music_path,
+            original_volume=original_volume,
+            background_music_volume=background_music_volume,
+            tts_volume=tts_volume,
+            voice=tts_voice,
+            provider=tts_provider,
+            target_language=target_language,
+            voice_reference_path=voice_reference_path,
+        )
+
+    @Slot(str, str, str, bool, int, int, int, str, str, result=bool)
+    def previewBatchAudioMixWithReference(self, language, provider, voice, separation, original, music, tts, music_path, reference):
+        return HFlowController.previewBatchAudioMix(
+            self, language, provider, voice, separation, original, music, tts, music_path, reference)
+
+    @Slot(str, result=bool)
+    def replaceSelectedVideoVideo(self, path):
+        return HFlowController._project_import_for(self).replace_video(self._selected_video_id, path)
+
+    def _replace_video_video(self, video_id, path, media_source=None):
+        return HFlowController._project_import_for(self).replace_video(video_id, path, media_source)
+
+    @Slot()
+    def browseProjectDirectory(self):
+        HFlowController._project_import_for(self).browse_project_directory()
+
+    @Slot(str)
+    def browseProjectDirectoryForType(self, project_type):
+        HFlowController._project_import_for(self).browse_project_directory(project_type)
+
+    @Slot(str, str, str, result=bool)
+    def prepareProject(self, project_name, project_directory, project_type):
+        return HFlowController._project_import_for(self).prepare_project(
+            project_name, project_directory, project_type
+        )
+
+    @Slot(str, str, result=bool)
+    @Slot(str, str, str, result=bool)
+    def applySettings(self, theme, language, translation_model=None):
+        if translation_model is None:
+            translation_model = self._settings_translation_model
+        return HFlowController._settings_delegate_for(self).apply(theme, language, translation_model)
+
+    @Slot(bool)
+    def setKeepModelsWarm(self, enabled):
+        HFlowController._settings_delegate_for(self).set_keep_models_warm(bool(enabled))
+
+    @Slot(int, int)
+    def setManualCacheLimits(self, project_gib, global_gib):
+        HFlowController._settings_delegate_for(self).set_manual_cache_limits(
+            int(project_gib), int(global_gib)
+        )
+
+    @Slot(str, "QVariantMap")
+    def warmCapabilities(self, capability, context):
+        if getattr(self, "_smart_warmup", None) is not None:
+            self._smart_warmup.request(str(capability), dict(context or {}), priority=0)
+
+    @Slot(str)
+    def releaseWarmResources(self, reason):
+        if getattr(self, "_smart_warmup", None) is not None:
+            self._smart_warmup.release(str(reason or "manual"))
+
+    @Slot("QVariantList")
+    def installResourcePacks(self, pack_ids):
+        self._resource_packs.installResourcePacks(pack_ids)
+
+    @Slot(str)
+    def cancelResourcePackOperation(self, pack_id):
+        self._resource_packs.cancelResourcePackOperation(str(pack_id))
+
+    @Slot(str)
+    def discardResourcePackDownload(self, pack_id):
+        self._resource_packs.discardResourcePackDownload(str(pack_id))
+
+    @Slot(str)
+    def repairResourcePack(self, pack_id):
+        self._resource_packs.repairResourcePack(str(pack_id))
+
+    @Slot(str, result=bool)
+    def removeResourcePack(self, pack_id):
+        return self._resource_packs.removeResourcePack(str(pack_id))
+
+    @Slot(result=str)
+    def cleanUnusedResourcePacks(self):
+        return self._resource_packs.cleanUnusedResourcePacks()
+
+    @Slot(str, "QVariantMap", result="QStringList")
+    def requiredPacksForCapability(self, capability, context):
+        return self._resource_packs.requiredPacksForCapability(str(capability), context)
+
+    @Slot("QVariantList", result="QVariantMap")
+    def resourceRequirementSummary(self, pack_ids):
+        return self._resource_packs.resourceRequirementSummary(pack_ids)
+
+    @Slot(str, result=bool)
+    def moveResourceStorage(self, destination):
+        return self._resource_packs.moveResourceStorage(str(destination))
+
+    @Slot()
+    def browseAndMoveResourceStorage(self):
+        self._resource_packs.browseAndMoveResourceStorage()
+
+    @staticmethod
+    def _settings_delegate_for(host):
+        return getattr(host, "_settings_controller", None) or SettingsController(host)
+
+    @Slot()
+    def resetSettings(self):
+        HFlowController._settings_delegate_for(self).reset()
+
+    @staticmethod
+    def _diagnostics_for(host):
+        return getattr(host, "_diagnostics", None) or DiagnosticsController(host)
+
+    @Slot(result=bool)
+    def exportDiagnostics(self):
+        return HFlowController._diagnostics_for(self).export()
+
+    @Slot(str, result=bool)
+    def importVideo(self, path):
+        return HFlowController._project_import_for(self).import_video(path)
+
+    @Slot()
+    def refreshDownloadProjectSources(self):
+        HFlowController._project_import_for(self).refresh_download_project_sources()
+
+    @Slot(int, bool, bool, result=bool)
+    def setDownloadProjectSourceSelected(self, row: int, selected: bool, exclusive: bool):
+        return HFlowController._project_import_for(self).set_download_project_source_selected(
+            row, selected, exclusive=exclusive
+        )
+
+    @Slot(str, result=bool)
+    def importSelectedDownloadProjectVideos(self, mode: str):
+        return HFlowController._project_import_for(self).import_selected_download_project_videos(mode)
+
+    @Slot()
+    def browseBatchVideos(self):
+        HFlowController._project_import_for(self).browse_batch_videos()
+
+    @Slot()
+    def browseBatchFolder(self):
+        HFlowController._project_import_for(self).browse_batch_folder()
+
+    @Slot("QVariantList")
+    def importBatchVideos(self, paths):
+        HFlowController._project_import_for(self).import_batch_videos(paths)
+
+    def _batch_rejection_message(self, rejected) -> str:
+        return HFlowController._project_import_for(self).batch_rejection_message(rejected)
+
+    @staticmethod
+    def _project_commands_for(host):
+        return getattr(host, "_project_commands", None) or ProjectCommandsController(
+            host, create_video=create_desktop_video
+        )
+
+    @staticmethod
+    def _project_import_for(host):
+        return getattr(host, "_project_import", None) or ProjectImportController(
+            host, create_video=create_desktop_video
+        )
+
+    @staticmethod
+    def _catalog_media_for(host):
+        return getattr(host, "_catalog_media", None) or CatalogMediaController(host)
+
+    @staticmethod
+    def _runtime_device_for(host):
+        return getattr(host, "_runtime_device", None) or RuntimeDeviceController(
+            host,
+            unsubscribe=unsubscribe_log,
+            pause=pause_video,
+            shutdown_translation=shutdown_hymt2_worker,
+            detect_hardware=detect_hardware_capabilities,
+        )
+
+    @Slot()
+    def startBatch(self):
+        HFlowController._project_commands_for(self).start_batch()
+
+    @Slot()
+    def resumeBatch(self):
+        HFlowController._project_commands_for(self).resume_batch()
+
+    def _sync_project_model_defaults(self) -> None:
+        if getattr(self, "_device_switching", False):
+            return
+        device = getattr(self, "_active_processing_device", self._settings_processing_device)
+        previous = getattr(self, "_draft_processing_device", device)
+        self._draft_processing_device = device
+        capabilities = getattr(self, "_hardware_capabilities", None)
+        vram = (getattr(capabilities, "total_vram_bytes", None)
+                if getattr(self, "_startup_hardware_resolved", False) else None)
+        if previous == device:
+            # The initial quick probe has no CUDA memory data. Correct only
+            # untouched empty-project defaults after the full probe arrives.
+            if device != "gpu" or getattr(self, "_selected_video_id", None) or vram is None:
+                return
+            from hflow.core.model_choices import project_model_defaults
+
+            legacy = project_model_defaults("gpu", target_language=getattr(self, "_target_language", "vi"))
+            if any(getattr(self, name, None) != value for name, value in legacy.items()):
+                return
+        from hflow.core.model_choices import models_for_device, project_model_defaults
+
+        for video_id, draft in list(getattr(self, "_manual_settings_drafts", {}).items()):
+            if not self._processing_queue.contains(video_id):
+                self._manual_settings_drafts[video_id] = draft.model_copy(update=models_for_device(device,
+                    recognition=draft.speech_recognition_model, translation=draft.translation_model,
+                    voice=draft.tts_provider, total_vram_bytes=vram))
+        if self._selected_video_id:
+            if self._processing_queue.contains(self._selected_video_id):
+                return
+            values = {"_" + key: value for key, value in models_for_device(device,
+                recognition=self._speech_recognition_model, translation=self._translation_model,
+                voice=self._tts_provider, total_vram_bytes=vram).items()}
+        else:
+            values = project_model_defaults(device, total_vram_bytes=vram,
+                                            target_language=getattr(self, "_target_language", "vi"))
+        changed = {}
+        for attribute, value in values.items():
+            if getattr(self, attribute) != value:
+                setattr(self, attribute, value)
+                changed[attribute.removeprefix("_")] = value
+                {"_speech_recognition_model": self.speechRecognitionModelChanged,
+                 "_translation_model": self.translationModelChanged,
+                 "_tts_provider": self.ttsProviderChanged}[attribute].emit()
+        if changed:
+            # Only empty-project defaults can change backend families here.
+            # Existing project choices and compatible presets stay untouched.
+            if not self._selected_video_id and "tts_provider" in changed and hasattr(self, "_tts_voice"):
+                from hflow.core.model_choices import default_tts_voice
+
+                family = "vieneu:" if self._tts_provider.startswith("vieneu") else "omnivoice:"
+                if not str(self._tts_voice).startswith(family):
+                    self._tts_voice = default_tts_voice(self._tts_provider)
+                    signal = getattr(self, "ttsVoiceChanged", None)
+                    if signal:
+                        signal.emit()
+            preview = getattr(self, "_audio_preview", None)
+            if preview:
+                preview.invalidate()
+            if self._selected_video_id and getattr(self, "_settings_owner_video_id", None) == self._selected_video_id:
+                refreshed = video_store.update_video(self._selected_video_id, **changed)
+                if refreshed:
+                    self._selected_video_snapshot = refreshed
+                    self.selectedVideoChanged.emit()
+            self.ttsProviderOptionsChanged.emit()
+            self.ttsVoiceOptionsChanged.emit()
+        self.batchChanged.emit()
+
+    def _batch_settings_values(self) -> dict[str, object]:
+        return HFlowController._project_commands_for(self).batch_settings_values()
+
+    @Slot(result="QVariantMap")
+    def batchSettings(self):
+        """Return a batch draft without mutating shared editor state."""
+        return self._batch_settings_values()
+
+    @Slot(result="QVariantMap")
+    def batchResults(self):
+        return HFlowController._project_commands_for(self).batch_results()
+
+    @Slot(result="QVariantList")
+    def batchPreviewSources(self):
+        return HFlowController._project_commands_for(self).batch_preview_sources()
+
+    @Slot(str, result="QVariantMap")
+    def batchPreviewMedia(self, video_id):
+        if str(video_id) not in self._batch_video_ids:
+            return {}
+        return HFlowController._review_preview_media_for(self, video_store.get_video(str(video_id)))
+
+    @Slot(str, "QVariantMap", bool, result=bool)
+    def applyBatchSettingsValues(self, project_key, values, replace_overrides):
+        if replace_overrides and self.batchSettingOverrides():
+            if QMessageBox.question(None,
+                    "Thay thế cài đặt riêng?" if self._settings_language == "vi" else "Replace individual settings?",
+                    "Cài đặt chung sẽ thay thế cài đặt riêng của mọi video. Bạn muốn tiếp tục?"
+                    if self._settings_language == "vi" else "Shared settings will replace every individual video setting. Continue?"
+                    ) != QMessageBox.StandardButton.Yes:
+                return False
+        return HFlowController._project_commands_for(self).apply_batch_settings_values(
+            str(project_key), dict(values), bool(replace_overrides))
+
+    @Slot(str, str, str, result=str)
+    def stageBatchSettingsAsset(self, project_key, kind, path):
+        if str(project_key) != str(self._selected_project_key or "") or self.isBatchRunning:
+            return ""
+        from hflow.services.batch_settings import stage_asset
+        try:
+            return stage_asset(str(project_key), str(kind), str(path))
+        except (OSError, ValueError, RuntimeError) as exc:
+            self._show_app_alert("Cài đặt hàng loạt", str(exc), "warning")
+            return ""
+
+    @Slot(str, result=bool)
+    def startBatchVoiceRecording(self, project_key):
+        self.cancelBatchVoiceRecording()
+        if str(project_key) != str(self._selected_project_key or "") or self.isBatchRunning:
+            return False
+        from hflow.core.storage_ownership import owned_path
+        root = project_store.project_root_for_key(str(project_key))
+        directory = owned_path(Path(root) / ".batch-settings-assets", root)
+        directory.mkdir(parents=True, exist_ok=True)
+        recorder = VoiceCloneRecorder()
+        self._batch_voice_recorder = recorder
+        self._batch_voice_owner = str(project_key)
+        self._batch_voice_capture = str(owned_path(directory / ("recording-" + uuid.uuid4().hex + ".wav"), root))
+        return recorder.start(self._batch_voice_capture, str(getattr(self, "_voice_clone_input_id", "")))
+
+    @Slot(result="QVariantMap")
+    def batchVoiceRecordingState(self):
+        recorder = getattr(self, "_batch_voice_recorder", None)
+        return recorder.poll() if recorder else {"active": False, "error": ""}
+
+    @Slot(str, result=str)
+    def finishBatchVoiceRecording(self, project_key):
+        recorder = getattr(self, "_batch_voice_recorder", None)
+        if not recorder or str(project_key) != str(getattr(self, "_batch_voice_owner", "")):
+            return ""
+        path = recorder.stop()
+        return self.stageBatchSettingsAsset(project_key, "voiceReferencePath", path) if path else ""
+
+    @Slot()
+    def cancelBatchVoiceRecording(self):
+        recorder = getattr(self, "_batch_voice_recorder", None)
+        if recorder:
+            recorder.cancel()
+        path = getattr(self, "_batch_voice_capture", "")
+        if path:
+            try:
+                Path(path).unlink(missing_ok=True)
+            except OSError:
+                pass
+        self._batch_voice_capture = ""
+        self._batch_voice_owner = ""
+
+    @Slot(result="QVariantList")
+    def batchSettingOverrides(self):
+        return HFlowController._project_commands_for(self).batch_setting_overrides()
+
+    def _apply_batch_settings(
+        self,
+        workflow_mode: str,
+        target_language: str,
+        speech_recognition_model: str,
+        tts_provider: str,
+        tts_voice: str,
+        enable_audio_separation: bool,
+        original_volume: int,
+        background_music_volume=None,
+        tts_volume=None,
+        watermark_text=None,
+        background_music_path=None,
+        remove_original_subtitles=None,
+        subtitle_style=None,
+        original_subtitle_removal_mode=None,
+        speaker_mode=None,
+        translation_model=None,
+    ) -> bool:
+        return HFlowController._project_commands_for(self).apply_batch_settings(
+            workflow_mode,
+            target_language,
+            tts_provider,
+            tts_voice,
+            enable_audio_separation,
+            original_volume,
+            background_music_volume,
+            tts_volume,
+            watermark_text,
+            background_music_path,
+            remove_original_subtitles,
+            subtitle_style,
+            original_subtitle_removal_mode,
+            speech_recognition_model=speech_recognition_model,
+            speaker_mode=speaker_mode,
+            translation_model=translation_model,
+        )
+
+    @Slot(result=bool)
+    def applyBatchSettings(self):
+        return self._apply_batch_settings(
+            self._workflow_mode,
+            self._target_language,
+            self._speech_recognition_model,
+            self._tts_provider,
+            self._tts_voice,
+            self._enable_audio_separation,
+            self._original_volume,
+            self._background_music_volume,
+            self._tts_volume,
+            self._watermark_text,
+            None,
+            self._remove_original_subtitles,
+            self._subtitle_style.model_dump(),
+            self._original_subtitle_removal_mode,
+            self._speaker_mode,
+            self._translation_model,
+        )
+
+    @Slot(str, str, str, str, str, bool, int, int, int, str, str, bool, "QVariantMap", str, str, str, result=bool)
+    def applyBatchSettingsDraft(
+        self,
+        workflow_mode: str,
+        target_language: str,
+        speech_recognition_model: str,
+        tts_provider: str,
+        tts_voice: str,
+        enable_audio_separation: bool,
+        original_volume: int,
+        background_music_volume: int | None = None,
+        tts_volume: int | None = None,
+        watermark_text: str | None = None,
+        background_music_path: str | None = None,
+        remove_original_subtitles: bool | None = None,
+        subtitle_style=None,
+        original_subtitle_removal_mode: str | None = None,
+        speaker_mode: str | None = None,
+        translation_model: str | None = None,
+    ):
+        # Keep direct Python callers from older integrations working while the
+        # QML-facing signature carries the new ASR model field.
+        if speech_recognition_model not in {"small", "small-cpu", "small-gpu", "large-v3-turbo"}:
+            legacy_provider = speech_recognition_model
+            legacy_voice = tts_provider
+            legacy_separation = bool(tts_voice)
+            legacy_original_volume = int(enable_audio_separation)
+            legacy_background_volume = int(original_volume)
+            legacy_tts_volume = int(background_music_volume) if background_music_volume is not None else None
+            legacy_watermark = str(tts_volume or "") if tts_volume is not None else None
+            speech_recognition_model = getattr(self, "_speech_recognition_model", "small")
+            tts_provider = legacy_provider
+            tts_voice = legacy_voice
+            enable_audio_separation = legacy_separation
+            original_volume = legacy_original_volume
+            background_music_volume = legacy_background_volume
+            tts_volume = legacy_tts_volume
+            watermark_text = legacy_watermark
+        return self._apply_batch_settings(
+            workflow_mode,
+            target_language,
+            speech_recognition_model,
+            tts_provider,
+            tts_voice,
+            enable_audio_separation,
+            original_volume,
+            background_music_volume,
+            tts_volume,
+            watermark_text,
+            background_music_path,
+            remove_original_subtitles,
+            subtitle_style,
+            original_subtitle_removal_mode,
+            speaker_mode,
+            translation_model,
+        )
+
+    @Slot()
+    def loadBatchSettings(self):
+        HFlowController._project_commands_for(self).load_batch_settings()
+
+    @Slot(result=bool)
+    def saveSelectedVideoSettings(self):
+        return HFlowController._project_commands_for(self).save_selected_video_settings()
+
+    @Slot(result=bool)
+    def persistSelectedBatchVideoSettings(self):
+        """Backward-compatible alias for QML built before single-video autosave."""
+        return HFlowController._project_commands_for(self).persist_selected_video_settings()
+
+    @Slot(result=bool)
+    def persistSelectedVideoSettings(self):
+        """Persist setup edits for the selected single or batch video."""
+        return HFlowController._project_commands_for(self).persist_selected_video_settings()
+
+    @Slot(str, result=bool)
+    def persistVideoSettingsFor(self, video_id):
+        """Persist only when the editor still belongs to ``video_id``.
+
+        QML settings use a short debounce.  Capturing the id at edit time and
+        validating it here makes a selection change an atomic draft boundary.
+        """
+        requested_id = str(video_id or "")
+        if not requested_id:
+            return False
+        if requested_id == str(self._selected_video_id or ""):
+            saved = HFlowController._project_commands_for(self).persist_selected_video_settings(requested_id)
+        else:
+            draft = self._manual_settings_drafts.get(requested_id)
+            video = video_store.get_video(requested_id)
+            if not draft or not video or self._processing_queue.contains(requested_id):
+                return False
+            history_before = self._video_settings_snapshot(video)
+            self._apply_config_to_video(video, draft)
+            refreshed = video_store.get_video(requested_id)
+            if refreshed:
+                self._record_video_settings_change(
+                    requested_id,
+                    history_before,
+                    self._video_settings_snapshot(refreshed),
+                )
+            saved = True
+        if saved:
+            self._manual_settings_drafts.pop(requested_id, None)
+        return saved
+
+    @Slot(str, result=bool)
+    def captureVideoSettingsDraft(self, video_id):
+        """Snapshot settings for the video that owns the current editor fields."""
+        requested_id = str(video_id or "")
+        if (
+            not requested_id
+            or requested_id != str(self._selected_video_id or "")
+            or requested_id != str(self._settings_owner_video_id or "")
+            or self._processing_queue.contains(requested_id)
+        ):
+            return False
+        self._manual_settings_drafts[requested_id] = self._build_config().model_copy(deep=True)
+        return True
+
+    @Slot()
+    def stopBatch(self):
+        HFlowController._project_commands_for(self).stop_batch()
+
+    @Slot()
+    def clearBatch(self):
+        HFlowController._project_commands_for(self).clear_batch()
+
+    @staticmethod
+    def _batch_output_directory(video):
+        """Return only the app-owned per-video output directory, if it is safe to remove."""
+        project_directory = (video.project_directory or "").strip()
+        output_path = (video.files or {}).get("final_video", "")
+        if not project_directory or not output_path:
+            return ""
+        project_root = (
+            project_store.project_root_for_key(video.project_key)
+            if getattr(video, "project_key", "")
+            else project_store.project_root(video.project_name, project_directory, video.project_type)
+        )
+        export_roots = (
+            os.path.abspath(
+                project_store.project_exports_dir_for_key(video.project_key)
+                if getattr(video, "project_key", "")
+                else project_store.project_exports_dir(video.project_name, project_directory, video.project_type)
+            ),
+            os.path.abspath(os.path.join(project_root, "outputs")),
+        )
+        output_directory = os.path.abspath(os.path.dirname(output_path))
+        try:
+            if not any(
+                os.path.commonpath([exports_root, output_directory]) == exports_root for exports_root in export_roots
+            ):
+                return ""
+        except ValueError:
+            return ""
+        return output_directory
+
+    @staticmethod
+    def _remove_empty_batch_output_parents(video):
+        output_directory = HFlowController._batch_output_directory(video)
+        if not output_directory:
+            return
+        outputs_root = os.path.dirname(output_directory)
+        project_root = os.path.dirname(outputs_root)
+        for directory in (outputs_root, project_root):
+            try:
+                os.rmdir(directory)
+            except OSError:
+                # Keep non-empty folders and any folder currently in use.
+                pass
+
+    @Slot()
+    def deleteCurrentBatch(self):
+        HFlowController._project_commands_for(self).delete_current_batch()
+
+    @Slot()
+    def startVideo(self):
+        HFlowController._project_commands_for(self).start_video()
+
+    @Slot(result=bool)
+    def startProjectVideo(self):
+        return HFlowController._project_commands_for(self).start_project_video()
+
+    @Slot()
+    def stopVideo(self):
+        HFlowController._project_commands_for(self).stop_video()
+
+    @Slot()
+    def resumeSelectedVideo(self):
+        HFlowController._project_commands_for(self).resume_selected_video()
+
+    @Slot()
+    def restartSelectedVideo(self):
+        HFlowController._project_commands_for(self).restart_selected_video()
+
+    @Slot(str, result=bool)
+    def runManualStage(self, stage):
+        allowed_stages = {"translation", "subtitles", "voice", "timeline", "render"}
+        stage = str(stage or "").strip().lower()
+        video = self._selected_video()
+        if not video or self._project_type != "manual" or video.project_type != "manual":
+            self.appAlertRequested.emit("Manual", "Import a video into a Manual project first.", "warning")
+            return False
+        if stage not in allowed_stages:
+            self.appAlertRequested.emit("Manual", "This processing stage is not available.", "warning")
+            return False
+        completed = set(getattr(video, "manual_completed_stages", []) or [])
+        required = {
+            "translation": set(),
+            "subtitles": {"translation"},
+            "voice": {"translation"},
+            "timeline": {"voice"},
+            # Audio is a live Manual tool rather than a linear build step.
+            # Export materialises the current mix after reusing the durable
+            # translation and voice checkpoints.
+            "render": {"translation", "voice"},
+        }[stage]
+        if not required.issubset(completed):
+            self.appAlertRequested.emit(
+                "Manual",
+                "Complete the required modules before running this one.",
+                "info",
+            )
+            return False
+        if self._processing_queue.contains(video.video_id):
+            self.appAlertRequested.emit("Manual", "Wait for the current stage to finish or pause it first.", "info")
+            return False
+        self._workflow_mode = "A"
+        self._apply_setup_to_video(video, review_approved=True)
+        video = video_store.get_video(video.video_id) or video
+        video_store.update_video(
+            video.video_id,
+            manual_target_stage=stage,
+            error=None,
+            status="manual_ready" if getattr(video, "manual_completed_stages", []) else "pending",
+        )
+        video_store.log_to_video(video.video_id, f"Manual stage queued: {stage}.")
+        queued = self._enqueue_video(video.video_id)
+        if queued:
+            self.selectedVideoChanged.emit()
+            self.refreshVideos()
+        return queued
+
+    @Slot(result="QVariantMap")
+    def manualExportPreflight(self):
+        from hflow.pipeline.sequence_compiler import export_preflight
+
+        video = self._selected_video()
+        if not video or video.project_type != "manual":
+            return {"canExport": False, "issues": [], "requiredBytes": 0, "availableBytes": 0}
+        document = editor_documents.ensure(video)
+        input_path = self._resolve_video_file(
+            video, ("video_input", "input_video"), ("input", "video.mp4")
+        )
+        from hflow.services.video_export import export_destination
+
+        output_path = str(export_destination(video))
+        output_directory = str(
+            Path(output_path).parent
+            if output_path else Path(video_store.get_video_dir(video.video_id)) / "output"
+        )
+        return export_preflight(document, input_path, output_directory)
+
+    @Slot(result="QVariantMap")
+    def manualExportSettings(self):
+        return self._video_exports.settings(self._selected_video())
+
+    @Property(bool, notify=exportStateChanged)
+    def videoExportBusy(self):
+        return self._video_exports.busy
+
+    @Property("QVariantList", notify=exportStateChanged)
+    def videoExportJobs(self):
+        return [dict(job) for job in self._video_exports.jobs]
+
+    @Slot()
+    def requestVideoExport(self):
+        if (self.hasSelectedVideo and not self.videoExportBusy
+                and not self.isSelectedVideoProcessing and not self.isSelectedVideoQueued):
+            self.videoExportRequested.emit()
+
+    @Slot()
+    def requestVideoExportProgress(self):
+        if self.videoExportBusy:
+            self.videoExportProgressRequested.emit()
+
+    @Slot()
+    def requestAutoProcessing(self):
+        video = self._selected_video()
+        if (video and video.project_type in {"single", "batch"} and not self.videoExportBusy
+                and not self._processing_queue.contains(video.video_id)):
+            self.autoProcessingRequested.emit()
+
+    @Slot(str, str, str, bool, result=bool)
+    def processVideoTo(self, video_id, preset, destination, overwrite):
+        if str(video_id) != str(self._selected_video_id or ""):
+            return False
+        started = self._video_exports.start(video_id, preset, destination, overwrite=overwrite, process=True)
+        if started:
+            self.videoExportStarted.emit()
+        return started
+
+    @Slot(str, result=str)
+    def chooseVideoExportDestination(self, video_id):
+        return self._video_exports.choose_file(video_id)
+
+    @Slot(result=bool)
+    @Slot(str, str, result=bool)
+    def exportSelectedSrt(self, kind="result", video_id=""):
+        return HFlowController._project_commands_for(self).export_selected_srt(str(kind), str(video_id))
+
+    @Slot(result=bool)
+    @Slot(str, str, str, result=bool)
+    def importSelectedSrt(self, path="", language="", video_id=""):
+        return HFlowController._project_commands_for(self).import_selected_srt(str(path), str(language), str(video_id))
+
+    @Slot(result="QVariantMap")
+    def chooseSrtImportFile(self):
+        return HFlowController._project_commands_for(self).choose_srt_import_file()
+
+    @Slot(str, result=bool)
+    def removeSelectedSrt(self, video_id):
+        return HFlowController._project_commands_for(self).remove_selected_srt(str(video_id))
+
+    @Slot(result="QVariantMap")
+    def srtExportSettings(self):
+        return HFlowController._project_commands_for(self).srt_export_settings()
+
+    @Property(bool, notify=selectedVideoChanged)
+    def manualHasImportedSrt(self):
+        from hflow.services.subtitle_import import has_import
+
+        return has_import(self._selected_video())
+
+    @Slot(str, str, str, bool, result=bool)
+    def exportVideoTo(self, video_id, preset, destination, overwrite):
+        started = self._video_exports.start(video_id, preset, destination, overwrite=overwrite)
+        if started:
+            self.videoExportStarted.emit()
+        return started
+
+    @Slot(str, str, str, bool, str, result=bool)
+    def exportVideoSegmentTo(self, video_id, preset, destination, overwrite, segment_id):
+        started = self._video_exports.start(video_id, preset, destination,
+            overwrite=overwrite, segment_id=segment_id)
+        if started:
+            self.videoExportStarted.emit()
+        return started
+
+    @Slot(str, result=bool)
+    def exportDestinationExists(self, path):
+        return Path(str(path)).exists()
+
+    @Slot(result=bool)
+    def exportBatchVideos(self):
+        if self._batch_video_ids and not self.isBatchRunning and not self.videoExportBusy:
+            self.batchProcessingRequested.emit(False)
+            return True
+        return False
+
+    @Slot()
+    def requestBatchProcessing(self):
+        if self._batch_video_ids and not self.isBatchRunning and not self.videoExportBusy:
+            self.batchProcessingRequested.emit(True)
+
+    @Slot(result="QVariantMap")
+    def batchExportSettings(self):
+        return self._video_exports.batch_settings()
+
+    @Slot(result=str)
+    def chooseBatchExportDestination(self):
+        return self._video_exports.choose_batch_directory()
+
+    @Slot(str, result=bool)
+    def batchExportDestinationExists(self, directory):
+        return self._video_exports.batch_destination_exists(directory)
+
+    @Slot(str, "QVariantList", str, str, bool, bool, result=bool)
+    def processBatchTo(self, project_key, video_ids, preset, directory, overwrite, process):
+        started = self._video_exports.start_batch_to(
+            str(project_key), list(video_ids), str(preset), str(directory), overwrite=bool(overwrite), process=bool(process),
+        )
+        if started:
+            self.videoExportStarted.emit()
+        return started
+
+    @Slot(result=bool)
+    def retryVideoExports(self):
+        return self._video_exports.retry_failed()
+
+    @Slot()
+    def cancelVideoExport(self):
+        self._video_exports.cancel_all()
+
+    @Slot(str)
+    def openExportDestinationFolder(self, exported_path):
+        destination = Path(str(exported_path)).parent
+        if not destination.is_dir():
+            self.appAlertRequested.emit(
+                "Không truy cập được thư mục" if self._settings_language == "vi" else "Folder unavailable",
+                "Thư mục đã bị di chuyển hoặc ổ đĩa chưa được kết nối." if self._settings_language == "vi"
+                else "The folder was moved or the drive is disconnected.", "warning",
+            )
+            return
+        self._open_path(str(destination))
+
+    @Slot()
+    def prepareProjectCreationDirectory(self):
+        self._project_directory = desktop_settings.load_settings().get("default_project_directory") or os.path.join(RUNTIME_DATA_DIR, "projects")
+        self.projectSetupChanged.emit()
+
+    @Slot(str, result=bool)
+    def setManualExportPreset(self, preset):
+        from hflow.services.video_export import EXPORT_PRESETS
+
+        video = self._selected_video()
+        if not video or video.project_type != "manual" or self.isSelectedVideoQueued or preset not in EXPORT_PRESETS:
+            return False
+        video_store.update_video(video.video_id, export_preset=preset)
+        self._refresh_selected_video_snapshot()
+        self.selectedVideoChanged.emit()
+        return True
+
+    @Slot(str, result=bool)
+    @Slot(str, bool, result=bool)
+    def runManualTool(self, tool_id, force_rerun=False):
+        if getattr(getattr(self, "_resource_packs", None), "storageMoving", False):
+            self.appAlertRequested.emit("Đang chuyển gói tài nguyên", "Hãy chờ chuyển vị trí hoàn tất trước khi xử lý.", "info")
+            return False
+        from hflow.pipeline.manual_tools import (
+            ensure_current_subtitle_document, prepare_manual_rerun, tool_readiness,
+        )
+
+        tool_id = str(tool_id or "").strip().lower()
+        allowed = {"source", "separation", "translation", "subtitle", "image", "voice", "audio", "export"}
+        video = self._selected_video()
+        if not video or self._project_type != "manual" or video.project_type != "manual":
+            self.appAlertRequested.emit("Thủ công", "Hãy nhập video vào dự án Thủ công trước.", "warning")
+            return False
+        if tool_id not in allowed:
+            self.appAlertRequested.emit("Thủ công", "Công cụ này không khả dụng.", "warning")
+            return False
+        # Validate the exact configuration that will be queued below, not a
+        # stale persisted snapshot left behind while editing project options.
+        build_config = getattr(self, "_build_config", None)
+        effective_config = build_config() if callable(build_config) else video
+        if tool_id == "voice":
+            from hflow.services.subtitle_import import has_import, voice_notice
+
+            if has_import(video):
+                from hflow.pipeline.manual_tools import _load_segments
+
+                notice = voice_notice(video, getattr(effective_config, "tts_provider", "omnivoice"),
+                                      _load_segments(video, validate=False), self._settings_language)
+                if notice:
+                    self.appAlertRequested.emit(*notice, "warning")
+                    return False
+        if (
+            tool_id == "translation"
+            and str(getattr(effective_config, "translation_model", "auto")).startswith("gemini-")
+            and not self.geminiKeyConfigured
+        ):
+            self.requestGeminiSetup()
+            return False
+        ensure_hardware = getattr(self, "_ensure_hardware_ready_for_action", None)
+        if tool_id in {"translation", "voice", "separation"} and callable(ensure_hardware):
+            if not ensure_hardware():
+                return False
+        capabilities = {
+            "separation": ("separation",),
+            "translation": ("recognition", "translation"),
+            "image": ("ocr",),
+            "voice": ("voice",),
+        }.get(tool_id, ())
+        from hflow.services.subtitle_import import has_import
+
+        imported_srt = has_import(video)
+        if tool_id == "translation" and imported_srt:
+            capabilities = ("translation",)
+        pack_context = {
+            "voice_clone": str(getattr(effective_config, "tts_voice", "")) in {"omnivoice:clone", "vieneu:clone"},
+            "speaker_mode": str(getattr(effective_config, "speaker_mode", "single") or "single"),
+            "device": str(getattr(self, "_settings_processing_device", "cpu") or "cpu"),
+            "model": str(getattr(effective_config, "speech_recognition_model", "small") or "small"),
+            "translation_model": str(getattr(effective_config, "translation_model", "auto") or "auto"),
+            "source_language": str(getattr(effective_config, "source_language", "auto") or "auto"),
+            "language": str(getattr(effective_config, "target_language", "") or ""),
+            "provider": str(getattr(effective_config, "tts_provider", "omnivoice") or "omnivoice"),
+        }
+        if tool_id == "voice" and imported_srt:
+            from hflow.services.subtitle_language import manual_subtitle_language
+
+            pack_context["language"] = manual_subtitle_language(video)
+        from hflow.core.model_choices import gpu_choice_blocked
+
+        if gpu_choice_blocked(pack_context["device"],
+                              recognition=pack_context["model"] if tool_id == "translation" and not imported_srt else "small",
+                              translation=pack_context["translation_model"] if tool_id == "translation" else "auto",
+                              voice=pack_context["provider"] if tool_id == "voice" else "omnivoice"):
+            self.appAlertRequested.emit("Đang dùng chế độ CPU", "Chọn model CPU hoặc chuyển sang GPU trong Cài đặt → Chung.", "warning")
+            return False
+        missing: list[str] = []
+        resource_packs = getattr(self, "_resource_packs", None)
+        resource_manager = getattr(resource_packs, "manager", None)
+        if resource_manager is not None:
+            for capability in capabilities:
+                for pack_id in resource_manager.required_packs(capability, pack_context):
+                    compatible, reason = resource_packs._hardware_compatibility(pack_id)
+                    if not compatible:
+                        self.appAlertRequested.emit("Máy không đáp ứng", reason, "warning")
+                        return False
+                missing.extend(resource_manager.missing_packs(capability, pack_context))
+        missing = list(dict.fromkeys(missing))
+        if missing:
+            summary = resource_manager.requirement_summary(missing)
+            feature_label = {
+                "recognition": "Nhận dạng và dịch",
+                "translation": "Nhận dạng và dịch",
+                "separation": "Tách giọng",
+                "image": "Che phụ đề gốc",
+                "voice": "Giọng đọc OmniVoice",
+            }.get(tool_id, "Công cụ này")
+            from hflow.desktop.resource_progress import missing_resource_notice
+
+            title, message = missing_resource_notice(missing, summary, self._settings_language, feature_label)
+            self.appAlertRequested.emit(title, message, "info")
+            return False
+        if tool_id in {"subtitle", "voice", "audio", "export"}:
+            ensure_current_subtitle_document(video.video_id, validate=False)
+            video = video_store.get_video(video.video_id) or video
+        if tool_id == "export":
+            preflight = self.manualExportPreflight()
+            blocking = [
+                item for item in preflight.get("issues", [])
+                if item.get("severity") == "error"
+            ]
+            if blocking:
+                detail = "\n".join(
+                    f"{item.get('title', '')}: {item.get('detail', '')}".strip(": ")
+                    for item in blocking
+                )
+                self.appAlertRequested.emit("Chưa thể xuất video", detail, "warning")
+                return False
+        if (
+            video.status in {"pending", "processing"}
+            and getattr(video, "manual_target_tool", "")
+            and not self._processing_queue.contains(video.video_id)
+        ):
+            video_store.update_video(
+                video.video_id,
+                status="manual_ready",
+                manual_target_tool="",
+                error=None,
+            )
+            video = video_store.get_video(video.video_id) or video
+        if self._processing_queue.contains(video.video_id):
+            # The queue, rather than the persisted status snapshot, is the
+            # authority for a live job. A double click on the active tool is
+            # a harmless no-op; a genuinely different tool remains disabled
+            # until the current job leaves the queue.
+            current_tool = str(getattr(video, "manual_target_tool", "") or "")
+            same_tool = current_tool == tool_id or (
+                tool_id == "separation" and current_tool in {"source", "separation"}
+            )
+            if same_tool:
+                return True
+            self.appAlertRequested.emit(
+                "Đang xử lý",
+                "Dừng hoặc chờ tác vụ hiện tại hoàn tất trước khi chạy công cụ khác.",
+                "info",
+            )
+            return False
+        aggregate_id = "source" if tool_id == "separation" else tool_id
+        state = tool_readiness(video, aggregate_id, language=self._settings_language)
+        if state and not state["canRun"]:
+            self.appAlertRequested.emit("Chưa thể chạy", state["blockedReason"] or "Thiếu dữ liệu đầu vào.", "info")
+            return False
+        if tool_id == "translation" and manual_artifacts.peek_active(video, "tts_manifest"):
+            answer = QMessageBox.question(
+                None,
+                "Translate again",
+                "Translating again will remove the current voice. You will need to create the voice again.",
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return False
+            selected = self._selected_video()
+            if (not selected or selected.video_id != video.video_id
+                    or self._processing_queue.contains(video.video_id)):
+                return False
+        if tool_id == "translation":
+            timer = getattr(self, "_manual_voice_refresh_timer", None)
+            if timer is not None:
+                timer.stop()
+            self._manual_voice_refresh_pending = False
+            self._manual_voice_refresh_enabled = False
+        # A stopped worker no longer owns the registry. Clear its pause flag
+        # before replacing the resume target; completed artifacts stay intact.
+        from hflow.pipeline.process_registry import prepare_video_resume
+
+        prepare_video_resume(video.video_id)
+        restarting_paused_tool = video.status == "paused" and str(getattr(video, "manual_target_tool", "") or "") == tool_id
+        if tool_id != "image":
+            self._apply_setup_to_video(video, review_approved=True)
+        if tool_id == "translation":
+            from hflow.services.translation_progress import clear_manual_progress
+
+            clear_manual_progress(video.video_id)
+        if tool_id != "export" or restarting_paused_tool:
+            if restarting_paused_tool or force_rerun:
+                prepare_manual_rerun(video.video_id, tool_id, force=True)
+            else:
+                prepare_manual_rerun(video.video_id, tool_id)
+        video_store.update_video(
+            video.video_id,
+            manual_target_tool=tool_id,
+            manual_target_stage="",
+            resume_step="",
+            error=None,
+            status="manual_ready" if getattr(video, "active_artifacts", {}) else "pending",
+        )
+        video_store.log_to_video(video.video_id, f"Manual tool queued: {tool_id}.")
+        queued = self._enqueue_video(video.video_id)
+        if queued:
+            self.manualToolStateChanged.emit(tool_id)
+            self.selectedVideoChanged.emit()
+            self.refreshVideos()
+        return queued
+
+    @Slot(str, result="QVariantMap")
+    def manualVoiceConfiguration(self, segment_id: str):
+        """Describe the effective voice for one segment without changing state."""
+        from hflow.pipeline.manual_tools import published_voice_record
+        from hflow.services.subtitle_language import compatible_manual_voice
+
+        video = self._selected_video()
+        if not video or video.project_type != "manual":
+            return {}
+        segment_key = str(segment_id or "")
+        overrides = dict((video.files or {}).get("manual_voice_overrides") or {})
+        override = overrides.get(segment_key)
+        override = override if isinstance(override, dict) else {}
+        language = HFlowController._selected_voice_language(self)
+        global_provider, global_voice = compatible_manual_voice(language, video.tts_provider, video.tts_voice)
+        provider, voice = compatible_manual_voice(language, override.get("provider") or global_provider,
+                                                  override.get("voice") or global_voice)
+        return {
+            "provider": provider,
+            "voice": voice,
+            "globalProvider": global_provider,
+            "globalVoice": global_voice,
+            "speakerMode": str(video.speaker_mode or "single"),
+            "segmentOverride": bool(override),
+            "hasPublishedVoice": bool(published_voice_record(video, validate=False)),
+        }
+
+    @Slot(str, result=bool)
+    def restartManualTool(self, tool_id):
+        video = self._selected_video()
+        if (not video or video.project_type != "manual" or video.status != "paused"
+                or str(video.manual_target_tool or "") != str(tool_id or "")
+                or self._processing_queue.contains(video.video_id)):
+            return False
+        vi = self._settings_language == "vi"
+        if QMessageBox.question(
+            None, "Chạy lại tác vụ" if vi else "Run task again",
+            "Bỏ tiến độ đang tạm dừng và chạy lại công cụ với cài đặt hiện tại? Kết quả đã hoàn tất trước đó được giữ nguyên cho đến khi có kết quả mới." if vi else
+            "Discard the paused progress and run this tool again with the current settings? Previously completed results remain until the new result is ready.",
+        ) != QMessageBox.StandardButton.Yes:
+            return False
+        current = self._selected_video()
+        if (not current or current.video_id != video.video_id or current.status != "paused"
+                or str(current.manual_target_tool or "") != str(tool_id or "")
+                or self._processing_queue.contains(current.video_id)):
+            return False
+        return self.runManualTool(tool_id)
+
+    @Slot(str, str, str, str, str, result=bool)
+    def configureAndRunManualVoice(
+        self,
+        provider: str,
+        voice: str,
+        scope: str,
+        segment_id: str,
+        speaker_mode: str,
+    ) -> bool:
+        """Commit a confirmed Manual voice draft and run only the Voice tool."""
+        video = self._selected_video()
+        if not video or self._project_type != "manual" or video.project_type != "manual":
+            return False
+        if self._processing_queue.contains(video.video_id):
+            self.appAlertRequested.emit(
+                "Đang xử lý",
+                "Dừng hoặc chờ tác vụ hiện tại hoàn tất trước khi tạo giọng.",
+                "info",
+            )
+            return False
+
+        language = HFlowController._selected_voice_language(self)
+        selected_provider = self._normalized_tts_provider(language, provider)
+        if not HFlowController.validateTtsProviderForLanguage(self, language, selected_provider):
+            return False
+        selected_voice = self._normalized_voice_for_language(
+            language,
+            voice,
+            selected_provider,
+        )
+        selected_scope = "segment" if str(scope or "").strip().lower() == "segment" else "all"
+        selected_segment = str(segment_id or "")
+        segments = self._manual_subtitles.segments
+        if selected_scope == "segment" and not any(
+            str(item.get("segment_id") or "") == selected_segment for item in segments
+        ):
+            self.appAlertRequested.emit(
+                "Chưa chọn đoạn",
+                "Chọn một đoạn phụ đề trước khi tạo giọng riêng cho đoạn đó.",
+                "info",
+            )
+            return False
+
+        if selected_voice in {"omnivoice:clone", "vieneu:clone"} and not self.voiceCloneReferencePath:
+            self.appAlertRequested.emit(
+                "Chưa có mẫu giọng",
+                "Thêm mẫu giọng được phép sử dụng trước khi chọn giọng đã nhân bản.",
+                "warning",
+            )
+            return False
+
+        before = self._manual_voice_configuration_snapshot(video)
+        files = dict(video.files or {})
+        overrides = {
+            str(key): dict(value)
+            for key, value in dict(files.get("manual_voice_overrides") or {}).items()
+            if isinstance(value, dict)
+        }
+        if selected_scope == "segment":
+            if selected_provider == video.tts_provider and selected_voice == video.tts_voice:
+                overrides.pop(selected_segment, None)
+            else:
+                overrides[selected_segment] = {
+                    "provider": selected_provider,
+                    "voice": selected_voice,
+                }
+        else:
+            overrides.clear()
+            self._tts_provider = selected_provider
+            self._tts_voice = selected_voice
+            self._speaker_mode = (
+                "multiple"
+                if selected_provider.startswith(("omnivoice", "vieneu"))
+                and str(speaker_mode or "").strip().lower() == "multiple"
+                else "single"
+            )
+            self.ttsProviderChanged.emit()
+            self.ttsProviderOptionsChanged.emit()
+            self.ttsVoiceChanged.emit()
+            self.ttsVoiceOptionsChanged.emit()
+            self.speakerModeChanged.emit()
+
+        if overrides:
+            files["manual_voice_overrides"] = overrides
+        else:
+            files.pop("manual_voice_overrides", None)
+        video_store.update_video(video.video_id, files=files)
+        video = video_store.get_video(video.video_id) or video
+        if selected_scope == "all":
+            self._apply_setup_to_video(video, review_approved=True)
+            video = video_store.get_video(video.video_id) or video
+        video_store.log_to_video(
+            video.video_id,
+            "Manual voice request confirmed for "
+            + (f"segment {selected_segment}." if selected_scope == "segment" else "the full video."),
+        )
+        self._record_manual_voice_configuration_change(
+            video.video_id,
+            before,
+            self._manual_voice_configuration_snapshot(video),
+        )
+        if selected_scope == "all":
+            from hflow.pipeline.manual_tools import incremental_voice_refresh
+
+            # Edited subtitles are an incremental update, not a request to
+            # replace correct speech for every other sentence. An unchanged
+            # document or changed voice setup is an explicit fresh rerun.
+            return self.runManualTool("voice", not incremental_voice_refresh(video))
+        return self.runManualTool("voice")
+
+    @Slot(str, result=bool)
+    def cancelManualTool(self, tool_id):
+        video = self._selected_video()
+        if not video or str(getattr(video, "manual_target_tool", "") or "") != str(tool_id or ""):
+            return False
+        if self._processing_queue.active_video_id == video.video_id:
+            self.stopVideo()
+            return True
+        # stopVideo() intentionally handles only the active worker.  A Manual
+        # job may still be waiting behind another video, so remove that queue
+        # item directly and restore the editor to a stable, runnable state.
+        if not self._processing_queue.discard(video.video_id):
+            # The queue can promote this item between the active snapshot and
+            # discard(). Hand ownership back to the normal active-job pause
+            # path instead of losing the user's click in that narrow race.
+            if self._processing_queue.active_video_id == video.video_id:
+                self.stopVideo()
+                return True
+            return False
+        video_store.update_video(
+            video.video_id,
+            status="manual_ready",
+            manual_target_tool="",
+            step="manual_ready",
+            step_detail="Đã hủy tác vụ đang chờ",
+            estimated_remaining_seconds=None,
+        )
+        video_store.log_to_video(video.video_id, f"Cancelled queued Manual tool: {tool_id}.")
+        self._update_queue_positions()
+        self.processingChanged.emit()
+        self.selectedVideoChanged.emit()
+        self.refreshVideos()
+        return True
+
+    @Slot(str, result=bool)
+    @Slot(str, "QVariantMap", result=bool)
+    def setManualSubtitleTreatment(self, treatment, region=None):
+        """Commit source-subtitle cleanup atomically, then run OCR if needed.
+
+        ``removeOriginalSubtitles`` and its method used to be two independent
+        QML controls.  Selecting "Che" therefore queued OCR before the user
+        could choose blur or patch.  This slot persists one complete choice and
+        only then starts the optional image analysis.
+        """
+        from hflow.pipeline.manual_tools import image_region_cached
+
+        normalized = str(treatment or "").strip().lower()
+        if normalized not in {"keep", "blur", "patch"}:
+            return False
+        video = self._selected_video()
+        if not video or self._project_type != "manual" or video.project_type != "manual":
+            return False
+        if self._processing_queue.contains(video.video_id):
+            self.appAlertRequested.emit(
+                "Đang xử lý",
+                "Dừng hoặc chờ tác vụ hiện tại hoàn tất trước khi đổi cách che phụ đề.",
+                "info",
+            )
+            return False
+
+        from hflow.services.ocr_regions import normalize_region
+
+        changes = {"remove_original_subtitles": normalized != "keep"}
+        if normalized != "keep":
+            changes["original_subtitle_removal_mode"] = normalized
+        if region:
+            try:
+                changes["original_subtitle_region_override"] = normalize_region(dict(region))
+            except (TypeError, ValueError):
+                return False
+        before = {name: getattr(video, name) for name in changes}
+        updates = {name: value for name, value in changes.items() if before[name] != value}
+        if updates:
+            try:
+                refreshed = video_store.update_video(video.video_id, **updates)
+            except (OSError, ValueError):
+                return False
+            if not refreshed:
+                return False
+            manual_artifacts.deactivate(video.video_id, {"visual_proxy", "export"})
+        else:
+            refreshed = video
+        self._remove_original_subtitles = normalized != "keep"
+        if normalized != "keep":
+            self._original_subtitle_removal_mode = normalized
+        self.subtitleSettingsChanged.emit()
+        self._selected_video_snapshot = refreshed
+        self._record_video_settings_change(
+            video.video_id,
+            before,
+            {name: getattr(refreshed, name) for name in changes},
+            "Cách che phụ đề gốc",
+        )
+
+        # Keeping the source is a complete visual state and never needs OCR.
+        # Blur/patch share the same cached geometry; only the lightweight
+        # preview layer changes when that geometry already exists.
+        if normalized == "keep" or image_region_cached(refreshed):
+            self.manualToolStateChanged.emit("image")
+            self.selectedVideoChanged.emit()
+            return True
+        return self.runManualTool("image")
+
+    @Slot(str, result=bool)
+    def clearManualCache(self, scope):
+        scope = str(scope or "project").strip().lower()
+        selected_video = getattr(self, "_selected_video", None)
+        selected = selected_video() if callable(selected_video) else None
+        if scope == "project" and selected and selected.project_type == "manual":
+            from hflow.pipeline.manual_tools import ensure_current_subtitle_document
+
+            ensure_current_subtitle_document(selected.video_id)
+            removed = manual_artifacts.clear(selected.video_id, include_active=False)
+            removed += self._editor_preview.clear_cache(selected.video_id)
+            self.manualToolStateChanged.emit("")
+            self.selectedVideoChanged.emit()
+            if removed:
+                amount = f"{removed / (1024 * 1024):.1f} MB" if removed >= 1024 * 1024 else f"{removed / 1024:.0f} KB"
+                self.appAlertRequested.emit("Đã dọn cache", f"Đã giải phóng {amount} dữ liệu không còn dùng.", "info")
+            else:
+                self.appAlertRequested.emit("Cache đã gọn", "Không có dữ liệu cũ để xóa.", "info")
+            return True
+        if scope == "all":
+            from hflow.pipeline.manual_tools import ensure_current_subtitle_document
+
+            removed = 0
+            for video in video_store.list_videos():
+                if video.project_type == "manual":
+                    ensure_current_subtitle_document(video.video_id)
+                    removed += manual_artifacts.clear(video.video_id, include_active=False)
+                    removed += self._editor_preview.clear_cache(video.video_id)
+            self.manualToolStateChanged.emit("")
+            self.selectedVideoChanged.emit()
+            if removed:
+                amount = f"{removed / (1024 * 1024):.1f} MB" if removed >= 1024 * 1024 else f"{removed / 1024:.0f} KB"
+                self.appAlertRequested.emit("Đã dọn cache", f"Đã giải phóng {amount} dữ liệu không còn dùng.", "info")
+            else:
+                self.appAlertRequested.emit("Cache đã gọn", "Không có dữ liệu cũ để xóa.", "info")
+            return True
+        return False
+
+    @Slot(str, result=bool)
+    def approveTranslationReview(self, payload):
+        return HFlowController._project_commands_for(self).approve_translation_review(payload)
+
+    @Slot(str, result=bool)
+    def saveTranslationReviewDraft(self, payload):
+        return HFlowController._project_commands_for(self).save_translation_review_draft(payload)
+
+    @Slot(str, float, result=bool)
+    def requestEditorPreview(self, payload, playhead_seconds):
+        return self._editor_preview.request(
+            payload, playhead_seconds, cache_only=self.isSelectedVideoQueued,
+        )
+
+    @Slot()
+    def releaseEditorPreview(self):
+        self._manual_editor_active = False
+        self._editor_preview.release()
+        self._manual_audio.release()
+        self._subtitle_overlay.release()
+        self._manual_voice_refresh_timer.stop()
+        self._editor_transform_drafts.clear()
+        self._manual_editor_document.clear()
+
+    @Slot("QVariantMap", result=bool)
+    def setOriginalSubtitleRegion(self, region):
+        video = self._selected_video()
+        if not video or self._processing_queue.contains(video.video_id):
+            return False
+        from hflow.services.ocr_regions import normalize_region
+
+        try:
+            normalized = normalize_region(dict(region)) if region else {}
+            updated = video_store.update_video(video.video_id, original_subtitle_region_override=normalized)
+            if not updated:
+                return False
+            self._selected_video_snapshot = updated
+        except (OSError, TypeError, ValueError):
+            return False
+        self.selectedVideoChanged.emit()
+        return True
+
+    @Slot(result=str)
+    def addOcrLayer(self):
+        from hflow.services.ocr_layers import EXTRA_LAYERS_ENABLED, ensure_primary
+        from hflow.schemas.editor import EditorClip, EditorTrack
+
+        if not EXTRA_LAYERS_ENABLED:
+            return ""
+        video = self._editor_video()
+        if not video or self._processing_queue.contains(video.video_id):
+            return ""
+        clip_id = editor_documents.new_id("ocr")
+
+        def add(document):
+            ensure_primary(document)
+            tracks = [track for track in document.tracks if track.kind == "ocr"]
+            number = 1
+            names = {track.name for track in tracks}
+            while f"Lớp che {number}" in names:
+                number += 1
+            name = f"Lớp che {number}"
+            document.tracks.append(EditorTrack(
+                track_id=clip_id, kind="ocr", name=name,
+                order=min(track.order for track in tracks) - 1,
+            ))
+            document.clips.append(EditorClip(
+                clip_id=clip_id, track_id=clip_id, kind="ocr", name=name,
+                duration_ms=max(80, document.sequence.duration_ms),
+                enabled=False,
+                metadata={"region": {"x_percent": 20, "y_percent": 40,
+                    "width_percent": 60, "height_percent": 15}, "removal_mode": "blur", "pending": True},
+            ))
+
+        if not self._apply_editor_mutation("add_ocr_layer", add):
+            return ""
+        self._manual_editor_document.selectClip(clip_id)
+        self.selectedVideoChanged.emit()
+        return clip_id
+
+    @Slot(str, "QVariantMap", str, result=bool)
+    def updateOcrLayer(self, clip_id, region, mode):
+        from hflow.services.ocr_regions import normalize_region
+
+        video = self._editor_video()
+        if not video or self._processing_queue.contains(video.video_id) or mode not in {"blur", "patch"}:
+            return False
+        try:
+            normalized = normalize_region(dict(region))
+        except (TypeError, ValueError):
+            return False
+
+        def update(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip and clip.kind == "ocr" and not clip.metadata.get("primary_ocr"):
+                clip.metadata = {**clip.metadata, "region": normalized, "removal_mode": mode, "pending": False}
+                clip.enabled = True
+
+        changed = self._apply_editor_mutation("update_ocr_layer", update, merge_key=f"ocr:{clip_id}")
+        if changed:
+            self.selectedVideoChanged.emit()
+        return changed
+
+    @Slot(str, int, int, result=bool)
+    def setOcrLayerRange(self, clip_id, start_ms, end_ms):
+        video = self._editor_video()
+        if not video or self._processing_queue.contains(video.video_id) or start_ms < 0 or end_ms - start_ms < 80:
+            return False
+
+        def update(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip and clip.kind == "ocr":
+                if end_ms > document.sequence.duration_ms:
+                    return
+                clip.start_ms = start_ms
+                clip.duration_ms = end_ms - start_ms
+                editor_documents.refresh_sequence_duration(document)
+
+        return self._apply_editor_mutation("time_ocr_layer", update, merge_key=f"ocr-time:{clip_id}")
+
+    @Property(QObject, constant=True)
+    def manualSubtitleModel(self):
+        return self._manual_subtitles
+
+    def _sync_edit_history_context(self):
+        if self._edit_history_scope == "settings":
+            context = "settings"
+        elif self._edit_history_scope == "project":
+            context = f"project:{self._selected_project_key}" if self._selected_project_key else ""
+        elif self._edit_history_scope == "video":
+            context = f"video:{self._selected_video_id}" if self._selected_video_id else ""
+        else:
+            context = ""
+        self._manual_edit_history.select_context(context)
+
+    @Slot(str)
+    def setEditHistoryScope(self, scope):
+        normalized = str(scope or "none").strip().lower()
+        self._edit_history_scope = normalized if normalized in {"video", "project", "settings"} else "none"
+        self._sync_edit_history_context()
+
+    @Property(bool, notify=editHistoryChanged)
+    def canUndoEdit(self):
+        return self._manual_edit_history.canUndo
+
+    @Property(bool, notify=editHistoryChanged)
+    def canRedoEdit(self):
+        return self._manual_edit_history.canRedo
+
+    @Property(str, notify=editHistoryChanged)
+    def undoEditLabel(self):
+        return self._manual_edit_history.undoLabel
+
+    @Property(str, notify=editHistoryChanged)
+    def redoEditLabel(self):
+        return self._manual_edit_history.redoLabel
+
+    @Property(bool, notify=editorKeyframeClipboardChanged)
+    def hasCopiedKeyframes(self):
+        return bool(self._editor_keyframe_clipboard)
+
+    @Slot(result=bool)
+    def undoEdit(self):
+        return self._manual_edit_history.undo()
+
+    @Slot(result=bool)
+    def redoEdit(self):
+        return self._manual_edit_history.redo()
+
+    def _apply_app_settings_snapshot(self, values: dict[str, str]) -> bool:
+        return self._settings_controller.apply(
+            "graphite",
+            str(values.get("language") or "vi"),
+            str(values.get("translation_model") or "auto"),
+        )
+
+    def _record_app_settings_change(self, before: dict[str, str], after: dict[str, str]) -> None:
+        if before == after:
+            return
+        changed = sorted(name for name in set(before) | set(after) if before.get(name) != after.get(name))
+        self._manual_edit_history.record(
+            "Cài đặt ứng dụng",
+            lambda: self._apply_app_settings_snapshot(before),
+            lambda: self._apply_app_settings_snapshot(after),
+            merge_key=f"app-settings:{','.join(changed)}",
+            context_id="settings",
+        )
+
+    @Property(bool, notify=manualEditHistoryChanged)
+    def manualCanUndo(self):
+        return self._manual_edit_history.canUndo
+
+    @Property(bool, notify=manualEditHistoryChanged)
+    def manualCanRedo(self):
+        return self._manual_edit_history.canRedo
+
+    @Property(str, notify=manualEditHistoryChanged)
+    def manualUndoLabel(self):
+        return self._manual_edit_history.undoLabel
+
+    @Property(str, notify=manualEditHistoryChanged)
+    def manualRedoLabel(self):
+        return self._manual_edit_history.redoLabel
+
+    @Slot(result=bool)
+    def undoManualEdit(self):
+        return self.undoEdit()
+
+    @Slot(result=bool)
+    def redoManualEdit(self):
+        return self.redoEdit()
+
+    def _apply_manual_subtitle_layout(self, font_size: int, position_x: int, position_y: int) -> bool:
+        video = self._selected_video()
+        if not video or video.project_type != "manual":
+            return False
+        style = self._subtitle_style.model_dump()
+        style.update(
+            font_size=max(10, min(240, int(font_size))),
+            position_x_percent=max(0, min(100, int(position_x))),
+            position_y_percent=max(0, min(100, int(position_y))),
+        )
+        self._subtitle_style = SubtitleStyle(**style)
+        self._subtitle_layout_override = True
+        self.subtitleSettingsChanged.emit()
+        return self.saveSelectedVideoSettings()
+
+    @Slot(int, int, int, int, int, int)
+    def recordManualSubtitleLayoutChange(
+        self,
+        before_font_size,
+        before_position_x,
+        before_position_y,
+        after_font_size,
+        after_position_x,
+        after_position_y,
+    ):
+        before = (int(before_font_size), int(before_position_x), int(before_position_y))
+        after = (int(after_font_size), int(after_position_x), int(after_position_y))
+        if before == after or not self._selected_video_id:
+            return
+        video_id = str(self._selected_video_id)
+
+        def apply(values):
+            if str(self._selected_video_id or "") != video_id:
+                return False
+            return self._apply_manual_subtitle_layout(*values)
+
+        self._manual_edit_history.record(
+            "subtitle_layout",
+            lambda: apply(before),
+            lambda: apply(after),
+            merge_key=f"subtitle-layout:{video_id}",
+            context_id=f"video:{video_id}",
+        )
+
+    def _apply_manual_watermark_scale(self, scale_percent: int) -> bool:
+        video = self._selected_video()
+        if not video or video.project_type != "manual":
+            return False
+        self.watermarkScalePercent = max(25, min(300, int(scale_percent)))
+        return self.saveSelectedVideoSettings()
+
+    @Slot(int, int)
+    def recordManualWatermarkScaleChange(self, before_scale, after_scale):
+        before = max(25, min(300, int(before_scale)))
+        after = max(25, min(300, int(after_scale)))
+        if before == after or not self._selected_video_id:
+            return
+        video_id = str(self._selected_video_id)
+
+        def apply(value):
+            if str(self._selected_video_id or "") != video_id:
+                return False
+            return self._apply_manual_watermark_scale(value)
+
+        self._manual_edit_history.record(
+            "watermark_size",
+            lambda: apply(before),
+            lambda: apply(after),
+            merge_key=f"watermark-size:{video_id}",
+            context_id=f"video:{video_id}",
+        )
+
+    @Property(QObject, constant=True)
+    def subtitleOverlayRenderer(self):
+        return self._subtitle_overlay
+
+    @Property(QObject, constant=True)
+    def manualEditorDocumentModel(self):
+        return self._manual_editor_document
+
+    @Property(QObject, constant=True)
+    def manualPreviewComposition(self):
+        return self._manual_preview_composition
+
+    @Property(QObject, constant=True)
+    def manualPreviewAudio(self):
+        return self._manual_audio
+
+    @Slot()
+    def _clear_manual_preview_audio_error(self):
+        self._last_manual_preview_audio_error = ""
+
+    @Slot(str)
+    def _report_manual_preview_audio_error(self, message):
+        detail = str(message or "").strip()
+        if not detail or detail == self._last_manual_preview_audio_error:
+            return
+        self._last_manual_preview_audio_error = detail
+        self.appAlertRequested.emit("Không phát được âm thanh xem trước", detail, "warning")
+
+    def _editor_video(self):
+        video = self._selected_video()
+        if not video or video.project_type != "manual":
+            return None
+        return video
+
+    def _subtitle_segments_for_editor_document(self, document: EditorDocument) -> list[dict]:
+        current = {
+            str(item.get("segment_id") or item.get("id") or ""): item
+            for item in self._manual_subtitles.segments
+        }
+        result: list[dict] = []
+        subtitle_clips = sorted(
+            (
+                clip
+                for clip in document.clips
+                if clip.track_id == "subtitles" and clip.enabled and clip.segment_id
+            ),
+            key=lambda clip: (clip.start_ms, clip.clip_id),
+        )
+        for clip in subtitle_clips:
+            stored = clip.metadata.get("segment_payload")
+            base = stored if isinstance(stored, dict) else current.get(clip.segment_id, {})
+            segment = copy.deepcopy(base)
+            segment["segment_id"] = clip.segment_id
+            segment["text"] = clip.name
+            segment["start"] = round(clip.start_ms / 1000, 6)
+            segment["end"] = round((clip.start_ms + clip.duration_ms) / 1000, 6)
+            if clip.style_override:
+                segment["_style"] = editor_documents.resolved_text_style(document, clip).model_dump()
+            else:
+                segment.pop("_style", None)
+            result.append(segment)
+        return result
+
+    def _sync_subtitle_model_from_editor_document(self, document: EditorDocument) -> None:
+        if self._manual_subtitles.video_id != document.video_id:
+            return
+        self._manual_subtitles.replace_timeline(
+            self._subtitle_segments_for_editor_document(document)
+        )
+
+    def _set_editor_document_payload(self, video_id: str, payload: dict) -> bool:
+        video = video_store.get_video(video_id)
+        if not video:
+            return False
+        try:
+            restored = editor_documents.restore(video, payload)
+        except (OSError, ValueError):
+            return False
+        if str(self._selected_video_id or "") == video_id:
+            self._selected_video_snapshot = video_store.get_video(video_id)
+            self._manual_editor_document.set_document(restored)
+            self._sync_subtitle_model_from_editor_document(restored)
+        return True
+
+    def _apply_editor_mutation(self, label: str, callback, *, merge_key: str = "") -> bool:
+        # Retired NLE commands remain loadable in existing documents, but the
+        # localization editor must not create new instances of them.
+        if label in {
+            "split_source", "duplicate_clip", "ripple_delete",
+            "add_overlay", "add_overlay_from_asset",
+            "set_keyframe", "remove_keyframe", "move_keyframe",
+            "copy_transform_keyframes", "paste_keyframes",
+            "remove_keyframes", "keyframe_interpolation",
+            "add_marker", "move_marker", "update_marker", "remove_marker",
+        }:
+            return False
+        video = self._editor_video()
+        if not video:
+            return False
+        if self._manual_editor_document.video_id != video.video_id:
+            self._manual_editor_document.load(video)
+        try:
+            document, before, after = editor_documents.mutate(video, callback)
+        except (OSError, ValueError):
+            return False
+        if before == after:
+            return False
+        video_id = video.video_id
+        self._selected_video_snapshot = video_store.get_video(video_id)
+        self._manual_editor_document.set_document(document)
+        self._sync_subtitle_model_from_editor_document(document)
+        self._manual_edit_history.record(
+            label,
+            lambda: self._set_editor_document_payload(video_id, before),
+            lambda: self._set_editor_document_payload(video_id, after),
+            merge_key=merge_key,
+            context_id=f"video:{video_id}",
+        )
+        return True
+
+    @staticmethod
+    def _editor_track_locked(document, track_id: str) -> bool:
+        # Legacy documents may still contain the retired lock flag. It must
+        # not make a track uneditable after its unlock control was removed.
+        return False
+
+    @staticmethod
+    def _refresh_source_sequence(document) -> None:
+        source_clips = sorted(
+            (clip for clip in document.clips if clip.track_id == "source-video" and clip.enabled),
+            key=lambda item: item.start_ms,
+        )
+        decisions = []
+        previous_end = max((item.sequence_start_ms + item.source_end_ms - item.source_start_ms
+                            for item in document.sequence.edit_decisions), default=0)
+        linked_audio = [clip for clip in document.clips if clip.track_id == "source-audio"
+                        and clip.enabled and (clip.metadata.get("follow_source") is True
+                            or ("follow_source" not in clip.metadata
+                                and clip.clip_id == "source-audio-1" and clip.start_ms == 0
+                                and clip.duration_ms == previous_end))]
+        for clip in source_clips:
+            clip.duration_ms = max(1, clip.duration_ms)
+            clip.source_out_ms = clip.source_in_ms + clip.duration_ms
+            decisions.append(
+                {
+                    "decision_id": f"decision-{clip.clip_id}",
+                    "source_start_ms": clip.source_in_ms,
+                    "source_end_ms": clip.source_in_ms + clip.duration_ms,
+                    "sequence_start_ms": clip.start_ms,
+                }
+            )
+        document.sequence.edit_decisions = [SourceEditDecision.model_validate(item) for item in decisions]
+        source_end = max((clip.start_ms + clip.duration_ms for clip in source_clips), default=0)
+        # The source bed is already mapped through these decisions. Its clip
+        # envelope spans sequence time; moving it too would delay audio twice.
+        for audio in linked_audio:
+            audio.start_ms = 0
+            audio.duration_ms = source_end
+            audio.source_in_ms = 0
+            audio.source_out_ms = source_end
+            audio.metadata["follow_source"] = True
+        editor_documents.refresh_sequence_duration(document)
+
+    @Slot(int, result=bool)
+    def splitSourceAt(self, time_ms: int) -> bool:
+        position = max(0, int(time_ms))
+
+        def split(document):
+            if self._editor_track_locked(document, "source-video"):
+                return
+            clip = next(
+                (
+                    item
+                    for item in document.clips
+                    if item.track_id == "source-video"
+                    and item.start_ms + 80 < position < item.start_ms + item.duration_ms - 80
+                ),
+                None,
+            )
+            if clip is None:
+                return
+            left_duration = position - clip.start_ms
+            right_duration = clip.duration_ms - left_duration
+            right = clip.model_copy(deep=True)
+            right.clip_id = editor_documents.new_id("source")
+            right.start_ms = position
+            right.duration_ms = right_duration
+            right.source_in_ms = clip.source_in_ms + left_duration
+            right.source_out_ms = right.source_in_ms + right_duration
+            clip.duration_ms = left_duration
+            clip.source_out_ms = clip.source_in_ms + left_duration
+            document.clips.append(right)
+            self._refresh_source_sequence(document)
+
+        return self._apply_editor_mutation("split_source", split)
+
+    @Slot(str, int, result=bool)
+    def trimSourceBoundary(self, edge: str, time_ms: int) -> bool:
+        """Trim a single-source sequence without re-running any AI stage."""
+        edge = str(edge or "").lower()
+        if edge not in {"left", "right"}:
+            return False
+        position = int(time_ms)
+
+        def trim(document):
+            if self._editor_track_locked(document, "source-video"):
+                return
+            source_clips = [
+                clip for clip in document.clips
+                if clip.track_id == "source-video" and clip.enabled
+            ]
+            # A multi-decision sequence is a legacy edit. Keep it renderable,
+            # but do not reinterpret its timing through the simplified tool.
+            if len(source_clips) != 1 or len(document.sequence.edit_decisions) != 1:
+                return
+            source = source_clips[0]
+            duration = source.duration_ms
+            if not 80 <= position <= duration - 80:
+                return
+            if edge == "left":
+                source.source_in_ms += position
+                source.duration_ms -= position
+                for clip in document.clips:
+                    if clip is source or not clip.enabled:
+                        continue
+                    end = clip.start_ms + clip.duration_ms
+                    if end <= position:
+                        clip.enabled = False
+                    elif clip.start_ms < position:
+                        removed = position - clip.start_ms
+                        clip.start_ms = 0
+                        clip.duration_ms -= removed
+                        clip.source_in_ms += removed
+                        clip.source_out_ms = clip.source_in_ms + clip.duration_ms
+                    else:
+                        clip.start_ms -= position
+            else:
+                source.duration_ms = position
+                for clip in document.clips:
+                    if clip is source or not clip.enabled:
+                        continue
+                    if clip.start_ms >= position:
+                        clip.enabled = False
+                    elif clip.start_ms + clip.duration_ms > position:
+                        clip.duration_ms = position - clip.start_ms
+                        clip.source_out_ms = clip.source_in_ms + clip.duration_ms
+            self._refresh_source_sequence(document)
+
+        return self._apply_editor_mutation("trim_source_boundary", trim)
+
+    @Slot(str, str, int, result=bool)
+    def trimClip(self, clip_id: str, edge: str, time_ms: int) -> bool:
+        clip_id = str(clip_id or "")
+        edge = str(edge or "").lower()
+        position = max(0, int(time_ms))
+        if edge not in {"left", "right"}:
+            return False
+        current = self._manual_editor_document.document_object
+        current_clip = editor_documents.clip_by_id(current, clip_id) if current else None
+        # Source edge dragging is suspended; the explicit source-cut command
+        # remains independent and saved source decisions stay renderable.
+        if current_clip is None or current_clip.track_id in {"source-video", "overlays"}:
+            return False
+        if current_clip.kind == "ocr":
+            video = self._editor_video()
+            if not video or self._processing_queue.contains(video.video_id):
+                return False
+
+        def trim(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            if clip.kind == "result":
+                others = [item for item in document.clips if item.kind == "result" and item is not clip]
+                if edge == "left":
+                    lower = max((item.start_ms + item.duration_ms for item in others
+                                 if item.start_ms < clip.start_ms), default=0)
+                    end = clip.start_ms + clip.duration_ms
+                    clip.start_ms = max(lower, min(position, end - 80))
+                    clip.duration_ms = end - clip.start_ms
+                else:
+                    upper = min((item.start_ms for item in others if item.start_ms > clip.start_ms),
+                                default=document.sequence.duration_ms)
+                    clip.duration_ms = max(80, min(position, upper) - clip.start_ms)
+                return
+            old_end = clip.start_ms + clip.duration_ms
+            asset = editor_documents.asset_by_id(document, clip.asset_id) if clip.asset_id else None
+            asset_duration = int(getattr(asset, "duration_ms", 0) or 0)
+            if edge == "left":
+                earliest = 0 if clip.kind == "ocr" else max(0, clip.start_ms - clip.source_in_ms)
+                next_start = max(earliest, min(position, old_end - 80))
+                delta = next_start - clip.start_ms
+                clip.start_ms = next_start
+                clip.duration_ms -= delta
+                clip.source_in_ms = max(0, clip.source_in_ms + delta)
+            else:
+                maximum_end = document.sequence.duration_ms if clip.kind == "ocr" else 86_400_000
+                if asset_duration:
+                    maximum_end = min(
+                        maximum_end,
+                        clip.start_ms + max(80, asset_duration - clip.source_in_ms),
+                    ) if not clip.loop else maximum_end
+                maximum_end = max(clip.start_ms + 80, maximum_end)
+                next_end = min(maximum_end, max(clip.start_ms + 80, position))
+                clip.duration_ms = next_end - clip.start_ms
+            if clip.source_out_ms or clip.asset_id:
+                clip.source_out_ms = clip.source_in_ms + clip.duration_ms
+            if clip.track_id == "source-audio":
+                clip.metadata["follow_source"] = False
+            editor_documents.refresh_sequence_duration(document)
+
+        return self._apply_editor_mutation("trim_clip", trim, merge_key=f"trim:{clip_id}:{edge}")
+
+    @Slot(str, int, str, result=bool)
+    def moveClip(self, clip_id: str, start_ms: int, track_id: str = "") -> bool:
+        clip_id = str(clip_id or "")
+        target_start = max(0, int(start_ms))
+        target_track = str(track_id or "")
+        current = self._manual_editor_document.document_object
+        current_clip = editor_documents.clip_by_id(current, clip_id) if current else None
+        if current_clip is None or current_clip.track_id in {"source-video", "overlays", "result"}:
+            return False
+        if current_clip.kind == "ocr":
+            video = self._editor_video()
+            if not video or self._processing_queue.contains(video.video_id):
+                return False
+            target_track = current_clip.track_id
+
+        def move(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            if target_track:
+                candidate = next((track for track in document.tracks if track.track_id == target_track), None)
+                if candidate and candidate.kind == next(
+                    (track.kind for track in document.tracks if track.track_id == clip.track_id),
+                    candidate.kind,
+                ):
+                    clip.track_id = target_track
+            clip.start_ms = (
+                min(target_start, max(0, document.sequence.duration_ms - clip.duration_ms))
+                if clip.kind == "ocr" else target_start
+            )
+            if clip.track_id == "source-audio":
+                clip.metadata["follow_source"] = False
+            editor_documents.refresh_sequence_duration(document)
+
+        return self._apply_editor_mutation("move_clip", move, merge_key=f"move:{clip_id}")
+
+    @Slot(str, int, result=bool)
+    def splitResultClip(self, clip_id, time_ms):
+        from hflow.services import result_segments
+
+        def split(document):
+            if clip_id:
+                result_segments.split(document, str(clip_id), int(time_ms), editor_documents.new_id("result"))
+            else:
+                result_segments.split_at(document, int(time_ms), editor_documents.new_id("result"))
+
+        return self._apply_editor_mutation("split_result", split)
+
+    @Slot(str, result=bool)
+    def duplicateClip(self, clip_id: str) -> bool:
+        clip_id = str(clip_id or "")
+
+        def duplicate(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or clip.track_id == "source-video" or self._editor_track_locked(document, clip.track_id):
+                return
+            copy = clip.model_copy(deep=True)
+            copy.clip_id = editor_documents.new_id("clip")
+            copy.name = f"{clip.name} · bản sao" if clip.name else "Bản sao"
+            copy.start_ms = min(
+                clip.start_ms + 250,
+                max(0, document.sequence.duration_ms - clip.duration_ms),
+            )
+            document.clips.append(copy)
+
+        return self._apply_editor_mutation("duplicate_clip", duplicate)
+
+    @Slot("QVariantList", bool, result=bool)
+    def removeClips(self, clip_ids, ripple: bool = False) -> bool:
+        selected = {str(value) for value in (clip_ids or []) if str(value or "")}
+        current = self._manual_editor_document.document_object
+        if not selected or ripple or current is None:
+            return False
+        selected_clips = [clip for clip in current.clips if clip.clip_id in selected]
+        if any(clip.track_id in {"source-video", "overlays"} for clip in selected_clips):
+            return False
+        if any(clip.metadata.get("primary_ocr") for clip in selected_clips):
+            return False
+        if any(clip.kind == "ocr" for clip in selected_clips):
+            video = self._editor_video()
+            if not video or self._processing_queue.contains(video.video_id):
+                return False
+
+        def remove(document):
+            targets = [clip for clip in document.clips if clip.clip_id in selected]
+            if not targets or any(self._editor_track_locked(document, clip.track_id) for clip in targets):
+                return
+            source_targets = sorted(
+                (clip for clip in targets if clip.track_id == "source-video"),
+                key=lambda item: item.start_ms,
+                reverse=True,
+            )
+            # Source removal is always ripple-based.  Leaving a gap in the
+            # single-source edit map would make preview and export disagree.
+            if source_targets and not ripple:
+                return
+            document.clips = [clip for clip in document.clips if clip.clip_id not in selected]
+            empty_ocr_tracks = {clip.track_id for clip in targets if clip.kind == "ocr"}
+            occupied = {clip.track_id for clip in document.clips}
+            document.tracks = [track for track in document.tracks
+                               if track.track_id not in empty_ocr_tracks or track.track_id in occupied]
+            if ripple:
+                for removed in source_targets:
+                    cut_start = removed.start_ms
+                    cut_end = removed.start_ms + removed.duration_ms
+                    cut_duration = removed.duration_ms
+                    retained = []
+                    for clip in document.clips:
+                        if clip.track_id == "source-video":
+                            if clip.start_ms >= cut_end:
+                                clip.start_ms -= cut_duration
+                            retained.append(clip)
+                            continue
+                        clip_end = clip.start_ms + clip.duration_ms
+                        if clip.start_ms >= cut_end:
+                            clip.start_ms -= cut_duration
+                            retained.append(clip)
+                        elif clip_end <= cut_start:
+                            retained.append(clip)
+                        elif clip.start_ms >= cut_start and clip_end <= cut_end:
+                            continue
+                        elif clip.start_ms < cut_start < clip_end <= cut_end:
+                            clip.duration_ms = max(1, cut_start - clip.start_ms)
+                            retained.append(clip)
+                        elif cut_start <= clip.start_ms < cut_end < clip_end:
+                            delta = cut_end - clip.start_ms
+                            clip.start_ms = cut_start
+                            clip.duration_ms = max(1, clip_end - cut_end)
+                            clip.source_in_ms += delta
+                            retained.append(clip)
+                        else:
+                            clip.duration_ms = max(1, clip.duration_ms - cut_duration)
+                            retained.append(clip)
+                    document.clips = retained
+                self._refresh_source_sequence(document)
+
+        accepted = self._apply_editor_mutation("ripple_delete" if ripple else "delete_clip", remove)
+        if accepted:
+            self._manual_editor_document.clearSelection()
+        return accepted
+
+    @Slot(str, str, int, result=str)
+    def addOverlay(self, kind: str, source: str, start_ms: int) -> str:
+        # Existing overlay clips remain readable by preview/export only.
+        return ""
+
+    @Slot(str, int, result=str)
+    def addOverlayFromAsset(self, asset_id: str, start_ms: int) -> str:
+        return ""
+
+    @Slot(int, result=str)
+    def addSubtitleSegment(self, time_ms: int) -> str:
+        segment_id = editor_documents.new_id("segment")
+
+        def add(document):
+            if self._editor_track_locked(document, "subtitles"):
+                return
+            start = max(0, min(int(time_ms), max(0, document.sequence.duration_ms - 1)))
+            duration = max(1, min(2000, document.sequence.duration_ms - start))
+            document.clips.extend([
+                EditorClip(
+                    clip_id=f"subtitle-{segment_id}",
+                    track_id="subtitles",
+                    kind="subtitle",
+                    segment_id=segment_id,
+                    name="Phụ đề mới",
+                    start_ms=start,
+                    duration_ms=duration,
+                    source_out_ms=duration,
+                    style_id=document.default_subtitle_style_id,
+                    metadata={"segment_payload": {"segment_id": segment_id, "revision": 0}},
+                ),
+                EditorClip(
+                    clip_id=f"voice-{segment_id}",
+                    track_id="voice",
+                    kind="voice",
+                    segment_id=segment_id,
+                    name="Phụ đề mới",
+                    start_ms=start,
+                    duration_ms=duration,
+                    source_out_ms=duration,
+                    enabled=False,
+                    metadata={"state": "stale", "text_revision": 0},
+                ),
+            ])
+
+        if not self._apply_editor_mutation("add_subtitle", add):
+            return ""
+        self._manual_editor_document.selectClip(f"subtitle-{segment_id}", False)
+        return segment_id
+
+    @staticmethod
+    def _split_subtitle_text(text: str, progress: float) -> tuple[str, str]:
+        content = str(text or "")
+        if not content:
+            return "", ""
+        target = max(1, min(len(content) - 1, round(len(content) * progress)))
+        boundaries = [index for index, character in enumerate(content) if character.isspace()]
+        split_at = min(boundaries, key=lambda value: abs(value - target)) if boundaries else target
+        return content[:split_at].rstrip(), content[split_at:].lstrip()
+
+    @Slot(str, int, result=str)
+    def splitSubtitleSegment(self, segment_id: str, time_ms: int) -> str:
+        segment_id = str(segment_id or "")
+        second_segment_id = editor_documents.new_id("segment")
+
+        def split(document):
+            if self._editor_track_locked(document, "subtitles"):
+                return
+            subtitle = next(
+                (clip for clip in document.clips
+                 if clip.track_id == "subtitles" and clip.segment_id == segment_id),
+                None,
+            )
+            if subtitle is None:
+                return
+            split_at = int(time_ms)
+            if not subtitle.start_ms + 120 <= split_at <= subtitle.start_ms + subtitle.duration_ms - 120:
+                return
+            original_end = subtitle.start_ms + subtitle.duration_ms
+            progress = (split_at - subtitle.start_ms) / max(1, subtitle.duration_ms)
+            first_text, second_text = self._split_subtitle_text(subtitle.name, progress)
+            second = subtitle.model_copy(deep=True)
+            second.clip_id = f"subtitle-{second_segment_id}"
+            second.segment_id = second_segment_id
+            second.name = second_text
+            second.start_ms = split_at
+            second.duration_ms = original_end - split_at
+            second.source_in_ms = 0
+            second.source_out_ms = second.duration_ms
+            second.metadata["segment_payload"] = {
+                "segment_id": second_segment_id, "revision": 0,
+            }
+            subtitle.name = first_text
+            subtitle.duration_ms = split_at - subtitle.start_ms
+            subtitle.source_out_ms = subtitle.duration_ms
+            voice = next(
+                (clip for clip in document.clips
+                 if clip.track_id == "voice" and clip.segment_id == segment_id),
+                None,
+            )
+            if voice is not None:
+                voice.name = first_text
+                voice.duration_ms = subtitle.duration_ms
+                voice.source_out_ms = voice.duration_ms
+                voice.enabled = False
+                voice.metadata.update(state="stale", text_revision=0)
+            document.clips.extend([
+                second,
+                EditorClip(
+                    clip_id=f"voice-{second_segment_id}",
+                    track_id="voice",
+                    kind="voice",
+                    segment_id=second_segment_id,
+                    name=second_text,
+                    start_ms=split_at,
+                    duration_ms=second.duration_ms,
+                    source_out_ms=second.duration_ms,
+                    enabled=False,
+                    metadata={"state": "stale", "text_revision": 0},
+                ),
+            ])
+
+        return second_segment_id if self._apply_editor_mutation("split_subtitle", split) else ""
+
+    @Slot(str, result=bool)
+    def mergeSubtitleWithNext(self, segment_id: str) -> bool:
+        segment_id = str(segment_id or "")
+
+        def merge(document):
+            if self._editor_track_locked(document, "subtitles"):
+                return
+            subtitles = sorted(
+                (clip for clip in document.clips if clip.track_id == "subtitles" and clip.enabled),
+                key=lambda clip: (clip.start_ms, clip.clip_id),
+            )
+            index = next((i for i, clip in enumerate(subtitles) if clip.segment_id == segment_id), -1)
+            if index < 0 or index + 1 >= len(subtitles):
+                return
+            current, following = subtitles[index], subtitles[index + 1]
+            current.name = (current.name.rstrip() + " " + following.name.lstrip()).strip()
+            current.duration_ms = max(1, following.start_ms + following.duration_ms - current.start_ms)
+            current.source_out_ms = current.duration_ms
+            removed_ids = {following.clip_id}
+            for clip in document.clips:
+                if clip.track_id == "voice" and clip.segment_id == following.segment_id:
+                    removed_ids.add(clip.clip_id)
+                elif clip.track_id == "voice" and clip.segment_id == current.segment_id:
+                    clip.name = current.name
+                    clip.duration_ms = current.duration_ms
+                    clip.source_out_ms = clip.duration_ms
+                    clip.enabled = False
+                    clip.metadata.update(state="stale", text_revision=0)
+            document.clips = [clip for clip in document.clips if clip.clip_id not in removed_ids]
+
+        return self._apply_editor_mutation("merge_subtitle", merge)
+
+    @Slot(str, result=bool)
+    def deleteSubtitleSegment(self, segment_id: str) -> bool:
+        segment_id = str(segment_id or "")
+
+        def remove(document):
+            if self._editor_track_locked(document, "subtitles"):
+                return
+            document.clips = [
+                clip for clip in document.clips
+                if not (clip.segment_id == segment_id and clip.track_id in {"subtitles", "voice"})
+            ]
+
+        accepted = self._apply_editor_mutation("delete_subtitle", remove)
+        if accepted:
+            self._manual_editor_document.clearSelection()
+        return accepted
+
+    @Slot(str, "QVariantMap", bool, result=bool)
+    def updateClipTransform(self, clip_id: str, patch, commit: bool) -> bool:
+        # Existing transforms remain in the document and render unchanged.
+        return False
+
+    @Slot(str, "QVariantMap", result=bool)
+    def updateClipProperties(self, clip_id: str, patch) -> bool:
+        clip_id = str(clip_id or "")
+        values = dict(patch or {})
+        allowed = {
+            "start_ms",
+            "duration_ms",
+            "source_in_ms",
+            "source_out_ms",
+            "enabled",
+            "volume_percent",
+            "fade_in_ms",
+            "fade_out_ms",
+            "loop",
+            "muted",
+            "fit_mode",
+            "border_width",
+            "corner_radius",
+            "shadow_strength",
+            "name",
+        }
+        values = {key: value for key, value in values.items() if key in allowed}
+        if not values:
+            return False
+
+        def update(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if (
+                clip is None
+                or clip.track_id in {"source-video", "overlays"}
+                or self._editor_track_locked(document, clip.track_id)
+            ):
+                return
+            payload = clip.model_dump()
+            payload.update(values)
+            replacement = EditorClip.model_validate(payload)
+            document.clips = [replacement if item.clip_id == clip_id else item for item in document.clips]
+
+        return self._apply_editor_mutation(
+            "clip_properties",
+            update,
+            merge_key=f"clip-properties:{clip_id}:{','.join(sorted(values))}",
+        )
+
+    @Slot(str, str, int, float, str, result=bool)
+    def setClipKeyframe(
+        self,
+        clip_id: str,
+        property_name: str,
+        time_ms: int,
+        value: float,
+        interpolation: str,
+    ) -> bool:
+        property_name = str(property_name or "")
+        interpolation = str(interpolation or "ease_in_out")
+        if property_name not in {"position_x", "position_y", "scale", "rotation", "opacity"}:
+            return False
+        if interpolation not in {"linear", "ease_in", "ease_out", "ease_in_out"}:
+            interpolation = "ease_in_out"
+
+        def set_keyframe(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            local_time = max(0, min(int(time_ms) - clip.start_ms, clip.duration_ms))
+            existing = next(
+                (
+                    frame
+                    for frame in clip.keyframes
+                    if frame.property_name == property_name and abs(frame.time_ms - local_time) <= 1
+                ),
+                None,
+            )
+            if existing:
+                existing.value = float(value)
+                existing.interpolation = interpolation
+            else:
+                clip.keyframes.append(
+                    EditorKeyframe(
+                        keyframe_id=editor_documents.new_id("keyframe"),
+                        property_name=property_name,
+                        time_ms=local_time,
+                        value=float(value),
+                        interpolation=interpolation,
+                    )
+                )
+            clip.keyframes.sort(key=lambda frame: (frame.time_ms, frame.property_name))
+
+        return self._apply_editor_mutation(
+            "set_keyframe",
+            set_keyframe,
+            merge_key=f"keyframe:{clip_id}:{property_name}:{int(time_ms)}",
+        )
+
+    @Slot(str, str, int, result=bool)
+    def removeClipKeyframe(self, clip_id: str, property_name: str, time_ms: int) -> bool:
+        property_name = str(property_name or "")
+        if property_name not in {"position_x", "position_y", "scale", "rotation", "opacity"}:
+            return False
+
+        def remove(document):
+            clip = editor_documents.clip_by_id(document, str(clip_id or ""))
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            local_time = max(0, min(int(time_ms) - clip.start_ms, clip.duration_ms))
+            clip.keyframes = [
+                frame
+                for frame in clip.keyframes
+                if not (
+                    frame.property_name == property_name
+                    and abs(frame.time_ms - local_time) <= 1
+                )
+            ]
+
+        return self._apply_editor_mutation("remove_keyframe", remove)
+
+    @Slot(str, str, int, result=bool)
+    def moveClipKeyframe(self, clip_id: str, keyframe_id: str, time_ms: int) -> bool:
+        clip_id = str(clip_id or "")
+        keyframe_id = str(keyframe_id or "")
+
+        def move(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            frame = next(
+                (item for item in clip.keyframes if item.keyframe_id == keyframe_id),
+                None,
+            )
+            if frame is None:
+                return
+            local_time = max(0, min(int(time_ms) - clip.start_ms, clip.duration_ms))
+            clip.keyframes = [
+                item
+                for item in clip.keyframes
+                if item.keyframe_id == keyframe_id
+                or item.property_name != frame.property_name
+                or abs(item.time_ms - local_time) > 1
+            ]
+            frame.time_ms = local_time
+            clip.keyframes.sort(key=lambda item: (item.time_ms, item.property_name))
+
+        return self._apply_editor_mutation(
+            "move_keyframe",
+            move,
+            merge_key=f"keyframe-move:{clip_id}:{keyframe_id}",
+        )
+
+    @Slot(str, int, str, result=bool)
+    def setClipTransformKeyframes(self, clip_id: str, time_ms: int, interpolation: str) -> bool:
+        clip_id = str(clip_id or "")
+        interpolation = str(interpolation or "ease_in_out")
+        if interpolation not in {"linear", "ease_in", "ease_out", "ease_in_out"}:
+            interpolation = "ease_in_out"
+
+        def add(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            absolute_time = max(clip.start_ms, min(int(time_ms), clip.start_ms + clip.duration_ms))
+            local_time = absolute_time - clip.start_ms
+            defaults = {
+                "position_x": clip.transform.position_x_percent,
+                "position_y": clip.transform.position_y_percent,
+                "scale": clip.transform.scale_x_percent,
+                "rotation": clip.transform.rotation_degrees,
+                "opacity": clip.transform.opacity_percent,
+            }
+            for property_name, default in defaults.items():
+                value = editor_documents.evaluate_keyframes(
+                    clip, property_name, absolute_time, default
+                )
+                frame = next(
+                    (
+                        item for item in clip.keyframes
+                        if item.property_name == property_name
+                        and abs(item.time_ms - local_time) <= 1
+                    ),
+                    None,
+                )
+                if frame is None:
+                    clip.keyframes.append(EditorKeyframe(
+                        keyframe_id=editor_documents.new_id("keyframe"),
+                        property_name=property_name,
+                        time_ms=local_time,
+                        value=float(value),
+                        interpolation=interpolation,
+                    ))
+                else:
+                    frame.value = float(value)
+                    frame.interpolation = interpolation
+            clip.keyframes.sort(key=lambda item: (item.time_ms, item.property_name))
+
+        return self._apply_editor_mutation(
+            "copy_transform_keyframes",
+            add,
+            merge_key=f"keyframe-copy:{clip_id}:{int(time_ms)}",
+        )
+
+    @Slot(str, int, result=bool)
+    def copyClipKeyframes(self, clip_id: str, time_ms: int) -> bool:
+        # Keep the slot for older integrations, but no longer expose keyframe
+        # authoring in the localization editor.
+        return False
+
+    @Slot(str, int, result=bool)
+    def pasteClipKeyframes(self, clip_id: str, time_ms: int) -> bool:
+        clip_id = str(clip_id or "")
+        copied = [dict(item) for item in self._editor_keyframe_clipboard]
+        if not copied:
+            return False
+
+        def paste(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            local_time = max(0, min(int(time_ms) - clip.start_ms, clip.duration_ms))
+            properties = {str(item.get("property_name") or "") for item in copied}
+            clip.keyframes = [
+                frame for frame in clip.keyframes
+                if frame.property_name not in properties or abs(frame.time_ms - local_time) > 1
+            ]
+            for payload in copied:
+                clip.keyframes.append(EditorKeyframe(
+                    keyframe_id=editor_documents.new_id("keyframe"),
+                    property_name=str(payload.get("property_name") or ""),
+                    time_ms=local_time,
+                    value=float(payload.get("value") or 0),
+                    interpolation=str(payload.get("interpolation") or "ease_in_out"),
+                ))
+            clip.keyframes.sort(key=lambda item: (item.time_ms, item.property_name))
+
+        return self._apply_editor_mutation(
+            "paste_keyframes",
+            paste,
+            merge_key=f"keyframe-paste:{clip_id}:{int(time_ms)}",
+        )
+
+    @Slot(str, int, result=bool)
+    def removeClipKeyframesAt(self, clip_id: str, time_ms: int) -> bool:
+        clip_id = str(clip_id or "")
+
+        def remove(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            local_time = max(0, min(int(time_ms) - clip.start_ms, clip.duration_ms))
+            clip.keyframes = [
+                frame for frame in clip.keyframes
+                if abs(frame.time_ms - local_time) > 1
+            ]
+
+        return self._apply_editor_mutation("remove_keyframes", remove)
+
+    @Slot(str, int, str, result=bool)
+    def setClipKeyframeInterpolation(self, clip_id: str, time_ms: int, interpolation: str) -> bool:
+        clip_id = str(clip_id or "")
+        interpolation = str(interpolation or "ease_in_out")
+        if interpolation not in {"linear", "ease_in", "ease_out", "ease_in_out"}:
+            return False
+
+        def update(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            local_time = max(0, min(int(time_ms) - clip.start_ms, clip.duration_ms))
+            for frame in clip.keyframes:
+                if abs(frame.time_ms - local_time) <= 1:
+                    frame.interpolation = interpolation
+
+        return self._apply_editor_mutation(
+            "keyframe_interpolation",
+            update,
+            merge_key=f"keyframe-easing:{clip_id}:{int(time_ms)}",
+        )
+
+    @Slot(bool, result=bool)
+    def setMusicLoop(self, enabled: bool) -> bool:
+        def update(document):
+            for clip in document.clips:
+                if clip.track_id == "music":
+                    clip.loop = bool(enabled)
+
+        return self._apply_editor_mutation("music_loop", update, merge_key="music-loop")
+
+    @Slot(bool, float, int, int, result=bool)
+    def setAudioDucking(self, enabled: bool, reduction_db: float, attack_ms: int, release_ms: int) -> bool:
+        def update(document):
+            document.audio_ducking_enabled = bool(enabled)
+            document.audio_ducking_reduction_db = max(-60.0, min(0.0, float(reduction_db)))
+            document.audio_ducking_attack_ms = max(0, min(10000, int(attack_ms)))
+            document.audio_ducking_release_ms = max(0, min(10000, int(release_ms)))
+
+        return self._apply_editor_mutation("audio_ducking", update, merge_key="audio-ducking")
+
+    @Slot(str, str, "QVariant", result=bool)
+    def setTrackState(self, track_id: str, property_name: str, value) -> bool:
+        property_name = str(property_name or "")
+        if track_id == "overlays" or property_name not in {"visible", "muted"}:
+            return False
+        model = getattr(self, "_manual_editor_document", None)
+        document = model.document_object if model else None
+        track = next((item for item in document.tracks if item.track_id == track_id), None) if document else None
+        if track and track.kind == "ocr":
+            video = self._editor_video()
+            if not video or self._processing_queue.contains(video.video_id):
+                return False
+
+        def update(document):
+            track = next((item for item in document.tracks if item.track_id == track_id), None)
+            if track is None:
+                return
+            setattr(track, property_name, bool(value))
+
+        return self._apply_editor_mutation("track_state", update, merge_key=f"track:{track_id}:{property_name}")
+
+    @Slot("QVariantList", "QVariantMap", str, result=bool)
+    def applyTextStyle(self, target_ids, style, scope: str) -> bool:
+        targets = {str(value) for value in (target_ids or []) if str(value or "")}
+        patch = dict(style or {})
+        scope = str(scope or "project")
+        if "font_family" in patch:
+            from hflow.schemas.video import SUBTITLE_FONT_FAMILY
+            patch["font_family"] = SUBTITLE_FONT_FAMILY
+
+        def with_font_fingerprint(payload: dict) -> dict:
+            if "font_family" not in patch:
+                return payload
+            from hflow.pipeline.render import font_file_fingerprint
+
+            payload["font_fingerprint"] = font_file_fingerprint(
+                str(payload.get("font_family") or ""),
+                int(payload.get("font_weight") or 400) >= 600,
+                bool(payload.get("italic")),
+            )
+            return payload
+
+        def apply(document):
+            if scope == "project":
+                target = next(
+                    (item for item in document.styles if item.style_id == document.default_subtitle_style_id),
+                    None,
+                )
+                if target is None:
+                    return
+                payload = target.model_dump()
+                payload.update(patch)
+                with_font_fingerprint(payload)
+                replacement = EditorTextStyle.model_validate(payload)
+                document.styles = [
+                    replacement if item.style_id == target.style_id else item
+                    for item in document.styles
+                ]
+                # The current editor exposes one style for the whole video.
+                # Older per-cue overrides may still exist in migrated projects;
+                # remove only fields the user just changed so the edit reaches
+                # every subtitle without flattening unrelated legacy values.
+                for clip in document.clips:
+                    if clip.track_id != "subtitles" or not clip.style_override:
+                        continue
+                    for key in patch:
+                        clip.style_override.pop(key, None)
+                    if "font_family" in patch:
+                        clip.style_override.pop("font_fingerprint", None)
+                return
+            for clip in document.clips:
+                if clip.track_id == "subtitles" and (
+                    clip.clip_id in targets or (clip.segment_id and clip.segment_id in targets)
+                ):
+                    resolved = editor_documents.resolved_text_style(document, clip).model_dump()
+                    resolved.update(patch)
+                    with_font_fingerprint(resolved)
+                    clip.style_override.update(patch)
+                    if "font_family" in patch:
+                        clip.style_override["font_fingerprint"] = resolved["font_fingerprint"]
+
+        return self._apply_editor_mutation("apply_text_style", apply)
+
+    @Slot("QVariantList", result=bool)
+    def resetTextStyleOverrides(self, target_ids) -> bool:
+        targets = {str(value) for value in (target_ids or []) if str(value or "")}
+
+        def reset(document):
+            for clip in document.clips:
+                if clip.track_id == "subtitles" and (
+                    clip.clip_id in targets or (clip.segment_id and clip.segment_id in targets)
+                ):
+                    clip.style_override.clear()
+
+        return self._apply_editor_mutation("reset_text_style", reset)
+
+    @Slot(int, str, str, result=str)
+    def addEditorMarker(self, time_ms: int, name: str, color: str = "#C4915E") -> str:
+        marker_id = editor_documents.new_id("marker")
+
+        def add(document):
+            document.markers.append(
+                EditorMarker(
+                    marker_id=marker_id,
+                    time_ms=max(0, min(int(time_ms), document.sequence.duration_ms)),
+                    name=str(name or "Đánh dấu"),
+                    color=str(color or "#C4915E"),
+                )
+            )
+            document.markers.sort(key=lambda marker: marker.time_ms)
+
+        return marker_id if self._apply_editor_mutation("add_marker", add) else ""
+
+    @Slot(str, int, str, str, result=bool)
+    def updateEditorMarker(
+        self,
+        marker_id: str,
+        time_ms: int,
+        name: str = "",
+        color: str = "",
+    ) -> bool:
+        marker_id = str(marker_id or "")
+
+        def update(document):
+            marker = next(
+                (item for item in document.markers if item.marker_id == marker_id),
+                None,
+            )
+            if marker is None:
+                return
+            marker.time_ms = max(0, min(int(time_ms), document.sequence.duration_ms))
+            if str(name or ""):
+                marker.name = str(name)
+            if str(color or ""):
+                marker.color = str(color)
+            document.markers.sort(key=lambda item: item.time_ms)
+
+        return self._apply_editor_mutation(
+            "move_marker",
+            update,
+            merge_key=f"marker:{marker_id}",
+        )
+
+    @Slot(str, result=bool)
+    def removeEditorMarker(self, marker_id: str) -> bool:
+        marker_id = str(marker_id or "")
+
+        def remove(document):
+            document.markers = [
+                item for item in document.markers if item.marker_id != marker_id
+            ]
+
+        return self._apply_editor_mutation("remove_marker", remove)
+
+    @Slot(str, str, bool, bool, str, result=int)
+    def replaceSubtitleText(
+        self,
+        search_text: str,
+        replacement: str,
+        case_sensitive: bool,
+        replace_all: bool,
+        segment_id: str = "",
+    ) -> int:
+        """Replace subtitle text as one editor command.
+
+        The operation deliberately updates only the subtitle and matching
+        voice clips.  Style, position, OCR, music, overlays and source edits
+        remain untouched.  Existing speech is disabled immediately so a new
+        sentence can never be played with stale audio.
+        """
+        needle = str(search_text or "")
+        if not needle:
+            return 0
+        target_segment = str(segment_id or "")
+        changed_count = 0
+
+        def replace(document):
+            nonlocal changed_count
+            for subtitle in sorted(
+                (
+                    item for item in document.clips
+                    if item.track_id == "subtitles" and item.segment_id
+                ),
+                key=lambda item: (item.start_ms, item.clip_id),
+            ):
+                if target_segment and subtitle.segment_id != target_segment:
+                    continue
+                source = str(subtitle.name or "")
+                if case_sensitive:
+                    if needle not in source:
+                        continue
+                    updated = source.replace(needle, str(replacement))
+                else:
+                    import re
+
+                    updated = re.sub(
+                        re.escape(needle),
+                        lambda _match: str(replacement),
+                        source,
+                        flags=re.IGNORECASE,
+                    )
+                if updated == source:
+                    continue
+                subtitle.name = updated
+                payload = subtitle.metadata.get("segment_payload")
+                if not isinstance(payload, dict):
+                    payload = {}
+                    subtitle.metadata["segment_payload"] = payload
+                payload["text"] = updated
+                payload["revision"] = int(payload.get("revision") or 0) + 1
+                voice = next(
+                    (
+                        item for item in document.clips
+                        if item.track_id == "voice"
+                        and item.segment_id == subtitle.segment_id
+                    ),
+                    None,
+                )
+                if voice is not None:
+                    voice.name = updated
+                    voice.enabled = False
+                    voice.asset_id = ""
+                    voice.metadata["state"] = "stale"
+                    voice.metadata["text_revision"] = payload["revision"]
+                changed_count += 1
+                if not replace_all:
+                    break
+
+        accepted = self._apply_editor_mutation("replace_subtitle_text", replace)
+        return changed_count if accepted else 0
+
+    @Slot()
+    def refreshManualPreviewAudio(self):
+        if not self._manual_editor_active:
+            return
+        importer = getattr(self, "_project_import", None)
+        if importer is not None and importer.is_replacing_video(str(self._selected_video_id or "")):
+            return
+        video = self._selected_video()
+        if video and video.project_type == "manual" and self._manual_subtitles.video_id == video.video_id:
+            from hflow.pipeline.manual_tools import published_voice_record
+            voice_enabled = bool(published_voice_record(video, validate=False)) or (
+                self._manual_voice_video_id == video.video_id and self._manual_voice_refresh_enabled)
+            self._manual_audio.request(video, self._manual_subtitles.segments, voice_enabled)
+
+    @Slot()
+    def loadManualSubtitles(self):
+        importer = getattr(self, "_project_import", None)
+        if importer is not None and importer.is_replacing_video(str(self._selected_video_id or "")):
+            return
+        self._manual_editor_active = True
+        if self._manual_voice_video_id != str(self._selected_video_id or ""):
+            self._manual_voice_video_id = str(self._selected_video_id or "")
+            self._manual_voice_refresh_pending = False
+            self._manual_voice_refresh_enabled = False
+        self._manual_subtitles.load(str(self._selected_video_id or ""), self.reviewSegments)
+        selected_video = getattr(self, "_selected_video", None)
+        selected = selected_video() if callable(selected_video) else None
+        if selected and selected.project_type == "manual":
+            try:
+                document = editor_documents.sync_subtitle_clips(
+                    selected,
+                    self._manual_subtitles.segments,
+                )
+                self._manual_editor_document.set_document(document)
+                self._manual_preview_composition.refresh()
+            except (OSError, RuntimeError, TypeError, ValueError):
+                # The legacy workspace remains usable when migration cannot be
+                # completed.  The backup created by ``ensure`` is untouched.
+                self._manual_editor_document.clear()
+        # `selectedVideoChanged` can be emitted before the asynchronous Manual
+        # workspace exists.  Refresh again after the workspace becomes active
+        # so the single result-audio sink receives the persisted mix/voice
+        # immediately instead of waiting for a volume control to change.
+        selected_video_id = str(self._selected_video_id or "")
+        refresh_audio = getattr(self, "refreshManualPreviewAudio", None)
+        if callable(refresh_audio):
+            def refresh_after_first_frame() -> None:
+                if (
+                    self._manual_editor_active
+                    and str(self._selected_video_id or "") == selected_video_id
+                ):
+                    refresh_audio()
+
+            # Let Qt publish the initial video frame before decoding the audio
+            # bed, music and voice clips.  The delay is short enough to be
+            # imperceptible but prevents the three media paths from competing
+            # during workspace construction.
+            QTimer.singleShot(180, refresh_after_first_frame)
+        schedule_cache = getattr(self, "_schedule_manual_cache_migration", None)
+        if callable(schedule_cache):
+            def migrate_after_workspace_paint() -> None:
+                if (
+                    self._manual_editor_active
+                    and str(self._selected_video_id or "") == selected_video_id
+                ):
+                    schedule_cache(selected_video_id)
+
+            QTimer.singleShot(950, migrate_after_workspace_paint)
+
+    @Slot(str)
+    def beginManualSubtitleEdit(self, segment_id):
+        self._manual_editing_segment_id = segment_id
+
+    @Slot()
+    def endManualSubtitleEdit(self):
+        self._manual_editing_segment_id = ""
+
+    @Slot(str, str, int, str, result=bool)
+    def saveManualSubtitleText(self, segment_id, text, expected_revision, request_id):
+        from hflow.pipeline.manual_tools import ensure_narrator_anchor, published_voice_record
+        video = video_store.get_video(self._selected_video_id)
+        had_voice = bool(video and published_voice_record(video, validate=False))
+        if had_voice and video:
+            # Capture the identity reference before publishing edited text.
+            # The next per-segment refresh must match the clips that remain.
+            ensure_narrator_anchor(video.video_id)
+        self._manual_voice_refresh_enabled = self._manual_voice_refresh_enabled or had_voice
+        previous = next((item for item in self._manual_subtitles.segments
+                         if item.get("segment_id") == segment_id), None)
+        notice = self._subtitle_voice_edit_notice
+        if had_voice and previous and str(previous.get("text") or "") != text:
+            notice.prepare(
+                str(self._selected_project_key or getattr(video, "project_key", "")),
+                video.video_id, segment_id, request_id,
+            )
+        accepted = self._manual_subtitles.saveText(segment_id, text, expected_revision, request_id)
+        if not accepted:
+            notice.failed(self._manual_subtitles.video_id, segment_id, request_id)
+        if accepted and self._manual_voice_refresh_enabled:
+            self._manual_voice_refresh_pending = True
+        return accepted
+
+    @Slot(str, int, str)
+    def _subtitle_voice_edit_saved(self, segment_id, _revision, request_id):
+        self._subtitle_voice_edit_notice.saved(self._manual_subtitles.video_id, segment_id, request_id)
+
+    @Slot(str, str, str)
+    def _subtitle_voice_edit_failed(self, segment_id, request_id, _message):
+        self._subtitle_voice_edit_notice.failed(self._manual_subtitles.video_id, segment_id, request_id)
+
+    @Slot(str, float, float, result=bool)
+    def saveManualSubtitleTiming(self, segment_id, start, end):
+        return self._manual_subtitles.saveTiming(segment_id, start, end)
+
+    @Slot(str, int, bool)
+    def _manual_subtitles_published(self, video_id, revision, text_changed):
+        if video_id != self._selected_video_id:
+            return
+        video = video_store.get_video(video_id)
+        if video:
+            try:
+                document = editor_documents.sync_subtitle_clips(video, self._manual_subtitles.segments)
+                self._manual_editor_document.set_document(document)
+                self._manual_preview_composition.refresh()
+            except (OSError, RuntimeError, TypeError, ValueError):
+                pass
+        # Publish UI state only after subtitle/voice reconciliation. Undo
+        # creates a new document revision but can restore the recorded words.
+        self._refresh_selected_video_snapshot()
+        self.manualToolStateChanged.emit("subtitle")
+        self.manualSubtitleDocumentChanged.emit()
+        self.previewMediaChanged.emit()
+
+    @Slot()
+    def _refresh_manual_voice(self):
+        # Kept as a compatibility slot for older QML.  Editing text only marks
+        # the matching voice clip stale; TTS is started explicitly by the user.
+        self._manual_voice_refresh_timer.stop()
+
+    @Slot(int)
+    def selectVideo(self, row: int):
+        video = self.videos.video_at(row)
+        if not video:
+            return
+        self._select_video(video)
+
+    def _select_video(self, video):
+        HFlowController._project_workspace_for(self).select_video(video)
+        if getattr(video, "project_type", "single") == "manual":
+            self._schedule_manual_cache_migration(video.video_id)
+
+    @Slot(int)
+    def selectBatchVideo(self, row: int):
+        video = self.batch_videos.video_at(row)
+        if not video:
+            return
+        self._select_video(video)
+
+    @Slot(int, result=bool)
+    def selectProject(self, row: int):
+        project = self.projects.project_at(row)
+        if not project:
+            return False
+        return self._select_project_summary(project)
+
+    @Slot(int, result=bool)
+    def selectProjectFromBrowser(self, row: int):
+        project = self.project_browser.project_at(row)
+        if not project:
+            return False
+        return self._select_project_summary(project)
+
+    @Slot(int, result=bool)
+    def deleteProjectFromBrowser(self, row: int) -> bool:
+        project = self.project_browser.project_at(row)
+        if not project:
+            return False
+        return HFlowController._project_commands_for(self).delete_project_summary(project)
+
+    @Slot(int, str, result=bool)
+    def deleteProjectInMode(self, row: int, project_type: str) -> bool:
+        model = self._project_model_for_type(project_type)
+        project = model.project_at(row)
+        if not project:
+            return False
+        return HFlowController._project_commands_for(self).delete_project_summary(project)
+
+    @Slot(int, str, result=bool)
+    def selectProjectInMode(self, row: int, project_type: str):
+        model = self._project_model_for_type(project_type)
+        project = model.project_at(row)
+        if not project:
+            return False
+        return self._select_project_summary(project)
+
+    def _project_model_for_type(self, project_type: str):
+        return (
+            self.batch_projects
+            if project_type == "batch"
+            else self.manual_projects
+            if project_type == "manual"
+            else self.download_projects
+            if project_type == "download"
+            else self.publish_projects
+            if project_type == "publish"
+            else self.single_projects
+        )
+
+    def _select_project_summary(self, project) -> bool:
+        if not self._tiktok_publisher.can_switch_project(project["key"]):
+            self.appAlertRequested.emit(
+                "Social publishing",
+                "Wait for the active Zernio upload or request to finish before opening another project.",
+                "info",
+            )
+            return False
+        if project["project_type"] == "download" and not self._media_downloader.can_switch_project(project["key"]):
+            self.appAlertRequested.emit(
+                "Download project",
+                "Wait for the current channel task to finish or cancel it before opening another download project.",
+                "info",
+            )
+            return False
+        self._open_project_summary(project)
+        return True
+
+    def _open_project_summary(self, project):
+        HFlowController._project_workspace_for(self).open_project_summary(project)
+
+    @staticmethod
+    def _project_workspace_for(host):
+        return getattr(host, "_project_workspace", None) or ProjectWorkspaceController(host)
+
+    @Slot()
+    def deleteSelectedVideo(self):
+        HFlowController._project_commands_for(self).delete_selected_video()
+
+    @Slot()
+    def openProjectFolder(self):
+        if not self.hasOpenProject:
+            QMessageBox.information(None, "Project folder", "This project's folder is not available yet.")
+            return
+        self._open_path(self._selected_project_root())
+
+    @Slot()
+    def openDownloadOutputFolder(self):
+        if self._project_type != "download" or not self.hasOpenProject:
+            QMessageBox.information(None, "Download folder", "Open a download project first.")
+            return
+        self._open_path(project_store.project_downloads_dir_for_key(self._selected_project_key))
+
+    @Slot()
+    def refreshTikTokProjectSources(self):
+        self._tiktok_publisher.refresh_project_sources()
+
+    @Slot(int, bool, result=bool)
+    def setTikTokProjectSourceSelected(self, row: int, selected: bool):
+        return self._tiktok_publisher.set_project_source_selected(row, selected)
+
+    @Slot(result=bool)
+    def addSelectedTikTokProjectVideos(self):
+        return self._tiktok_publisher.add_selected_project_videos()
+
+    @Slot("QVariantList", result=bool)
+    def addTikTokPublishVideos(self, paths):
+        return self._tiktok_publisher.add_videos(paths)
+
+    @Slot(result=bool)
+    def browseSocialPublishVideos(self):
+        return self._tiktok_publisher.browse_videos()
+
+    @Slot(result=bool)
+    def browseSocialPublishFolder(self):
+        return self._tiktok_publisher.browse_folder()
+
+    @Slot(str, str, bool, result=bool)
+    def saveTikTokPublishDefaults(self, caption: str, hashtags: str, apply_to_existing: bool):
+        return self._tiktok_publisher.save_defaults(caption, hashtags, apply_to_existing)
+
+    @Slot(int, str, str, result=bool)
+    def updateTikTokPublishItem(self, row: int, caption: str, hashtags: str):
+        return self._tiktok_publisher.update_item(row, caption, hashtags)
+
+    @Slot(str, result=bool)
+    def saveZernioApiKey(self, api_key: str):
+        return self._tiktok_publisher.save_api_key(api_key)
+
+    @Slot(str, str, result=bool)
+    def addZernioApiKey(self, label: str, api_key: str):
+        return self._tiktok_publisher.add_api_key(label, api_key)
+
+    @Slot(str, result=bool)
+    def selectZernioApiKey(self, key_id: str):
+        return self._tiktok_publisher.select_api_key(key_id)
+
+    @Slot(str, result=bool)
+    def removeZernioApiKey(self, key_id: str):
+        return self._tiktok_publisher.remove_api_key(key_id)
+
+    @Slot(result=bool)
+    def verifyZernioApiKey(self):
+        return self._tiktok_publisher.verify_api_key()
+
+    @Slot(result=bool)
+    def clearZernioApiKey(self):
+        return self._tiktok_publisher.clear_api_key()
+
+    @Slot(result=bool)
+    def connectZernioTikTok(self):
+        return self._tiktok_publisher.connect_tiktok()
+
+    @Slot(str, result=bool)
+    def connectZernioPlatform(self, platform: str):
+        return self._tiktok_publisher.connect_platform(platform)
+
+    @Slot(result=bool)
+    def openZernioSignUp(self):
+        return self._tiktok_publisher.open_zernio_sign_up()
+
+    @Slot(result=bool)
+    def openZernioSignIn(self):
+        return self._tiktok_publisher.open_zernio_sign_in()
+
+    @Slot(result=bool)
+    def openZernioApiKeys(self):
+        return self._tiktok_publisher.open_zernio_api_keys()
+
+    @Slot(result=bool)
+    def openZernioPostingDocs(self):
+        return self._tiktok_publisher.open_zernio_posting_docs()
+
+    @Slot(result=bool)
+    def openZernioDashboard(self):
+        return self._tiktok_publisher.open_zernio_dashboard()
+
+    @Slot(result=bool)
+    def refreshZernioTikTokAccounts(self):
+        return self._tiktok_publisher.refresh_accounts()
+
+    @Slot(result=bool)
+    def refreshZernioConnections(self):
+        return self._tiktok_publisher.refresh_accounts()
+
+    @Slot(result=bool)
+    def reconcileZernioConnections(self):
+        return self._tiktok_publisher.reconcile_accounts()
+
+    @Slot(int, result=bool)
+    def selectZernioTikTokAccount(self, index: int):
+        return self._tiktok_publisher.select_account(index)
+
+    @Slot(int, result=bool)
+    def selectZernioConnection(self, index: int):
+        return self._tiktok_publisher.select_account(index)
+
+    @Slot(int, result=bool)
+    def disconnectZernioConnection(self, index: int):
+        return self._tiktok_publisher.disconnect_account(index)
+
+    @Slot(str, bool, bool, bool, bool, bool, bool, str, result=bool)
+    def saveZernioPublishSettings(
+        self,
+        privacy_level: str,
+        publish_now: bool,
+        allow_comment: bool,
+        allow_duet: bool,
+        allow_stitch: bool,
+        share_to_feed: bool,
+        ai_generated: bool,
+        first_comment: str,
+    ):
+        return self._tiktok_publisher.set_publish_settings(
+            privacy_level,
+            publish_now,
+            allow_comment,
+            allow_duet,
+            allow_stitch,
+            share_to_feed,
+            ai_generated,
+            first_comment,
+        )
+
+    @Slot(bool)
+    def setZernioPublishConsent(self, confirmed: bool):
+        self._tiktok_publisher.set_consent_confirmed(confirmed)
+
+    @Slot(int, result=bool)
+    def publishTikTokItem(self, row: int):
+        return self._tiktok_publisher.publish_item(row)
+
+    @Slot(result=bool)
+    def publishNextTikTokItem(self):
+        return self._tiktok_publisher.publish_next()
+
+    @Slot(result=bool)
+    def publishAllTikTokItems(self):
+        return self._tiktok_publisher.publish_all()
+
+    @Slot(result=bool)
+    def refreshTikTokPostStatuses(self):
+        return self._tiktok_publisher.refresh_post_statuses()
+
+    @Slot()
+    def cancelTikTokPublishing(self):
+        self._tiktok_publisher.cancel()
+
+    @Slot(int, result=bool)
+    def copyTikTokPublishCaption(self, row: int):
+        return self._tiktok_publisher.copy_caption(row)
+
+    @Slot(int, result=bool)
+    def openTikTokPublishedPost(self, row: int):
+        return self._tiktok_publisher.open_post(row)
+
+    @Slot(int, result=bool)
+    def removeTikTokPublishItem(self, row: int):
+        return self._tiktok_publisher.remove_item(row)
+
+    @Slot(str, result=bool)
+    def openExternalUrl(self, url: str) -> bool:
+        return open_external_url(url)
+
+    @Slot(str)
+    def copyText(self, text: str) -> None:
+        QGuiApplication.clipboard().setText(str(text or ""))
+
+    @Slot()
+    def deleteCurrentProject(self):
+        HFlowController._project_commands_for(self).delete_current_project()
+
+    @Slot()
+    def refreshVideos(self):
+        HFlowController._project_workspace_for(self).refresh_videos()
+
+    def _apply_video_metadata_changes(self, video_ids: set[str]) -> bool:
+        return HFlowController._project_workspace_for(self).apply_video_metadata_changes(video_ids)
+
+    @staticmethod
+    def _thumbnail_retry_signature(source_path: str) -> str:
+        return CatalogMediaController.thumbnail_retry_signature(source_path)
+
+    def _missing_thumbnail_ids(self, videos) -> list[str]:
+        return HFlowController._catalog_media_for(self).missing_thumbnail_ids(videos)
+
+    def _record_thumbnail_failure(self, video_id: str, signature: str) -> None:
+        HFlowController._catalog_media_for(self).record_thumbnail_failure(video_id, signature)
+
+    def _clear_thumbnail_failure(self, video_id: str) -> None:
+        HFlowController._catalog_media_for(self).clear_thumbnail_failure(video_id)
+
+    def _create_missing_thumbnails(self, video_ids):
+        HFlowController._catalog_media_for(self).create_missing_thumbnails(video_ids)
+
+    @Slot()
+    def openInputFile(self):
+        video = video_store.get_video(self._selected_video_id) if self._selected_video_id else None
+        input_path = self._resolve_video_file(video, ("video_input", "input_video"), ("input", "video.mp4"))
+        if not input_path or not os.path.exists(input_path):
+            QMessageBox.information(None, "Open input video", "Input video is not available yet.")
+            return
+        self._open_path(input_path)
+
+    @Slot()
+    def openVideoFolder(self):
+        if self._selected_video_id:
+            self._open_path(video_store.get_video_dir(self._selected_video_id))
+
+    def poll_videos(self):
+        revision = video_store.metadata_revision()
+        if revision == self._last_video_metadata_revision:
+            return
+        if not hasattr(self, "_apply_video_metadata_changes"):
+            self.refreshVideos()
+            self._last_video_metadata_revision = revision
+            self.batchChanged.emit()
+            return
+        changes = video_store.metadata_changes_since(self._last_video_metadata_revision)
+        if changes is None:
+            self.refreshVideos()
+        else:
+            revision, video_ids = changes
+            if not self._apply_video_metadata_changes(video_ids):
+                self.refreshVideos()
+            else:
+                self._last_video_metadata_revision = revision
+        self.batchChanged.emit()
+
+    @classmethod
+    def _video_settings_snapshot(cls, video) -> dict[str, object]:
+        snapshot: dict[str, object] = {}
+        for name in cls._EDITABLE_VIDEO_SETTING_FIELDS:
+            value = getattr(video, name)
+            snapshot[name] = value.model_dump(mode="json") if hasattr(value, "model_dump") else value
+        return snapshot
+
+    @staticmethod
+    def _manual_voice_configuration_snapshot(video) -> dict[str, object]:
+        files = dict(getattr(video, "files", {}) or {})
+        overrides = {
+            str(key): dict(value)
+            for key, value in dict(files.get("manual_voice_overrides") or {}).items()
+            if isinstance(value, dict)
+        }
+        return {
+            "tts_provider": str(video.tts_provider or "omnivoice"),
+            "tts_voice": str(video.tts_voice or ""),
+            "speaker_mode": str(video.speaker_mode or "single"),
+            "overrides": overrides,
+        }
+
+    def _apply_manual_voice_configuration_snapshot(
+        self,
+        video_id: str,
+        snapshot: dict[str, object],
+    ) -> bool:
+        if str(self._selected_video_id or "") != str(video_id or ""):
+            return False
+        video = video_store.get_video(video_id)
+        if not video or self._processing_queue.contains(video_id):
+            return False
+        config = self._video_config_from_snapshot(
+            video,
+            {
+                "tts_provider": str(snapshot.get("tts_provider") or "omnivoice"),
+                "tts_voice": str(snapshot.get("tts_voice") or ""),
+                "speaker_mode": str(snapshot.get("speaker_mode") or "single"),
+            },
+        )
+        self._apply_config_to_video(video, config)
+        video = video_store.get_video(video_id) or video
+        files = dict(video.files or {})
+        overrides = dict(snapshot.get("overrides") or {})
+        if overrides:
+            files["manual_voice_overrides"] = overrides
+        else:
+            files.pop("manual_voice_overrides", None)
+        video_store.update_video(video_id, files=files)
+        # Undo/redo is a metadata action. If this exact voice configuration
+        # was generated before, switch to its immutable manifest immediately
+        # instead of leaving the audible preview on the variant being undone.
+        from hflow.pipeline.manual_tools import activate_cached_voice_variant
+
+        activate_cached_voice_variant(video_id, validate=False)
+        refreshed = video_store.get_video(video_id)
+        if not refreshed:
+            return False
+        HFlowController._project_workspace_for(self).select_video(refreshed)
+        self.refreshVideos()
+        self.manualToolStateChanged.emit("voice")
+        return True
+
+    def _record_manual_voice_configuration_change(
+        self,
+        video_id: str,
+        before: dict[str, object],
+        after: dict[str, object],
+    ) -> None:
+        if self._edit_history_recording_suspended or before == after:
+            return
+        self._manual_edit_history.record(
+            "Cấu hình giọng đọc",
+            lambda: self._apply_manual_voice_configuration_snapshot(video_id, before),
+            lambda: self._apply_manual_voice_configuration_snapshot(video_id, after),
+            context_id=f"video:{video_id}",
+        )
+
+    @staticmethod
+    def _video_config_from_snapshot(video, snapshot: dict[str, object]) -> VideoConfig:
+        values = {
+            "mode": video.mode,
+            "source_language": video.source_language,
+            "target_language": video.target_language,
+            "translator_provider": video.translator_provider,
+            "speech_recognition_model": video.speech_recognition_model,
+            "tts_provider": video.tts_provider,
+            "tts_voice": video.tts_voice,
+            "speaker_mode": video.speaker_mode,
+            "subtitle_style": video.subtitle_style,
+            "subtitle_layout_override": video.subtitle_layout_override,
+            "remove_original_subtitles": video.remove_original_subtitles,
+            "original_subtitle_removal_mode": video.original_subtitle_removal_mode,
+            "output_format": video.output_format,
+            "output_speed": getattr(video, "output_speed", 1.0),
+            "crop": video.crop,
+            "enable_audio_separation": video.enable_audio_separation,
+            "original_video_volume": video.original_video_volume,
+            "background_music_volume": video.background_music_volume,
+            "background_music_loop": video.background_music_loop,
+            "audio_ducking_enabled": video.audio_ducking_enabled,
+            "audio_ducking_reduction_db": video.audio_ducking_reduction_db,
+            "tts_volume": video.tts_volume,
+            "watermark_text": video.watermark_text,
+            "watermark_scale_percent": getattr(video, "watermark_scale_percent", 100),
+            "watermark_kind": getattr(video, "watermark_kind", "text"),
+            "watermark_opacity_percent": getattr(video, "watermark_opacity_percent", 46),
+            "watermark_outline_percent": getattr(video, "watermark_outline_percent", 100),
+            "watermark_font_family": getattr(video, "watermark_font_family", "Arial"),
+            "watermark_text_color": getattr(video, "watermark_text_color", "#FFFFFF"),
+            "watermark_bold": getattr(video, "watermark_bold", True),
+            "watermark_italic": getattr(video, "watermark_italic", True),
+            "project_name": video.project_name,
+            "project_directory": video.project_directory,
+            "project_type": video.project_type,
+            "project_id": video.project_id,
+            "project_key": video.project_key,
+            "review_approved": video.review_approved,
+        }
+        values.update(snapshot)
+        return VideoConfig.model_validate(values)
+
+    def _apply_video_settings_snapshot(self, video_id: str, snapshot: dict[str, object]) -> bool:
+        if str(self._selected_video_id or "") != str(video_id or ""):
+            return False
+        video = video_store.get_video(video_id)
+        if not video or self._processing_queue.contains(video_id):
+            return False
+        if set(snapshot) == {"output_speed"} and video.project_type == "manual":
+            return HFlowController.setManualOutputSpeed(self, float(snapshot["output_speed"]), False)
+        ocr_fields = {"remove_original_subtitles", "original_subtitle_removal_mode",
+                      "original_subtitle_region_override"}
+        if snapshot and set(snapshot) <= ocr_fields:
+            video_store.update_video(video_id, **snapshot)
+            manual_artifacts.deactivate(video_id, {"visual_proxy", "export"})
+        else:
+            config = self._video_config_from_snapshot(video, snapshot)
+            self._apply_config_to_video(video, config)
+        refreshed = video_store.get_video(video_id)
+        if not refreshed:
+            return False
+        HFlowController._project_workspace_for(self).select_video(refreshed)
+        self.refreshVideos()
+        if refreshed.project_type == "batch":
+            self.batchChanged.emit()
+        self.manualToolStateChanged.emit("")
+        return True
+
+    def _record_video_settings_change(
+        self,
+        video_id: str,
+        before: dict[str, object],
+        after: dict[str, object],
+        label: str = "Cài đặt video",
+    ) -> None:
+        if (
+            self._edit_history_recording_suspended
+            or before == after
+        ):
+            return
+        changed_fields = sorted(name for name in set(before) | set(after) if before.get(name) != after.get(name))
+        self._manual_edit_history.record(
+            label,
+            lambda: self._apply_video_settings_snapshot(video_id, before),
+            lambda: self._apply_video_settings_snapshot(video_id, after),
+            merge_key=f"video-settings:{video_id}:{','.join(changed_fields)}",
+            context_id=f"video:{video_id}",
+        )
+
+    def _preserve_edit_asset(self, video_id: str, source: str) -> str:
+        source_path = Path(str(source or ""))
+        if not source_path.is_file():
+            return ""
+        directory = Path(video_store.get_video_dir(video_id)) / "temp" / "edit-history" / uuid.uuid4().hex
+        directory.mkdir(parents=True, exist_ok=True)
+        destination = directory / f"asset{source_path.suffix.lower()}"
+        try:
+            os.link(source_path, destination)
+        except OSError:
+            shutil.copy2(source_path, destination)
+        self._edit_history_asset_directories.add(str(directory.parent))
+        return str(destination)
+
+    def _capture_video_asset_snapshot(self, video, *, preserve: bool) -> dict[str, object]:
+        files = dict(video.files or {})
+        background_music = str(files.get("background_music") or "")
+        voice_reference = str(files.get("voice_reference") or "")
+        watermark_image = str(files.get("watermark_image") or "")
+        watermark_video = str(files.get("watermark_video") or "")
+        if preserve:
+            background_music = self._preserve_edit_asset(video.video_id, background_music)
+            voice_reference = self._preserve_edit_asset(video.video_id, voice_reference)
+            watermark_image = self._preserve_edit_asset(video.video_id, watermark_image)
+            watermark_video = self._preserve_edit_asset(video.video_id, watermark_video)
+        return {
+            "settings": self._video_settings_snapshot(video),
+            "background_music": background_music,
+            "voice_reference": voice_reference,
+            "voice_reference_transcript": str(files.get("voice_reference_transcript") or ""),
+            "watermark_image": watermark_image,
+            "watermark_video": watermark_video,
+        }
+
+    def _restore_video_asset_snapshot(self, video_id: str, snapshot: dict[str, object]) -> bool:
+        video = video_store.get_video(video_id)
+        if not video or self._processing_queue.contains(video_id):
+            return False
+        config = self._video_config_from_snapshot(video, dict(snapshot.get("settings") or {}))
+        self._apply_config_to_video(video, config)
+        video = video_store.get_video(video_id) or video
+        set_desktop_background_music(video, str(snapshot.get("background_music") or ""))
+        video = video_store.get_video(video_id) or video
+        set_desktop_voice_reference(
+            video,
+            str(snapshot.get("voice_reference") or ""),
+            str(snapshot.get("voice_reference_transcript") or ""),
+        )
+        video = video_store.get_video(video_id) or video
+        set_desktop_watermark_image(video, str(snapshot.get("watermark_image") or ""))
+        video = video_store.get_video(video_id) or video
+        set_desktop_watermark_video(video, str(snapshot.get("watermark_video") or ""))
+        if video.project_type == "manual":
+            manual_artifacts.deactivate(video_id, {"tts_manifest", "audio_mix", "visual_proxy", "export"})
+        return bool(video_store.get_video(video_id))
+
+    def _apply_video_asset_snapshot(self, video_id: str, snapshot: dict[str, object]) -> bool:
+        if str(self._selected_video_id or "") != str(video_id or ""):
+            return False
+        if not self._restore_video_asset_snapshot(video_id, snapshot):
+            return False
+        refreshed = video_store.get_video(video_id)
+        if not refreshed:
+            return False
+        HFlowController._project_workspace_for(self).select_video(refreshed)
+        self.refreshVideos()
+        if refreshed.project_type == "batch":
+            self.batchChanged.emit()
+        self.manualToolStateChanged.emit("")
+        return True
+
+    def _record_video_asset_change(
+        self,
+        video_id: str,
+        before: dict[str, object],
+        after: dict[str, object],
+        label: str,
+    ) -> None:
+        if before == after:
+            return
+        self._manual_edit_history.record(
+            label,
+            lambda: self._apply_video_asset_snapshot(video_id, before),
+            lambda: self._apply_video_asset_snapshot(video_id, after),
+            context_id=f"video:{video_id}",
+        )
+
+    def _apply_batch_settings_snapshots(
+        self,
+        project_key: str,
+        snapshots: dict[str, dict[str, object]],
+    ) -> bool:
+        if str(self._selected_project_key or "") != str(project_key or ""):
+            return False
+        videos = [video_store.get_video(video_id) for video_id in snapshots]
+        if any(not video or self._processing_queue.contains(video.video_id) for video in videos):
+            return False
+        for video in videos:
+            self._apply_config_to_video(
+                video,
+                self._video_config_from_snapshot(video, snapshots[video.video_id]),
+            )
+        HFlowController._project_commands_for(self).load_batch_settings()
+        self.refreshVideos()
+        self.batchChanged.emit()
+        return True
+
+    def _record_batch_settings_change(
+        self,
+        project_key: str,
+        before: dict[str, dict[str, object]],
+        after: dict[str, dict[str, object]],
+    ) -> None:
+        if before == after:
+            return
+        self._manual_edit_history.record(
+            "Cài đặt hàng loạt",
+            lambda: self._apply_batch_settings_snapshots(project_key, before),
+            lambda: self._apply_batch_settings_snapshots(project_key, after),
+            merge_key=f"batch-settings:{project_key}",
+            context_id=f"project:{project_key}",
+        )
+
+    def _apply_batch_asset_snapshots(
+        self,
+        project_key: str,
+        snapshots: dict[str, dict[str, object]],
+        defaults: dict | None = None,
+    ) -> bool:
+        if str(self._selected_project_key or "") != str(project_key or ""):
+            return False
+        if not all(self._restore_video_asset_snapshot(video_id, snapshot) for video_id, snapshot in snapshots.items()):
+            return False
+        if defaults is not None:
+            project_store.save_batch_settings(project_key, defaults)
+        HFlowController._project_commands_for(self).load_batch_settings()
+        self.refreshVideos()
+        self.batchChanged.emit()
+        return True
+
+    def _record_batch_asset_change(
+        self,
+        project_key: str,
+        before: dict[str, dict[str, object]],
+        after: dict[str, dict[str, object]],
+        *, before_defaults: dict | None = None, after_defaults: dict | None = None,
+    ) -> None:
+        if before == after and before_defaults == after_defaults:
+            return
+        self._manual_edit_history.record(
+            "Cài đặt hàng loạt",
+            lambda: self._apply_batch_asset_snapshots(project_key, before, before_defaults),
+            lambda: self._apply_batch_asset_snapshots(project_key, after, after_defaults),
+            merge_key=f"batch-assets:{project_key}",
+            context_id=f"project:{project_key}",
+        )
+
+    def _build_config(self):
+        from hflow.core.model_choices import project_translation_choice
+
+        manual_subtitle_layout = bool(self._subtitle_layout_override)
+        translation_model = project_translation_choice(
+            self._translation_model, self._settings_processing_device,
+            total_vram_bytes=getattr(getattr(self, "_hardware_capabilities", None), "total_vram_bytes", None))
+        return VideoConfig(
+            # Auto and Batch no longer expose the legacy pre-TTS review mode.
+            # Manual projects provide the explicit, checkpointed editing flow.
+            mode="A",
+            source_language="auto",
+            target_language=self._target_language,
+            speech_recognition_model=self._speech_recognition_model,
+            translation_model=translation_model,
+            translator_provider="gemini" if translation_model in gemini_translation.MODELS else "hymt2",
+            tts_provider=self._tts_provider,
+            tts_voice=self._tts_voice,
+            speaker_mode=self._speaker_mode,
+            subtitle_style=self._subtitle_style,
+            subtitle_layout_override=manual_subtitle_layout,
+            remove_original_subtitles=self._remove_original_subtitles,
+            original_subtitle_removal_mode=self._original_subtitle_removal_mode,
+            output_format=getattr(self, "_output_format", "keep_ratio"),
+            output_speed=getattr(self, "_output_speed", 1.0),
+            crop=self._crop_settings,
+            enable_audio_separation=self._enable_audio_separation,
+            original_video_volume=self._original_volume,
+            background_music_volume=self._background_music_volume,
+            background_music_loop=getattr(self, "_background_music_loop", True),
+            audio_ducking_enabled=getattr(self, "_audio_ducking_enabled", False),
+            audio_ducking_reduction_db=getattr(self, "_audio_ducking_reduction_db", -12.0),
+            tts_volume=self._tts_volume,
+            watermark_text=self._watermark_text,
+            watermark_scale_percent=self._watermark_scale_percent,
+            watermark_kind=self._watermark_kind,
+            watermark_opacity_percent=self._watermark_opacity_percent,
+            watermark_outline_percent=self._watermark_outline_percent,
+            watermark_font_family=self._watermark_font_family,
+            watermark_text_color=self._watermark_text_color,
+            watermark_bold=self._watermark_bold,
+            watermark_italic=self._watermark_italic,
+            background_music_path=self._background_music_path,
+            project_name=self._project_name,
+            project_directory=self._project_directory,
+            project_type=self._project_type,
+            project_key=self._selected_project_key,
+            project_id=str((project_store.get_project(self._selected_project_key) or {}).get("project_id") or ""),
+        )
+
+    def _apply_setup_to_video(self, video, review_approved=None):
+        HFlowController._apply_config_to_video(
+            self,
+            video,
+            self._build_config(),
+            review_approved,
+        )
+
+    def _sync_legacy_editor_audio_levels(self, video, track_ids: set[str]) -> None:
+        """Mirror the always-visible Manual level controls into document v2."""
+        if not video or getattr(video, "project_type", "") != "manual":
+            return
+        document = editor_documents.load(video.video_id)
+        if document is None:
+            return
+        changed = document.model_copy(deep=True)
+        did_change = False
+        target_by_track = {
+            "source-audio": int(video.original_video_volume),
+            "voice": int(video.tts_volume),
+            "music": int(video.background_music_volume),
+        }
+        for clip in changed.clips:
+            if clip.track_id not in track_ids:
+                continue
+            target = target_by_track.get(clip.track_id)
+            if target is None or clip.volume_percent == target:
+                continue
+            clip.volume_percent = target
+            did_change = True
+        if not did_change:
+            return
+        try:
+            stored = editor_documents.save(video, changed)
+        except (OSError, ValueError):
+            return
+        model = getattr(self, "_manual_editor_document", None)
+        if model is not None and str(getattr(self, "_selected_video_id", "") or "") == video.video_id:
+            model.set_document(stored)
+
+    def _sync_legacy_editor_visual_settings(self, video, sections: set[str]) -> None:
+        if not video or getattr(video, "project_type", "") != "manual" or not sections:
+            return
+        document = editor_documents.load(video.video_id)
+        if document is None:
+            return
+        changed = document.model_copy(deep=True)
+        did_change = False
+        if "subtitle" in sections:
+            style = next(
+                (item for item in changed.styles if item.style_id == changed.default_subtitle_style_id),
+                None,
+            )
+            if style is not None:
+                legacy = video.subtitle_style
+                patch = {
+                    "font_family": legacy.font_family,
+                    "font_weight": 700 if legacy.bold else 400,
+                    "italic": legacy.italic,
+                    "uppercase": legacy.uppercase,
+                    "font_size": legacy.font_size,
+                    "text_color": legacy.text_color,
+                    "karaoke_color": legacy.karaoke_color,
+                    "outline_color": legacy.outline_color,
+                    "outline_width": legacy.outline,
+                    "shadow_offset_x": legacy.shadow,
+                    "shadow_offset_y": legacy.shadow,
+                    "position_x_percent": legacy.position_x_percent,
+                    "position_y_percent": legacy.position_y_percent,
+                    "max_width_percent": legacy.box_width_percent,
+                    "box_height_percent": legacy.box_height_percent,
+                }
+                for name, value in patch.items():
+                    if getattr(style, name) != value:
+                        setattr(style, name, value)
+                        did_change = True
+        if "watermark" in sections:
+            style = next((item for item in changed.styles if item.style_id == "watermark-default"), None)
+            if style is not None:
+                patch = {
+                    "font_family": video.watermark_font_family,
+                    "font_weight": 700 if video.watermark_bold else 400,
+                    "italic": video.watermark_italic,
+                    "text_color": video.watermark_text_color,
+                    "karaoke_color": video.watermark_text_color,
+                    "outline_width": max(0.0, float(video.watermark_outline_percent) / 50.0),
+                }
+                for name, value in patch.items():
+                    if getattr(style, name) != value:
+                        setattr(style, name, value)
+                        did_change = True
+            clip = next((item for item in changed.clips if item.clip_id == "watermark-1"), None)
+            if clip is not None:
+                values = {
+                    "name": video.watermark_text or clip.name,
+                    "kind": video.watermark_kind,
+                }
+                for name, value in values.items():
+                    if getattr(clip, name) != value:
+                        setattr(clip, name, value)
+                        did_change = True
+                if clip.transform.scale_x_percent != video.watermark_scale_percent:
+                    clip.transform.scale_x_percent = video.watermark_scale_percent
+                    clip.transform.scale_y_percent = video.watermark_scale_percent
+                    did_change = True
+                if clip.transform.opacity_percent != video.watermark_opacity_percent:
+                    clip.transform.opacity_percent = video.watermark_opacity_percent
+                    did_change = True
+        if not did_change:
+            return
+        try:
+            stored = editor_documents.save(video, changed)
+        except (OSError, ValueError):
+            return
+        model = getattr(self, "_manual_editor_document", None)
+        if model is not None and str(getattr(self, "_selected_video_id", "") or "") == video.video_id:
+            model.set_document(stored)
+
+    def _apply_config_to_video(self, video, config, review_approved=None):
+        manual_artifacts_to_deactivate: set[str] = set()
+        manual_audio_tracks_to_sync: set[str] = set()
+        manual_visual_sections_to_sync: set[str] = set()
+        changes = {
+            "mode": config.mode,
+            "source_language": config.source_language,
+            "target_language": config.target_language,
+            "speech_recognition_model": config.speech_recognition_model,
+            "translation_model": config.translation_model,
+            "translator_provider": config.translator_provider,
+            "tts_provider": config.tts_provider,
+            "tts_voice": config.tts_voice,
+            "speaker_mode": config.speaker_mode,
+            "subtitle_style": config.subtitle_style,
+            "subtitle_layout_override": config.subtitle_layout_override,
+            "remove_original_subtitles": config.remove_original_subtitles,
+            "original_subtitle_removal_mode": config.original_subtitle_removal_mode,
+            "output_format": config.output_format,
+            "output_speed": config.output_speed,
+            "crop": config.crop,
+            "enable_audio_separation": config.enable_audio_separation,
+            "original_video_volume": config.original_video_volume,
+            "background_music_volume": config.background_music_volume,
+            "background_music_loop": config.background_music_loop,
+            "audio_ducking_enabled": config.audio_ducking_enabled,
+            "audio_ducking_reduction_db": config.audio_ducking_reduction_db,
+            "tts_volume": config.tts_volume,
+            "watermark_text": config.watermark_text,
+            "watermark_scale_percent": config.watermark_scale_percent,
+            "watermark_kind": config.watermark_kind,
+            "watermark_opacity_percent": config.watermark_opacity_percent,
+            "watermark_outline_percent": config.watermark_outline_percent,
+            "watermark_font_family": config.watermark_font_family,
+            "watermark_text_color": config.watermark_text_color,
+            "watermark_bold": config.watermark_bold,
+            "watermark_italic": config.watermark_italic,
+            "project_type": config.project_type,
+        }
+        if getattr(video, "project_type", "single") == "manual":
+            stage_order = ["translation", "subtitles", "voice", "timeline", "render"]
+            completed = set(getattr(video, "manual_completed_stages", []) or [])
+
+            def changed(name, value):
+                return getattr(video, name, None) != value
+
+            invalidated = set()
+            recognition_changed = any(
+                (
+                    changed("source_language", config.source_language),
+                    changed("speech_recognition_model", config.speech_recognition_model),
+                    changed("enable_audio_separation", config.enable_audio_separation),
+                )
+            )
+            target_language_changed = changed("target_language", config.target_language)
+            translation_model_changed = changed("translation_model", config.translation_model)
+            if recognition_changed or target_language_changed or translation_model_changed:
+                # Recognition and translation controls describe the next
+                # explicit translation request.  The current subtitle, voice,
+                # mix and export remain the published editor state until that
+                # request succeeds.  Detaching them while merely browsing a
+                # language/model made the preview lose sound before any work
+                # had been confirmed.
+                manual_artifacts_to_deactivate.update({"recognition", "translation"})
+            if any(
+                (
+                    changed("source_language", config.source_language),
+                    changed("target_language", config.target_language),
+                    translation_model_changed,
+                    changed("speech_recognition_model", config.speech_recognition_model),
+                    changed("enable_audio_separation", config.enable_audio_separation),
+                )
+            ):
+                invalidated.update(stage_order)
+            if any(
+                (
+                    changed("subtitle_style", config.subtitle_style),
+                    changed("remove_original_subtitles", config.remove_original_subtitles),
+                    changed("original_subtitle_removal_mode", config.original_subtitle_removal_mode),
+                    changed("subtitle_layout_override", config.subtitle_layout_override),
+                )
+            ):
+                # These are non-destructive preview/render settings. Keep the
+                # translated text and every audio artifact; export rebuilds
+                # only the visual proxy/SRT whose signature actually changed.
+                invalidated.add("render")
+                manual_artifacts_to_deactivate.update({"visual_proxy", "export"})
+                if changed("subtitle_style", config.subtitle_style):
+                    manual_visual_sections_to_sync.add("subtitle")
+            if any(
+                (
+                    changed("tts_provider", config.tts_provider),
+                    changed("tts_voice", config.tts_voice),
+                    changed("speaker_mode", config.speaker_mode),
+                )
+            ):
+                invalidated.update({"voice", "timeline", "render"})
+                # Voice controls describe the next requested variant. Keep
+                # the last complete manifest/mix active until the explicit
+                # Voice command publishes its replacement. Detaching here
+                # made simply selecting a preset silence and invalidate the
+                # editor before the user had confirmed any work.
+            if any(
+                (
+                    changed("original_video_volume", config.original_video_volume),
+                    changed("background_music_volume", config.background_music_volume),
+                    changed("tts_volume", config.tts_volume),
+                )
+            ):
+                invalidated.update({"timeline", "render"})
+                manual_artifacts_to_deactivate.update({"audio_mix", "export"})
+                if changed("original_video_volume", config.original_video_volume):
+                    manual_audio_tracks_to_sync.add("source-audio")
+                if changed("background_music_volume", config.background_music_volume):
+                    manual_audio_tracks_to_sync.add("music")
+                if changed("tts_volume", config.tts_volume):
+                    manual_audio_tracks_to_sync.add("voice")
+            if changed("output_speed", config.output_speed):
+                invalidated.add("render")
+                manual_artifacts_to_deactivate.add("export")
+            if any(
+                (
+                    changed("output_format", config.output_format),
+                    changed("crop", config.crop),
+                    changed("watermark_text", config.watermark_text),
+                    changed("watermark_scale_percent", config.watermark_scale_percent),
+                    changed("watermark_kind", config.watermark_kind),
+                    changed("watermark_opacity_percent", config.watermark_opacity_percent),
+                    changed("watermark_outline_percent", config.watermark_outline_percent),
+                    changed("watermark_font_family", config.watermark_font_family),
+                    changed("watermark_text_color", config.watermark_text_color),
+                    changed("watermark_bold", config.watermark_bold),
+                    changed("watermark_italic", config.watermark_italic),
+                )
+            ):
+                invalidated.add("render")
+                manual_artifacts_to_deactivate.update({"visual_proxy", "export"})
+                manual_visual_sections_to_sync.add("watermark")
+            if completed.intersection(invalidated):
+                remaining = [stage for stage in stage_order if stage in completed and stage not in invalidated]
+                changes["manual_completed_stages"] = remaining
+                changes["manual_completed_stage"] = remaining[-1] if remaining else ""
+                changes["manual_target_stage"] = ""
+                # A settings edit is not a queued job.  The legacy linear
+                # checkpoint adapter may become empty, but the artifact graph
+                # and current editor state are still ready for interaction.
+                # Persisting ``pending`` here made the header claim that work
+                # was queued even though SerialProcessingQueue was empty.
+                changes["status"] = "manual_ready"
+                changes["step"] = f"manual_{remaining[-1]}" if remaining else "manual_ready"
+        if review_approved is not None:
+            changes["review_approved"] = review_approved
+        changes = {name: value for name, value in changes.items()
+                   if getattr(video, name, None) != value}
+        if not changes:
+            return
+        video_store.update_video(video.video_id, **changes)
+        if manual_audio_tracks_to_sync:
+            HFlowController._sync_legacy_editor_audio_levels(
+                self,
+                video_store.get_video(video.video_id) or video,
+                manual_audio_tracks_to_sync,
+            )
+        if manual_visual_sections_to_sync:
+            HFlowController._sync_legacy_editor_visual_settings(
+                self,
+                video_store.get_video(video.video_id) or video,
+                manual_visual_sections_to_sync,
+            )
+        if manual_artifacts_to_deactivate:
+            manual_artifacts.deactivate(video.video_id, manual_artifacts_to_deactivate)
+
+    @staticmethod
+    def _processing_delegate_for(host):
+        return getattr(host, "_processing_lifecycle", None) or ProcessingLifecycleController(host)
+
+    def _enqueue_video(self, video_id: str) -> bool:
+        # Model retirement may wait on an active warm RPC/driver. The queue
+        # worker performs it before model use, never in the button's Qt slot.
+        return HFlowController._processing_delegate_for(self).enqueue_video(video_id)
+
+    def _enqueue_videos(self, video_ids) -> int:
+        return HFlowController._processing_delegate_for(self).enqueue_videos(video_ids)
+
+    def _update_queue_positions(self) -> None:
+        HFlowController._processing_delegate_for(self).update_queue_positions()
+
+    def _on_queue_video_started(self, video_id: str) -> None:
+        HFlowController._processing_delegate_for(self).on_queue_video_started(video_id)
+
+    def _on_queue_video_finished(self, video_id: str) -> None:
+        HFlowController._processing_delegate_for(self).on_queue_video_finished(video_id)
+
+    def _on_processing_queue_idle(self) -> None:
+        HFlowController._processing_delegate_for(self).on_processing_queue_idle()
+
+    def _on_processing_queue_error(self, video_id: str, exc: Exception) -> None:
+        HFlowController._processing_delegate_for(self).on_processing_queue_error(video_id, exc)
+
+    def _execute_pipeline(self, video_id):
+        HFlowController._processing_delegate_for(self).execute_pipeline(video_id)
+
+    def _prepare_batch_models(self, video_id):
+        HFlowController._processing_delegate_for(self).prepare_batch_models(video_id)
+
+    def _on_video_log(self, video_id, line):
+        HFlowController._processing_delegate_for(self).on_video_log(video_id, line)
+
+    def _drain_log_queue(self):
+        HFlowController._processing_delegate_for(self).drain_log_queue()
+
+    def _read_video_logs(self, video_id):
+        return HFlowController._processing_delegate_for(self).read_video_logs(video_id)
+
+    def _replace_logs(self, text: str) -> None:
+        HFlowController._processing_delegate_for(self).replace_logs(text)
+
+    def _clear_logs(self) -> None:
+        HFlowController._processing_delegate_for(self).clear_logs()
+
+    def _append_logs(self, lines) -> bool:
+        return HFlowController._processing_delegate_for(self).append_logs(lines)
+
+    def _refresh_batch_model(self):
+        HFlowController._catalog_media_for(self).refresh_batch_model()
+
+    def _ensure_video_dimensions(self, video):
+        return HFlowController._catalog_media_for(self).ensure_video_dimensions(video)
+
+    def _on_video_dimensions_ready(self, video_id: str, width: int, height: int) -> None:
+        HFlowController._catalog_media_for(self).on_video_dimensions_ready(video_id, width, height)
+
+    _build_project_summaries = staticmethod(build_project_summaries)
+    _normalize_video_path = staticmethod(normalize_video_path)
+    _collect_batch_video_paths = staticmethod(collect_batch_video_paths)
+    _resolve_video_file = staticmethod(resolve_video_file)
+
+    def _language_label(self, code):
+        return language_label(code, self._settings_language)
+
+    _format_duration = staticmethod(format_duration)
+    _format_memory_size = staticmethod(format_memory_size)
+
+    @staticmethod
+    def _normalized_tts_provider(language_code, provider):
+        provider = str(provider or "omnivoice").lower()
+        return provider if provider in {"omnivoice", "omnivoice-gpu", "edge", "vieneu", "vieneu-gpu"} else "omnivoice"
+
+    def _tts_provider_options_for_language(self, language_code):
+        return [{"provider": provider, "label": label,
+                 "available": (not provider.endswith("-gpu") or HFlowController._project_gpu_available(self))}
+                for provider, label in (
+            ("vieneu-gpu", "VieNeu · GPU · Việt tốt"), ("vieneu", "VieNeu · CPU · Việt tốt"),
+            ("omnivoice", "OmniVoice · CPU · Anh/Trung tốt"), ("omnivoice-gpu", "OmniVoice · GPU · Anh/Trung tốt"),
+            ("edge", "Edge TTS · Online"),
+        )]
+
+    def _show_app_alert(self, title: str, message: str, severity: str = "information") -> None:
+        level = str(severity or "information").strip().lower()
+        if level not in {"information", "warning", "critical"}:
+            level = "information"
+        self.appAlertRequested.emit(str(title or "HFlow"), str(message or ""), level)
+
+    def _show_app_question(self, title: str, message: str, *_args):
+        # QMessageBox callers are synchronous. A local event loop keeps their
+        # existing control flow while the visible confirmation is rendered by
+        # QML instead of a Windows system dialog.
+        if self._confirmation_loop is not None:
+            return QMessageBox.StandardButton.Cancel
+        self._confirmation_accepted = False
+        self._confirmation_responded = False
+        loop = QEventLoop(self)
+        self._confirmation_loop = loop
+        app = QGuiApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(loop.quit)
+        try:
+            self.appConfirmationRequested.emit(str(title or "HFlow"), str(message or ""))
+            if not self._confirmation_responded:
+                loop.exec()
+        finally:
+            if app is not None:
+                app.aboutToQuit.disconnect(loop.quit)
+            self._confirmation_loop = None
+            loop.deleteLater()
+        return QMessageBox.StandardButton.Yes if self._confirmation_accepted else QMessageBox.StandardButton.Cancel
+
+    def _voice_options_for_language(self, language_code, provider="omnivoice"):
+        try:
+            return voice_options_for_language(language_code, self._settings_language, provider)
+        except AttributeError:
+            # Small controller doubles in tests and integrations can provide
+            # their own catalog without carrying desktop localization state.
+            callback = self.__dict__.get("_voice_options_for_language")
+            if callback:
+                try:
+                    return callback(language_code, provider)
+                except TypeError:
+                    return callback(language_code)
+            raise
+
+    def _voice_codes_for_language(self, language_code, provider="omnivoice"):
+        return [item["voice"] for item in self._voice_options_for_language(language_code, provider)]
+
+    def _normalized_voice_for_language(self, language_code, voice, provider="omnivoice"):
+        """Return a valid voice for the selected output language and provider."""
+        try:
+            options = self._voice_options_for_language(language_code, provider)
+        except TypeError:
+            options = self._voice_options_for_language(language_code)
+        supported_voices = [item["voice"] for item in options]
+        if voice in supported_voices:
+            return voice
+        return supported_voices[0] if supported_voices else ""
+
+    def _draft_thumbnail_path(self) -> str:
+        return self._preview_media.draft_thumbnail_path()
+
+    @staticmethod
+    def _video_thumbnail_path(video_id: str) -> str:
+        return os.path.join(video_store.get_video_dir(video_id), "thumbnail.jpg")
+
+    def _assign_project_thumbnail(self, video) -> None:
+        self._preview_media.assign_project_thumbnail(video)
+
+    @staticmethod
+    def _create_video_thumbnail(path: str, output_path: str = "") -> str:
+        output_path = HFlowController._create_video_thumbnail_path(path, output_path)
+        return thumbnail_source(output_path)
+
+    _create_video_thumbnail_path = staticmethod(create_video_thumbnail_path)
+
+    def _migrate_legacy_project_thumbnails(self) -> None:
+        self._preview_media.migrate_legacy_project_thumbnails()
+
+    _open_path = staticmethod(open_path)

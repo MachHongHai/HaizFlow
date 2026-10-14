@@ -8,8 +8,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from haizflow.desktop.activity_log import ActivityLogBuffer
-from haizflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
+from hflow.desktop.activity_log import ActivityLogBuffer
+from hflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def log_session(tmp_path, monkeypatch):
         activity_events=Mock(), logsChanged=Mock(),
     )
     monkeypatch.setattr(
-        "haizflow.desktop.processing_lifecycle_controller.video_store.get_video_logs_path",
+        "hflow.desktop.processing_lifecycle_controller.video_store.get_video_logs_path",
         lambda _video_id: str(path),
     )
     return host, ProcessingLifecycleController(host), path

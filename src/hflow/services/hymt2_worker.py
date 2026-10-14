@@ -1,0 +1,926 @@
+import argparse
+import ctypes
+import gc
+import importlib.util
+import json
+import os
+import re
+import sys
+import traceback
+from pathlib import Path
+from contextlib import contextmanager
+
+from hflow.core.hardware import (
+    available_commit_bytes,
+    available_memory_bytes,
+    processing_device_preference,
+    runtime_profile,
+    translation_model_preference,
+)
+from hflow.services.translation_timing import timing_budget, timing_instruction
+
+
+_INFERENCE_BATCH_SIZE = max(1, min(8, int(os.getenv("HYMT2_INFERENCE_BATCH_SIZE", "4"))))
+_CONTEXT_SEGMENTS = 3
+_MAX_CONTEXT_CHARACTERS = 1200
+_MAX_BACKGROUND_CHARACTERS = 2400
+_PROGRESS_PATH = None
+_MODEL_RUNTIME = None
+_TORCH_THREADING_CONFIGURED = False
+_FIRST_GENERATION_PENDING = True
+_MIN_GGUF_BYTES = 100 * 1024 * 1024
+_MIN_CPU_MODEL_DISK_BYTES = 2 * 1024 ** 3
+_MIN_GPU_MODEL_DISK_BYTES = 6 * 1024 ** 3
+_OUTPUT_TOKEN_BUCKETS = (24, 48, 96, 160, 256)
+
+
+@contextmanager
+def _checkpoint_reader():
+    """Avoid whole-file commit reservations and native storage slicing."""
+    if os.name != "nt":
+        yield
+        return
+    from transformers import modeling_utils
+    from hflow.services.checkpoint_reader import BufferedCheckpoint
+
+    original = modeling_utils.safe_open
+    modeling_utils.safe_open = BufferedCheckpoint
+    try:
+        yield
+    finally:
+        modeling_utils.safe_open = original
+
+def _configure_torch_threading(torch) -> None:
+    """Configure process-wide Torch pools once, before CUDA probing starts work."""
+    global _TORCH_THREADING_CONFIGURED
+    if _TORCH_THREADING_CONFIGURED:
+        return
+    torch.set_num_threads(1)
+    try:
+        torch.set_num_interop_threads(1)
+    except RuntimeError as exc:
+        # PyTorch permits this setting only once and only before parallel work.
+        # A reused interpreter or a native dependency may already have frozen
+        # the pool; keeping its existing value is safe for inference.
+        if "cannot set number of interop threads" not in str(exc).lower():
+            raise
+    _TORCH_THREADING_CONFIGURED = True
+
+
+def _prepare_torch_runtime():
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    import torch
+
+    _configure_torch_threading(torch)
+    return torch
+
+
+def _emit_event(payload: dict) -> None:
+    # Keep the worker protocol ASCII-safe so Windows console code pages cannot
+    # corrupt or reject translated Unicode text. json.loads restores Unicode.
+    line = json.dumps(payload, ensure_ascii=True)
+    if _PROGRESS_PATH is not None:
+        with open(_PROGRESS_PATH, "a", encoding="utf-8") as file:
+            file.write(line + "\n")
+        return
+    if sys.stdout is not None:
+        print(line, flush=True)
+
+
+def _gib(value: int | float) -> float:
+    return round(float(value) / (1024 ** 3), 2) if value else 0.0
+
+
+def _require_staged_cuda_memory(model_source: str) -> None:
+    """Reject only a critically starved host before GPU weight staging.
+
+    On Windows the safetensors shard is memory-mapped and the pageable CPU
+    staging copy is released after CUDA transfer. Physical ``available`` is
+    not the amount of address space the loader may use: successful project
+    logs show this model loading with only ~0.3 GiB reported as available.
+    Requiring 1.2x the checkpoint size here rejected known-working machines.
+    """
+    model_path = Path(model_source)
+    try:
+        checkpoint_bytes = sum(path.stat().st_size for path in model_path.glob("*.safetensors"))
+    except OSError:
+        return
+    if not checkpoint_bytes:
+        return
+    # Keep only an emergency floor; the loader itself provides a precise
+    # failure if Windows cannot commit or map the weights. A larger estimate
+    # based on physical RAM gives false negatives under normal paging.
+    required_bytes = 256 * 1024**2
+    available_bytes = available_memory_bytes()
+    if available_bytes and available_bytes < required_bytes:
+        raise RuntimeError(
+            "Không đủ RAM trống để nạp HY-MT2 GPU: "
+            f"cần khoảng {_gib(required_bytes):.1f} GiB, "
+            f"hiện có {_gib(available_bytes):.1f} GiB. "
+            "Hãy đóng bớt ứng dụng rồi chạy lại, hoặc chọn HY-MT2 CPU trong dự án."
+        )
+
+
+def _require_cuda_commit_memory(model_source: str) -> None:
+    """CUDA allocations on Windows also reserve system commit, not just VRAM."""
+    if os.name != "nt":
+        return
+    free = available_commit_bytes()
+    if not free:
+        return
+    weights = sum(path.stat().st_size for path in Path(model_source).glob("*.safetensors"))
+    required = weights + 2 * 1024**3
+    if weights and free < required:
+        raise RuntimeError(
+            f"Không đủ bộ nhớ hệ thống để nạp HY-MT2 GPU: còn {_gib(free):.1f} GiB, "
+            f"cần khoảng {_gib(required):.1f} GiB kể cả phần dự phòng cho dịch. "
+            "Đóng bớt ứng dụng rồi thử lại, hoặc dùng HY-MT2 CPU."
+        )
+
+
+def _emit_diagnostic(stage: str, torch=None, **details) -> None:
+    """Emit a crash-surviving memory snapshot through the worker event stream."""
+    snapshot = {
+        "stage": stage,
+        "pid": os.getpid(),
+        "processing_device": processing_device_preference(),
+        "python": sys.version.split()[0],
+    }
+    try:
+        import psutil
+
+        memory = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+        process = psutil.Process()
+        snapshot.update(
+            {
+                "ram_available_gib": _gib(memory.available),
+                "ram_total_gib": _gib(memory.total),
+                "swap_free_gib": _gib(swap.free),
+                "swap_total_gib": _gib(swap.total),
+                "process_rss_gib": _gib(process.memory_info().rss),
+            }
+        )
+        if os.name == "nt":
+            class MemoryStatus(ctypes.Structure):
+                _fields_ = [("length", ctypes.c_ulong), ("load", ctypes.c_ulong)] + [
+                    (name, ctypes.c_ulonglong) for name in (
+                        "physical_total", "physical_free", "commit_total", "commit_free",
+                        "virtual_total", "virtual_free", "extended_free",
+                    )
+                ]
+
+            status = MemoryStatus()
+            status.length = ctypes.sizeof(status)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+                snapshot["commit_free_gib"] = _gib(status.commit_free)
+                snapshot["commit_limit_gib"] = _gib(status.commit_total)
+    except Exception as exc:
+        snapshot["system_memory_probe_error"] = f"{type(exc).__name__}: {exc}"
+
+    if torch is not None:
+        snapshot.update(
+            {
+                "torch": str(getattr(torch, "__version__", "unknown")),
+                "torch_cuda": str(getattr(getattr(torch, "version", None), "cuda", "unknown")),
+                "cuda_available": bool(torch.cuda.is_available()),
+            }
+        )
+        if torch.cuda.is_available():
+            try:
+                free_vram, total_vram = torch.cuda.mem_get_info(0)
+                snapshot.update(
+                    {
+                        "cuda_device": torch.cuda.get_device_name(0),
+                        "vram_free_gib": _gib(free_vram),
+                        "vram_total_gib": _gib(total_vram),
+                        "vram_allocated_gib": _gib(torch.cuda.memory_allocated(0)),
+                        "vram_reserved_gib": _gib(torch.cuda.memory_reserved(0)),
+                    }
+                )
+            except Exception as exc:
+                snapshot["cuda_memory_probe_error"] = f"{type(exc).__name__}: {exc}"
+    snapshot.update(details)
+    _emit_event({"event": "diagnostic", "detail": snapshot})
+
+
+def _inference_batches(texts: list[str], batch_size: int | None = None):
+    """Yield prompt batches; each prompt still produces exactly one subtitle."""
+    if batch_size is None:
+        profile = runtime_profile()
+        if profile.is_cpu_only:
+            batch_size = 1
+        elif getattr(profile, "key", "") == "cuda_low_memory":
+            # Windows commit can be nearly exhausted after ASR even when
+            # several GiB of CUDA VRAM remain. One prompt avoids the extra
+            # host allocations of a padded two-prompt first generation.
+            batch_size = 1
+        else:
+            batch_size = _INFERENCE_BATCH_SIZE
+    for start in range(0, len(texts), batch_size):
+        yield start, min(len(texts), start + batch_size)
+
+
+def _context_before_start(texts: list[str], core_start: int) -> int:
+    start = max(0, core_start - _CONTEXT_SEGMENTS)
+    while start < core_start and sum(len(text) for text in texts[start:core_start]) > _MAX_CONTEXT_CHARACTERS:
+        start += 1
+    return start
+
+
+def _context_after_end(texts: list[str], core_end: int) -> int:
+    end = min(len(texts), core_end + _CONTEXT_SEGMENTS)
+    while end > core_end and sum(len(text) for text in texts[core_end:end]) > _MAX_CONTEXT_CHARACTERS:
+        end -= 1
+    return end
+
+
+def _context_indices(texts: list[str], index: int) -> list[int]:
+    """Return a chronological local context window around one subtitle."""
+    before_start = _context_before_start(texts, index)
+    after_end = _context_after_end(texts, index + 1)
+    candidates = [
+        *range(before_start, index),
+        *range(index + 1, after_end),
+    ]
+    selected = []
+    used_characters = 0
+    for context_index in candidates:
+        item_characters = len(texts[context_index])
+        if used_characters + item_characters > _MAX_BACKGROUND_CHARACTERS:
+            continue
+        selected.append(context_index)
+        used_characters += item_characters
+    return sorted(selected)
+
+
+def _is_standalone_label(text: str) -> bool:
+    """Keep short labels independent so nearby subtitles cannot replace their identity."""
+    normalized = (text or "").strip()
+    words = re.findall(r"\w+", normalized, flags=re.UNICODE)
+    return bool(normalized) and len(normalized) <= 48 and len(words) <= 4
+
+
+def _build_prompt(
+    texts: list[str],
+    source_languages: list[str],
+    index: int,
+    target_language_name: str,
+    *,
+    include_context: bool = True,
+    strict_source_only: bool = False,
+    duration_seconds: float | None = None,
+) -> str:
+    source_text = texts[index].strip()
+    timing = timing_instruction(duration_seconds, target_language_name)
+    if _is_standalone_label(source_text):
+        return (
+            timing +
+            f"Translate this standalone subtitle label into {target_language_name}. Translate only the "
+            "[Source Text]. Preserve the exact identity of any named item, rank letter, number, unit and "
+            "punctuation. Do not infer or substitute a different item. Use standard target-language spelling. "
+            "Only output the translated result without any additional explanation.\n\n"
+            f"[Source Text]\n{source_text}"
+        )
+
+    context_block = ""
+    if include_context:
+        context_indices = _context_indices(texts, index)
+        previous_context = "\n".join(
+            f"P{index - context_index} [{source_languages[context_index]}]: {texts[context_index]}"
+            for context_index in context_indices
+            if context_index < index
+        )
+        following_context = "\n".join(
+            f"N{context_index - index} [{source_languages[context_index]}]: {texts[context_index]}"
+            for context_index in context_indices
+            if context_index > index
+        )
+        context_parts = [
+            "[Background Information - reference only]",
+            f"Source language: {source_languages[index]}",
+        ]
+        if previous_context:
+            context_parts.append(f"[Previous Subtitles]\n{previous_context}")
+        if following_context:
+            context_parts.append(f"[Following Subtitles]\n{following_context}")
+        context_parts.append("[End Background Information]")
+        context_block = "\n".join(context_parts) + "\n\n"
+
+    strict_instruction = (
+        "The response must begin directly with the translation of the source text. Any context marker, "
+        "language label, or wording copied from a neighbouring subtitle makes the response invalid. "
+        if strict_source_only
+        else ""
+    )
+    meaning_instruction = (
+        "meaning, names, numbers, and percentages exactly. Prefer a brief natural equivalent over a verbose literal "
+        "translation; do not expand or omit essential information. Use " if timing else
+        "meaning, names, numbers, and percentages exactly; do not paraphrase, expand, or omit information. Use "
+    )
+    return (
+        f"{context_block}{timing}{strict_instruction}Please accurately translate the [Source Text] into {target_language_name}, "
+        "taking the provided background information into consideration. Translate only the [Source Text], "
+        "not the background, and never copy a background sentence even when its wording is similar. Preserve its "
+        + meaning_instruction + "standard spelling and natural grammar in the target language. "
+        "Only output the translated result without any additional explanation.\n\n"
+        f"[Source Text]\n{source_text}"
+    )
+
+
+def _build_translation_prompts(
+    texts: list[str],
+    source_languages: list[str],
+    start: int,
+    end: int,
+    target_language_name: str,
+) -> list[str]:
+    return [
+        _build_prompt(texts, source_languages, index, target_language_name)
+        for index in range(start, end)
+    ]
+
+
+def _clean_single_translation(response: str) -> str:
+    """Accept a plain or JSON-encoded translation for the one-item fallback."""
+    text = response.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else ""
+        if text.rstrip().endswith("```"):
+            text = text.rstrip()[:-3]
+        text = text.strip()
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = text
+    if isinstance(parsed, list) and len(parsed) == 1 and isinstance(parsed[0], str):
+        parsed = parsed[0]
+    if not isinstance(parsed, str) or not parsed.strip():
+        raise ValueError("HY-MT2 did not return a usable translation for one subtitle.")
+    return parsed.strip().strip('"').strip()
+
+
+def _output_token_budget(source_token_count: int) -> int:
+    """Bound generation by the current subtitle, never by a longer batch peer."""
+    requested = max(16, source_token_count * 3 + 8)
+    return next((bucket for bucket in _OUTPUT_TOKEN_BUCKETS if requested <= bucket), _OUTPUT_TOKEN_BUCKETS[-1])
+
+
+def _encode_prompts(tokenizer, torch, device: str, prompts: list[str]):
+    rendered_prompts = [
+        tokenizer.apply_chat_template(
+            [{"role": "user", "content": prompt}],
+            add_generation_prompt=True,
+            tokenize=False,
+        )
+        for prompt in prompts
+    ]
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
+    encoded = tokenizer(rendered_prompts, padding=True, return_tensors="pt")
+    encoded = {name: value.to(device) for name, value in encoded.items()}
+    encoded.pop("token_type_ids", None)
+    return encoded
+
+
+def _translate_prompt_batch(
+    model,
+    tokenizer,
+    torch,
+    device: str,
+    prompts: list[str],
+    source_texts: list[str],
+) -> list[str]:
+    global _FIRST_GENERATION_PENDING
+    if device == "cpu-gguf":
+        results = []
+        for prompt, source_text in zip(prompts, source_texts):
+            estimated_source_tokens = max(len(source_text.split()) * 2, len(source_text) // 4, 1)
+            output_budget = _output_token_budget(estimated_source_tokens)
+            response = model.create_chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                top_p=1.0,
+                top_k=0,
+                repeat_penalty=1.0,
+                max_tokens=output_budget,
+            )
+            try:
+                content = response["choices"][0]["message"]["content"]
+            except (KeyError, IndexError, TypeError) as exc:
+                raise RuntimeError("HY-MT2 GGUF returned an invalid response.") from exc
+            results.append(_clean_single_translation(content))
+        if any(not isinstance(result, str) for result in results):
+            raise RuntimeError("HY-MT2 GGUF did not return one translation per subtitle prompt.")
+        return [str(result) for result in results]
+
+    grouped_indices: dict[int, list[int]] = {}
+    for index, source_text in enumerate(source_texts):
+        source_tokens = len(tokenizer.encode(source_text, add_special_tokens=False))
+        grouped_indices.setdefault(_output_token_budget(source_tokens), []).append(index)
+
+    results: list[str | None] = [None] * len(prompts)
+    for output_budget, indices in grouped_indices.items():
+        encoded = _encode_prompts(tokenizer, torch, device, [prompts[index] for index in indices])
+        input_length = encoded["input_ids"].shape[-1]
+        context_limit = getattr(model.config, "max_position_embeddings", 32768)
+        available_output = context_limit - input_length
+        if available_output < 16:
+            raise RuntimeError("Translation context window is full before the subtitle batch can be generated.")
+        first_generation = _FIRST_GENERATION_PENDING
+        if first_generation:
+            _emit_diagnostic(
+                "first_generation_start",
+                torch,
+                prompt_count=len(indices),
+                input_tokens=input_length,
+                output_token_budget=min(output_budget, available_output),
+            )
+        with torch.inference_mode():
+            generated = model.generate(
+                **encoded,
+                do_sample=False,
+                max_new_tokens=min(output_budget, available_output),
+                pad_token_id=tokenizer.pad_token_id,
+            )
+        if first_generation:
+            _FIRST_GENERATION_PENDING = False
+            _emit_diagnostic("first_generation_complete", torch, prompt_count=len(indices))
+        if len(generated) != len(indices):
+            raise RuntimeError("HY-MT2 inference did not return one result per subtitle prompt.")
+        for index, output in zip(indices, generated):
+            results[index] = _clean_single_translation(
+                tokenizer.decode(output[input_length:], skip_special_tokens=True).strip()
+            )
+    if any(result is None for result in results):
+        raise RuntimeError("HY-MT2 inference did not return one result per subtitle prompt.")
+    return [result for result in results if result is not None]
+
+
+def _cpu_model_path() -> str:
+    from hflow.config import (
+        HYMT2_CPU_MODEL_FILE,
+        MODELS_DIR,
+    )
+    from hflow.core.model_integrity import ModelIntegrityError, verify_cpu_model
+
+    model_directory = Path(MODELS_DIR) / "hymt2-gguf"
+    model_path = model_directory / HYMT2_CPU_MODEL_FILE
+    if model_path.is_file() and model_path.stat().st_size >= _MIN_GGUF_BYTES:
+        try:
+            return str(verify_cpu_model(model_path))
+        except ModelIntegrityError as exc:
+            raise RuntimeError(f"Installed HY-MT2 CPU model failed integrity verification: {exc}") from exc
+    raise RuntimeError(
+        "HY-MT2 CPU is missing or corrupted. Return to the model setup screen and retry the download."
+    )
+
+
+def _transformers_snapshot_complete(snapshot_path: Path) -> bool:
+    required_files = ("config.json", "tokenizer_config.json", "tokenizer.json")
+    if not snapshot_path.is_dir() or not all(
+        (snapshot_path / filename).is_file() for filename in required_files
+    ):
+        return False
+    single_weights = snapshot_path / "model.safetensors"
+    if single_weights.is_file() and single_weights.stat().st_size > 0:
+        return True
+    index_path = snapshot_path / "model.safetensors.index.json"
+    if not index_path.is_file():
+        return False
+    try:
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+        shards = set((index.get("weight_map") or {}).values())
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return False
+    return bool(shards) and all(
+        (snapshot_path / shard).is_file() and (snapshot_path / shard).stat().st_size > 0
+        for shard in shards
+    )
+
+
+def _local_transformers_model_source(model_name: str) -> tuple[str, bool]:
+    """Resolve an installed Hub model to its snapshot so startup stays offline."""
+    from hflow.config import MODELS_DIR
+    from hflow.core.model_integrity import ModelIntegrityError, verify_gpu_model
+
+    configured_path = Path(model_name).expanduser()
+    if _transformers_snapshot_complete(configured_path):
+        try:
+            return str(verify_gpu_model(configured_path)), True
+        except ModelIntegrityError as exc:
+            raise RuntimeError(f"Configured HY-MT2 GPU model failed integrity verification: {exc}") from exc
+    if configured_path.exists():
+        raise RuntimeError(f"Configured HY-MT2 model directory is incomplete: {configured_path}")
+
+    installed_model = Path(MODELS_DIR) / "hymt2-transformers"
+    if _transformers_snapshot_complete(installed_model):
+        try:
+            return str(verify_gpu_model(installed_model)), True
+        except ModelIntegrityError as exc:
+            raise RuntimeError(f"Installed HY-MT2 GPU model failed integrity verification: {exc}") from exc
+    raise RuntimeError(
+        "HY-MT2 GPU is missing or corrupted. Return to the model setup screen and retry the download."
+    )
+
+
+def _load_model(model_name: str):
+    from hflow.config import HYMT2_MODEL_REVISION
+    from hflow.core.hardware import cpu_runtime_profile
+
+    profile = cpu_runtime_profile(runtime_profile())
+    backend = profile.hymt2_backend
+    preference = translation_model_preference()
+    if preference == "full":
+        if not profile.cuda_available:
+            raise RuntimeError("HY-MT2 GPU cần GPU NVIDIA tương thích. Hãy chọn HY-MT2 CPU trong dự án.")
+        if 0 < profile.total_vram_bytes < 5 * 1024**3:
+            raise RuntimeError("Card 4 GB không đủ VRAM cho HY-MT2 GPU đầy đủ. Hãy chọn HY-MT2 CPU Q4.")
+        backend = "transformers"
+    elif preference == "q4":
+        if importlib.util.find_spec("llama_cpp") is None:
+            raise RuntimeError("Thiếu môi trường chạy HY-MT2 CPU. Hãy cài HY-MT2 CPU trong Gói tài nguyên.")
+        backend = "llama_cpp"
+    cpu_model_path = None
+    four_gb_gpu = profile.cuda_available and 0 < getattr(profile, "total_vram_bytes", 0) < 5 * 1024**3
+    if preference == "auto" and four_gb_gpu:
+        # A 4 GB card cannot fall through to the full GPU checkpoint when the
+        # CPU Q4 pack is absent. Keep the error actionable instead of OOM.
+        if importlib.util.find_spec("llama_cpp") is None:
+            raise RuntimeError("Card 4 GB cần gói HY-MT2 CPU Q4 để dịch. Hãy cài gói này trong Gói tài nguyên.")
+        cpu_model_path = _cpu_model_path()
+        backend = "llama_cpp"
+    elif preference == "auto" and profile.key == "cuda_low_memory" and importlib.util.find_spec("llama_cpp") is not None:
+        # Prefer the installed Q4 model on 8 GB GPUs. The full GPU model
+        # stages a 3.8 GB checkpoint in system RAM before moving it to CUDA;
+        # Windows can fail with paging-file error 1455 even with free VRAM.
+        try:
+            cpu_model_path = _cpu_model_path()
+        except RuntimeError:
+            pass  # A GPU-only installation can still use its GPU model.
+        else:
+            backend = "llama_cpp"
+    # The Q4 path must not import Torch; it leaves GPU memory to Whisper.
+    # Only initialize Torch's threads when falling back to full weights.
+    torch_runtime = (
+        _prepare_torch_runtime()
+        if backend != "llama_cpp" and processing_device_preference() == "gpu"
+        else None
+    )
+    _emit_diagnostic(
+        "runtime_profile_selected",
+        torch_runtime,
+        profile=profile.key,
+        backend=backend,
+        model=model_name,
+    )
+    if backend == "llama_cpp":
+        from llama_cpp import Llama
+
+        profile = cpu_runtime_profile(profile, force_cpu=True)
+        model_path = cpu_model_path or _cpu_model_path()
+        _emit_event(
+            {
+                "event": "status",
+                "detail": (
+                    f"Loading HY-MT2 Q4 memory-safe model with {profile.cpu_threads} threads"
+                    if profile.cuda_available
+                    else f"Loading HY-MT2 Q4 CPU model with {profile.cpu_threads} threads"
+                ),
+            }
+        )
+        model = Llama(
+            model_path=model_path,
+            n_ctx=4096,
+            n_batch=256 if profile.key == "cpu_balanced" else 128,
+            n_threads=profile.cpu_threads,
+            n_threads_batch=profile.cpu_threads,
+            n_gpu_layers=0,
+            verbose=False,
+        )
+        _emit_event(
+            {
+                "event": "status",
+                "detail": (
+                    "HY-MT2 Q4 memory-safe model is ready; GPU remains available for speech and rendering"
+                    if profile.cuda_available
+                    else "HY-MT2 Q4 CPU model is ready"
+                ),
+            }
+        )
+        return model, None, None, "cpu-gguf"
+
+    # Torch's loader is more stable on Windows when model deserialization does
+    # not fan out across every logical processor.
+    torch = torch_runtime or _prepare_torch_runtime()
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "cuda":
+        requested_dtype = getattr(profile, "hymt2_dtype", "float16")
+        bf16_supported = bool(getattr(torch.cuda, "is_bf16_supported", lambda: False)())
+        dtype = torch.bfloat16 if requested_dtype == "bfloat16" and bf16_supported else torch.float16
+        precision_label = "BF16" if dtype == torch.bfloat16 else "FP16"
+    else:
+        dtype = torch.float32
+        precision_label = "FP32"
+    model_source, local_files_only = _local_transformers_model_source(model_name)
+    from hflow.core.dependency_security import (
+        install_transformers_generation_guard, validate_checkpoint_weight_maps,
+    )
+
+    install_transformers_generation_guard()
+    validate_checkpoint_weight_maps(model_source)
+    if device == "cuda":
+        _require_cuda_commit_memory(model_source)
+    _emit_diagnostic(
+        "tokenizer_load_start",
+        torch,
+        model=model_name,
+        model_source=model_source,
+        local_files_only=local_files_only,
+        dtype=str(dtype),
+        device=device,
+    )
+    _emit_event(
+        {
+            "event": "status",
+            "detail": "Loading HY-MT2 tokenizer from local cache" if local_files_only else "Loading HY-MT2 tokenizer",
+        }
+    )
+    # model_source is the checksum-verified local snapshot resolved above;
+    # remote model code is explicitly disabled.
+    tokenizer = AutoTokenizer.from_pretrained(  # nosec B615
+        model_source,
+        revision=HYMT2_MODEL_REVISION,
+        # HFlow accepts only its pinned, checksum-verified HY-MT2 bundle.
+        # Never execute Python code supplied by a model repository.
+        trust_remote_code=False,
+        local_files_only=local_files_only,
+        # Transformers 4.57 misclassifies this local Hunyuan tokenizer as
+        # Mistral. Keep Tencent's tokenizer unchanged while suppressing that fix.
+        fix_mistral_regex=False,
+    )
+    _emit_diagnostic("tokenizer_load_complete", torch, model=model_name, device=device)
+    # Buffered checkpoint reads avoid the Windows mmap crash, so load each
+    # tensor directly to CUDA instead of retaining a second full model in RAM.
+    staged_cuda_load = device == "cuda" and profile.key == "cuda_low_memory" and os.name != "nt"
+    load_options = {
+        "dtype": dtype,
+        "trust_remote_code": False,
+        "use_safetensors": True,
+        "local_files_only": local_files_only,
+    }
+    if staged_cuda_load:
+        # Loading a single large safetensors shard directly into CUDA through
+        # Transformers' meta-model path can trigger a native storage access
+        # violation on Windows. Stage the same checkpoint in system
+        # memory, then transfer the complete model to CUDA.
+        _require_staged_cuda_memory(model_source)
+        load_options["low_cpu_mem_usage"] = False
+        load_strategy = "staged_cpu_to_cuda"
+    else:
+        load_options["device_map"] = {"": device}
+        load_options["low_cpu_mem_usage"] = True
+        load_strategy = "direct_to_device"
+    _emit_diagnostic(
+        "weights_load_start",
+        torch,
+        model=model_name,
+        dtype=str(dtype),
+        device=device,
+        load_strategy=load_strategy,
+        checkpoint_backend="bounded_read" if os.name == "nt" else "mmap",
+    )
+    _emit_event(
+        {
+            "event": "status",
+            "detail": (
+                f"Loading full HY-MT2 {precision_label} weights in staged GPU mode"
+                if staged_cuda_load
+                else "Loading HY-MT2 weights"
+            ),
+        }
+    )
+    # model_source is the checksum-verified local safetensors snapshot and
+    # load_options disables remote code while requiring safetensors.
+    with _checkpoint_reader():
+        model = AutoModelForCausalLM.from_pretrained(  # nosec B615
+            model_source,
+            revision=HYMT2_MODEL_REVISION,
+            **load_options,
+        )
+    _emit_diagnostic(
+        "weights_load_complete",
+        torch,
+        model=model_name,
+        dtype=str(dtype),
+        device="cpu" if staged_cuda_load else device,
+        load_strategy=load_strategy,
+    )
+    if staged_cuda_load:
+        _emit_event({"event": "status", "detail": f"Transferring full HY-MT2 {precision_label} model to CUDA"})
+        _emit_diagnostic("cuda_transfer_start", torch, model=model_name, dtype=str(dtype))
+        model.to(device)
+        _emit_diagnostic("cuda_transfer_complete", torch, model=model_name, dtype=str(dtype))
+    else:
+        _emit_event({"event": "status", "detail": f"HY-MT2 weights loaded directly on {device}"})
+    # Tencent's direct Transformers example uses deterministic generate().
+    # Subtitle production values faithful, repeatable output over sampling
+    # variation because one wrong noun corrupts both captions and TTS.
+    model.generation_config.do_sample = False
+    model.eval()
+    if device == "cuda" and profile.key == "cuda_low_memory":
+        gc.collect()
+        torch.cuda.synchronize()
+    _emit_diagnostic("model_ready", torch, model=model_name, dtype=str(dtype), device=device)
+    _emit_event({"event": "status", "detail": "HY-MT2 model is ready"})
+    return model, tokenizer, torch, device
+
+
+def _model_runtime():
+    global _MODEL_RUNTIME
+    if _MODEL_RUNTIME is None:
+        from hflow.config import HYMT2_MODEL
+
+        _emit_event({"event": "status", "detail": "Loading HY-MT2 translation model"})
+        _MODEL_RUNTIME = _load_model(HYMT2_MODEL)
+    else:
+        _emit_event({"event": "status", "detail": "Reusing HY-MT2 translation model"})
+    return _MODEL_RUNTIME
+
+
+def release_model() -> None:
+    global _MODEL_RUNTIME
+    if _MODEL_RUNTIME is None:
+        return
+    model, tokenizer, torch, _device = _MODEL_RUNTIME
+    _MODEL_RUNTIME = None
+    del model, tokenizer
+    gc.collect()
+    if torch is not None and torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+def translate(payload: dict) -> list[str]:
+    texts = payload["texts"]
+    source_languages = payload.get("source_languages")
+    if not isinstance(source_languages, list) or len(source_languages) != len(texts):
+        source_languages = [payload.get("source_language") or "English"] * len(texts)
+    target_language_name = payload["target_language_name"]
+    include_context = bool(payload.get("include_context", True))
+    strict_source_only = bool(payload.get("strict_source_only", False))
+    durations = payload.get("speech_durations")
+    if durations is not None and (not isinstance(durations, list) or len(durations) != len(texts)):
+        raise ValueError("Each source sentence must have a speech duration.")
+    if durations is not None:
+        for duration in durations:
+            timing_budget(duration, target_language_name)
+    requested_indices = payload.get("translate_indices")
+    if requested_indices is None:
+        requested = set(range(len(texts)))
+    elif isinstance(requested_indices, list) and all(isinstance(index, int) for index in requested_indices):
+        requested = {index for index in requested_indices if 0 <= index < len(texts)}
+    else:
+        raise ValueError("translate_indices must be a list of valid integer indexes.")
+    target_key = target_language_name.casefold().strip()
+    requires_translation = [
+        index in requested and source_language.casefold().strip() != target_key
+        for index, source_language in enumerate(source_languages)
+    ]
+    if not any(requires_translation):
+        _emit_event({"event": "progress", "current": len(texts), "total": len(texts)})
+        return list(texts)
+
+    model, tokenizer, torch, device = _model_runtime()
+    initial = payload.get("initial_translations")
+    translations: list[str | None] = list(initial) if isinstance(initial, list) and len(initial) == len(texts) else [None] * len(texts)
+    for batch_start, batch_end in _inference_batches(texts):
+        batch_indices = [index for index in range(batch_start, batch_end) if index in requested]
+        if not batch_indices:
+            for index in range(batch_start, batch_end):
+                if translations[index] is None:
+                    translations[index] = texts[index]
+            continue
+        _emit_event(
+            {
+                "event": "batch_started",
+                "start": batch_indices[0] + 1,
+                "end": batch_indices[-1] + 1,
+                "completed": sum(value is not None for value in translations),
+                "total": len(texts),
+            }
+        )
+        translated_indices = [
+            index
+            for index in range(batch_start, batch_end)
+            if requires_translation[index]
+        ]
+        for index in range(batch_start, batch_end):
+            if not requires_translation[index]:
+                if translations[index] is None:
+                    translations[index] = texts[index]
+
+        if translated_indices:
+            prompts = [
+                _build_prompt(
+                    texts,
+                    source_languages,
+                    index,
+                    target_language_name,
+                    include_context=include_context,
+                    strict_source_only=strict_source_only,
+                    duration_seconds=durations[index] if durations is not None else None,
+                )
+                for index in translated_indices
+            ]
+            batch_translations = _translate_prompt_batch(
+                model,
+                tokenizer,
+                torch,
+                device,
+                prompts,
+                [texts[index] for index in translated_indices],
+            )
+            for index, translated_text in zip(translated_indices, batch_translations):
+                translations[index] = translated_text
+
+        _emit_event({"event": "progress", "current": sum(value is not None for value in translations),
+                     "total": len(texts), "indices": batch_indices,
+                     "translations": [translations[index] for index in batch_indices]})
+    if any(not isinstance(text, str) for text in translations):
+        raise RuntimeError("HY-MT2 inference did not return one translation per subtitle prompt.")
+    return [str(text) for text in translations]
+
+
+def _serve() -> int:
+    try:
+        for raw_line in sys.stdin:
+            request_id = "unknown"
+            try:
+                request = json.loads(raw_line)
+                request_id = request["request_id"]
+                if request.get("command") == "shutdown":
+                    _emit_event({"event": "response", "request_id": request_id, "stopped": True})
+                    return 0
+                if request.get("command") == "ping":
+                    _emit_event({"event": "response", "request_id": request_id, "ready": True})
+                    continue
+                if request.get("command") == "warm":
+                    _model_runtime()
+                    _emit_event({"event": "response", "request_id": request_id, "warmed": True})
+                    continue
+                result = {"translations": translate(request["payload"])}
+            except Exception as exc:
+                _emit_diagnostic(
+                    "python_exception",
+                    details=f"{type(exc).__name__}: {exc}",
+                    traceback=traceback.format_exc(),
+                )
+                result = {"error": f"HY-MT2 worker failed: {type(exc).__name__}: {exc}"}
+            result.update({"event": "response", "request_id": request_id})
+            _emit_event(result)
+    finally:
+        release_model()
+    return 0
+
+
+def main(argv=None) -> int:
+    global _PROGRESS_PATH
+    try:
+        import faulthandler
+
+        faulthandler.enable(all_threads=True)
+    except (OSError, RuntimeError):
+        pass
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--request")
+    parser.add_argument("--response")
+    parser.add_argument("--progress")
+    parser.add_argument("--server", action="store_true")
+    args = parser.parse_args(argv)
+    if args.server:
+        return _serve()
+    if not args.request or not args.response:
+        parser.error("--request and --response are required unless --server is used")
+    response_path = Path(args.response)
+    _PROGRESS_PATH = Path(args.progress) if args.progress else None
+    if _PROGRESS_PATH is not None:
+        _PROGRESS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _PROGRESS_PATH.write_text("", encoding="utf-8")
+    try:
+        with open(args.request, "r", encoding="utf-8") as file:
+            payload = json.load(file)
+        result = {"translations": translate(payload)}
+    except Exception as exc:
+        result = {"error": f"HY-MT2 worker failed: {type(exc).__name__}: {exc}"}
+    with open(response_path, "w", encoding="utf-8") as file:
+        json.dump(result, file, ensure_ascii=False)
+    release_model()
+    _PROGRESS_PATH = None
+    return 0 if "error" not in result else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

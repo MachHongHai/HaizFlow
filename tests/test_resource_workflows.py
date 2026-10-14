@@ -7,10 +7,10 @@ from unittest.mock import Mock
 import pytest
 from PySide6.QtCore import QObject, Signal
 
-from haizflow.desktop.resource_pack_controller import ResourcePackController
-from haizflow.desktop.resource_progress import gemini_key_notice, missing_resource_notice
-from haizflow.services.model_bootstrap import ModelProgress
-from haizflow.services.resource_packs import ResourcePackDefinition, ResourcePackManager
+from hflow.desktop.resource_pack_controller import ResourcePackController
+from hflow.desktop.resource_progress import gemini_key_notice, missing_resource_notice
+from hflow.services.model_bootstrap import ModelProgress
+from hflow.services.resource_packs import ResourcePackDefinition, ResourcePackManager
 
 
 class Host(QObject):
@@ -27,8 +27,8 @@ class Host(QObject):
 
 @pytest.fixture
 def packs(tmp_path, monkeypatch):
-    monkeypatch.setenv("HAIZFLOW_HOME", str(tmp_path / "app"))
-    monkeypatch.setenv("HAIZFLOW_RESOURCE_ROOT", str(tmp_path / "resources"))
+    monkeypatch.setenv("HFLOW_HOME", str(tmp_path / "app"))
+    monkeypatch.setenv("HFLOW_RESOURCE_ROOT", str(tmp_path / "resources"))
     monkeypatch.setenv("RUNTIME_DATA_DIR", str(tmp_path / "app/data"))
     definitions = [ResourcePackDefinition("engine-test", "Runtime", "processor", "1", "engine", engine_modules=("unavailable_test_module",)),
                    ResourcePackDefinition("model-demucs", "Demucs", "voice", "1", "separation"),
@@ -210,7 +210,7 @@ def test_paused_download_can_be_discarded_then_installed_again(packs):
 
 
 def test_discard_download_preserves_an_installed_shared_processor(packs):
-    from haizflow.core.paths import resource_packages_dir
+    from hflow.core.paths import resource_packages_dir
     _, manager, states = packs
     states["engine-test"] = "installed"
     marker = manager._engine_marker(manager.definitions["engine-test"])
@@ -228,7 +228,7 @@ def test_discard_download_preserves_an_installed_shared_processor(packs):
 
 
 def test_repair_checks_the_installed_runtime_and_reinstalls_if_broken(packs):
-    from haizflow.services.resource_packs import ResourcePackError
+    from hflow.services.resource_packs import ResourcePackError
 
     controller, manager, states = packs
     states.update({"engine-test": "installed", "model-demucs": "installed"})
@@ -255,7 +255,7 @@ def test_missing_setup_notices_are_bilingual_and_do_not_show_zero_download_as_un
 def test_button_tooltips_are_opt_in_and_setting_help_is_preserved():
     from pathlib import Path
 
-    qml = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml"
+    qml = Path(__file__).resolve().parents[1] / "src/hflow/desktop/qml"
     for name in ("IconButton.qml", "AppButton.qml"):
         text = (qml / name).read_text(encoding="utf-8")
         assert "property bool showToolTip: false" in text
@@ -265,7 +265,7 @@ def test_button_tooltips_are_opt_in_and_setting_help_is_preserved():
 
 
 def test_zernio_missing_key_notifies_without_navigation():
-    from haizflow.desktop.social_publish_controller import SocialPublishController
+    from hflow.desktop.social_publish_controller import SocialPublishController
 
     host = SimpleNamespace(_settings_language="vi", appAlertRequested=SimpleNamespace(emit=Mock()),
                            apiKeySettingsRequested=SimpleNamespace(emit=Mock()))
@@ -277,7 +277,7 @@ def test_zernio_missing_key_notifies_without_navigation():
 
 
 def test_cpu_only_demucs_needs_no_cuda_pack_and_gpu_options_are_blocked():
-    from haizflow.core.hardware import HardwareCapabilities
+    from hflow.core.hardware import HardwareCapabilities
 
     capabilities = HardwareCapabilities(cuda_available=False, cuda_name="", total_vram_bytes=0,
         free_vram_bytes=0, total_ram_bytes=16 * 1024**3, logical_cpu_count=8, ac_powered=True, battery_percent=100)
@@ -297,7 +297,7 @@ def test_cpu_only_demucs_needs_no_cuda_pack_and_gpu_options_are_blocked():
 
 
 def test_demucs_preflight_follows_app_device_even_with_other_profile_installed(tmp_path, monkeypatch):
-    monkeypatch.setenv("HAIZFLOW_RESOURCE_ROOT", str(tmp_path))
+    monkeypatch.setenv("HFLOW_RESOURCE_ROOT", str(tmp_path))
     manager = ResourcePackManager()
     installed = {"engine-cuda128-py313", "model-demucs-gpu"}
     monkeypatch.setattr(manager, "status", lambda pack: "installed" if pack in installed else "missing")
@@ -315,8 +315,8 @@ def test_demucs_preflight_follows_app_device_even_with_other_profile_installed(t
 
 @pytest.mark.parametrize("device,missing_pack", [("cpu", "model-demucs-cpu"), ("gpu", "model-demucs-gpu")])
 def test_manual_separation_missing_pack_stays_in_editor(device, missing_pack, monkeypatch):
-    from haizflow.desktop.qml_controller import HaizFlowController
-    from haizflow.schemas.video import VideoConfig
+    from hflow.desktop.qml_controller import HFlowController
+    from hflow.schemas.video import VideoConfig
 
     video = SimpleNamespace(**VideoConfig(project_type="manual").model_dump(), video_id="demucs-preflight")
     manager = ResourcePackManager()
@@ -326,7 +326,7 @@ def test_manual_separation_missing_pack_stays_in_editor(device, missing_pack, mo
         _selected_video=lambda: video, _ensure_hardware_ready_for_action=lambda: True,
         appAlertRequested=Mock(), resourcePacksRequested=Mock(), _enqueue_video=Mock(),
         _resource_packs=SimpleNamespace(manager=manager, _hardware_compatibility=lambda _: (True, "")))
-    assert not HaizFlowController.runManualTool(host, "separation")
+    assert not HFlowController.runManualTool(host, "separation")
     assert ("Demucs CPU" if device == "cpu" else "Demucs GPU NVIDIA") in host.appAlertRequested.emit.call_args.args[1]
     host.resourcePacksRequested.emit.assert_not_called()
     host._enqueue_video.assert_not_called()
@@ -341,8 +341,8 @@ def test_manual_separation_missing_pack_stays_in_editor(device, missing_pack, mo
     ("gpu", "large-v3-turbo", "model-whisper-turbo"),
 ])
 def test_manual_recognition_blocks_missing_runtime_or_model(device, model, missing_pack, monkeypatch):
-    from haizflow.desktop.qml_controller import HaizFlowController
-    from haizflow.schemas.video import VideoConfig
+    from hflow.desktop.qml_controller import HFlowController
+    from hflow.schemas.video import VideoConfig
 
     video = SimpleNamespace(**VideoConfig(project_type="manual", speech_recognition_model=model,
                             translation_model="gemini-3.1-flash-lite").model_dump(), video_id="whisper-preflight")
@@ -353,7 +353,7 @@ def test_manual_recognition_blocks_missing_runtime_or_model(device, model, missi
         geminiKeyConfigured=True, _selected_video=lambda: video, _ensure_hardware_ready_for_action=lambda: True,
         appAlertRequested=Mock(), resourcePacksRequested=Mock(), _enqueue_video=Mock(),
         _resource_packs=SimpleNamespace(manager=manager, _hardware_compatibility=lambda _: (True, "")))
-    assert not HaizFlowController.runManualTool(host, "translation")
+    assert not HFlowController.runManualTool(host, "translation")
     host.appAlertRequested.emit.assert_called_once()
     host.resourcePacksRequested.emit.assert_not_called()
     host._enqueue_video.assert_not_called()
@@ -366,8 +366,8 @@ def test_manual_recognition_blocks_missing_runtime_or_model(device, model, missi
     ("gpu", "large-v3-turbo", "model-whisper-turbo"),
 ])
 def test_auto_batch_recognition_blocks_missing_runtime_or_model(device, model, missing_pack, monkeypatch):
-    from haizflow.desktop.project_commands_controller import ProjectCommandsController
-    from haizflow.schemas.video import VideoConfig
+    from hflow.desktop.project_commands_controller import ProjectCommandsController
+    from hflow.schemas.video import VideoConfig
 
     video = SimpleNamespace(**VideoConfig(speech_recognition_model=model, translation_model="q4").model_dump(),
                             video_id="auto-whisper-preflight", status="pending")
@@ -400,9 +400,9 @@ def test_downloaded_whisper_model_with_missing_runtime_is_not_shown_installed():
 def test_old_whisper_runtime_contract_is_not_ready(tmp_path, monkeypatch):
     import json
     from dataclasses import replace
-    from haizflow.services.resource_packs import ENGINE_REQUIRED_COMMANDS
+    from hflow.services.resource_packs import ENGINE_REQUIRED_COMMANDS
 
-    monkeypatch.setenv("HAIZFLOW_RESOURCE_ROOT", str(tmp_path))
+    monkeypatch.setenv("HFLOW_RESOURCE_ROOT", str(tmp_path))
     definition = replace(ResourcePackManager().definitions["engine-cuda128-py313"], version="5", archive_sha256="")
     manager = ResourcePackManager([definition])
     monkeypatch.setattr(manager, "_bundled_engine_available", lambda _: False)
@@ -432,10 +432,10 @@ def test_clone_requires_whisper_and_reference_cpu_does_not_select_gpu_engine(mon
 def test_demucs_profiles_share_model_but_install_and_remove_independently(tmp_path, monkeypatch):
     import hashlib
     import json
-    from haizflow.services.model_bootstrap import ModelAsset
+    from hflow.services.model_bootstrap import ModelAsset
 
-    monkeypatch.setenv("HAIZFLOW_RESOURCE_ROOT", str(tmp_path))
-    monkeypatch.setenv("HAIZFLOW_HOME", str(tmp_path))
+    monkeypatch.setenv("HFLOW_RESOURCE_ROOT", str(tmp_path))
+    monkeypatch.setenv("HFLOW_HOME", str(tmp_path))
     monkeypatch.setenv("RUNTIME_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("MODELS_DIR", str(tmp_path / "models"))
     payload = b"verified shared checkpoint"

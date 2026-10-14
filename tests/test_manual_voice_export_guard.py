@@ -8,10 +8,10 @@ import pytest
 from pydub import AudioSegment
 from pydub.generators import Sine
 
-from haizflow.pipeline import manual_tools
-from haizflow.schemas.editor import EditorAsset, EditorClip, EditorDocument, EditorTrack
-from haizflow.schemas.video import VideoConfig
-from haizflow.services import editor_documents
+from hflow.pipeline import manual_tools
+from hflow.schemas.editor import EditorAsset, EditorClip, EditorDocument, EditorTrack
+from hflow.schemas.video import VideoConfig
+from hflow.services import editor_documents
 
 
 def _video():
@@ -50,7 +50,7 @@ def test_pending_voice_choice_uses_published_editor_asset_even_with_music(tmp_pa
     with (patch.object(manual_tools, "published_voice_record", return_value=None),
           patch.object(manual_tools.manual_artifacts, "resolve", return_value=None),
           patch.object(manual_tools, "_audio_background", return_value=(str(source), "", [])),
-          patch("haizflow.pipeline.sequence_compiler.materialize_source_sequence",
+          patch("hflow.pipeline.sequence_compiler.materialize_source_sequence",
                 return_value=(str(source), str(source))),
           patch.object(manual_tools, "build_audio_timeline") as mix):
         manual_tools._compose_manual_audio(video, tmp_path / "mix.wav", tmp_path, document=document)
@@ -71,7 +71,7 @@ def test_real_manual_mix_keeps_voice_above_background_music(tmp_path):
     video.files["video_input"] = str(source)
     output = tmp_path / "mix.wav"
     with (patch.object(manual_tools, "_audio_background", return_value=(str(source), "", [])),
-          patch("haizflow.pipeline.sequence_compiler.materialize_source_sequence",
+          patch("hflow.pipeline.sequence_compiler.materialize_source_sequence",
                 return_value=(str(source), str(source)))):
         manual_tools._compose_manual_audio(video, output, tmp_path, document=document)
     mixed = AudioSegment.from_wav(output)

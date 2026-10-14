@@ -8,7 +8,7 @@ from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 
-QML_DIR = Path(__file__).parents[1] / "src/haizflow/desktop/qml"
+QML_DIR = Path(__file__).parents[1] / "src/hflow/desktop/qml"
 
 
 class Backend(QObject):
@@ -93,7 +93,7 @@ ApplicationWindow {{
         assert QMetaObject.invokeMethod(dialog, "openForSelection", Qt.DirectConnection, Q_ARG("QVariant", False))
         QTest.qWait(100)
         assert selector.property("currentIndex") == 0  # Default is always the entire video.
-        if directory := os.getenv("HAIZFLOW_UI_CAPTURE_DIR"):
+        if directory := os.getenv("HFLOW_UI_CAPTURE_DIR"):
             Path(directory).mkdir(parents=True, exist_ok=True)
             assert window.grabWindow().save(str(Path(directory) / "result-export-dialog.png"))
             assert QMetaObject.invokeMethod(dialog, "close", Qt.DirectConnection)

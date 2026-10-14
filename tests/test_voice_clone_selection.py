@@ -5,9 +5,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from haizflow.desktop.presenters import voice_options_for_language
-from haizflow.desktop.project_import_controller import ProjectImportController
-from haizflow.desktop.qml_controller import HaizFlowController
+from hflow.desktop.presenters import voice_options_for_language
+from hflow.desktop.project_import_controller import ProjectImportController
+from hflow.desktop.qml_controller import HFlowController
 
 
 class VoiceCloneSelectionTests(unittest.TestCase):
@@ -17,7 +17,7 @@ class VoiceCloneSelectionTests(unittest.TestCase):
         for provider in ("omnivoice", "omnivoice-gpu"):
             for language in ("vi", "en", "zh"):
                 with self.subTest(provider=provider, language=language):
-                    self.assertEqual(HaizFlowController._normalized_voice_for_language(
+                    self.assertEqual(HFlowController._normalized_voice_for_language(
                         host, language, "omnivoice:clone", provider), "omnivoice:clone")
 
     def test_apply_commits_clone_synchronously_for_manual_and_auto(self):
@@ -33,7 +33,7 @@ class VoiceCloneSelectionTests(unittest.TestCase):
                                            persistVideoSettingsFor=Mock(return_value=True),
                                            ttsProviderChanged=SimpleNamespace(emit=Mock()), ttsVoiceChanged=SimpleNamespace(emit=Mock()),
                                            ttsVoiceOptionsChanged=SimpleNamespace(emit=Mock()), _audio_preview=SimpleNamespace(invalidate=Mock()))
-                    with patch("haizflow.desktop.project_import_controller.video_store.get_video", return_value=video):
+                    with patch("hflow.desktop.project_import_controller.video_store.get_video", return_value=video):
                         self.assertTrue(ProjectImportController(host).apply_voice_reference("v1", "omnivoice-gpu"))
                         self.assertEqual(host._tts_voice, "omnivoice:clone")
                         self.assertEqual(host._tts_provider, "omnivoice-gpu")
@@ -49,6 +49,6 @@ class VoiceCloneSelectionTests(unittest.TestCase):
     def test_recording_cannot_be_applied_to_another_project_after_navigation(self):
         host = SimpleNamespace(_selected_video_id="new-video", _voice_clone_recording_video_id="old-video",
                                cancelVoiceCloneRecording=Mock(), _voice_clone_capture=Mock())
-        self.assertFalse(HaizFlowController.finishVoiceCloneRecording(host))
+        self.assertFalse(HFlowController.finishVoiceCloneRecording(host))
         host.cancelVoiceCloneRecording.assert_called_once_with()
         host._voice_clone_capture.assert_not_called()

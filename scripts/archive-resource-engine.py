@@ -8,7 +8,7 @@ from pathlib import Path
 
 def archive_engine(artifact: Path, output: Path) -> None:
     artifact, output = artifact.resolve(), output.resolve()
-    if not (artifact / "engine.json").is_file() or not (artifact / "HaizFlowEngine.exe").is_file():
+    if not (artifact / "engine.json").is_file() or not (artifact / "HFlowEngine.exe").is_file():
         raise ValueError("A complete frozen engine is required.")
     if output.is_relative_to(artifact) or output.suffix != ".zip":
         raise ValueError("Archive must be a ZIP outside the engine directory.")

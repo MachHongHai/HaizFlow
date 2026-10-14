@@ -1,9 +1,9 @@
 import re
 import subprocess
 from pathlib import Path
-from haizflow.desktop.subtitle_overlay_renderer import export_events
-from haizflow.pipeline.render import _subtitle_patch_prefix
-from haizflow.utils.ffmpeg import _binary
+from hflow.desktop.subtitle_overlay_renderer import export_events
+from hflow.pipeline.render import _subtitle_patch_prefix
+from hflow.utils.ffmpeg import _binary
 
 
 def test_karaoke_tracks_speech_duration_but_keeps_caption_window(tmp_path):

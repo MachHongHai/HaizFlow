@@ -7,7 +7,7 @@ from unittest import mock
 from pydub import AudioSegment
 from pydub.generators import Sine
 
-from haizflow.pipeline import audio_timeline
+from hflow.pipeline import audio_timeline
 
 
 class AudioTimelineIntegrityTests(unittest.TestCase):

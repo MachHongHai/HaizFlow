@@ -120,7 +120,7 @@ def main(argv=None) -> int:
         for error in errors:
             print(error, file=sys.stderr)
         return 1
-    print("Legal documents are consistent. Active license: HaizFlow Source-Available 1.0. Not release clearance.")
+    print("Legal documents are consistent. Active license: HFlow Source-Available 1.0. Not release clearance.")
     return 0
 
 

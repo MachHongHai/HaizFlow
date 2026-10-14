@@ -14,7 +14,7 @@ function Get-DotEnvValue([string]$Name) {
   return $match.Matches[0].Groups[1].Value.Trim().Trim('"')
 }
 
-# uv runs before Python imports haizflow.config, so it cannot inherit the
+# uv runs before Python imports hflow.config, so it cannot inherit the
 # application's runtime containment automatically. Keep its resolver cache in
 # the same user-selected data root instead of creating .uv-cache beside source.
 $RuntimeData = Get-DotEnvValue "RUNTIME_DATA_DIR"

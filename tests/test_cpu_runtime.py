@@ -13,15 +13,15 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.core import hardware
-from haizflow.desktop import qml_controller
-from haizflow.desktop.runtime_device_controller import RuntimeDeviceController
-from haizflow.pipeline import audio_separation
-from haizflow.pipeline import manual_tools
-from haizflow.services import hymt2_worker
-from haizflow.services import desktop_settings
-from haizflow.services import translation
-from haizflow.utils import ffmpeg
+from hflow.core import hardware
+from hflow.desktop import qml_controller
+from hflow.desktop.runtime_device_controller import RuntimeDeviceController
+from hflow.pipeline import audio_separation
+from hflow.pipeline import manual_tools
+from hflow.services import hymt2_worker
+from hflow.services import desktop_settings
+from hflow.services import translation
+from hflow.utils import ffmpeg
 
 
 class CpuRuntimeTests(unittest.TestCase):
@@ -44,7 +44,7 @@ class CpuRuntimeTests(unittest.TestCase):
         with (
             mock.patch.dict(
                 hardware.os.environ,
-                {"HAIZFLOW_PROCESSING_DEVICE": preference, "HAIZFLOW_FORCE_CPU": ""},
+                {"HFLOW_PROCESSING_DEVICE": preference, "HFLOW_FORCE_CPU": ""},
                 clear=False,
             ),
             mock.patch.object(hardware, "_cuda_details", return_value=(cuda, "Test GPU" if cuda else "")),
@@ -178,7 +178,7 @@ class CpuRuntimeTests(unittest.TestCase):
         controller = RuntimeDeviceController(host, detect_hardware=detect)
         worker = mock.Mock()
         with mock.patch(
-            "haizflow.desktop.runtime_device_controller.threading.Thread",
+            "hflow.desktop.runtime_device_controller.threading.Thread",
             return_value=worker,
         ) as thread:
             controller._refresh_live_hardware()
@@ -214,7 +214,7 @@ class CpuRuntimeTests(unittest.TestCase):
         )
         controller = RuntimeDeviceController(host, detect_hardware=mock.Mock(return_value=capabilities))
         with (
-            mock.patch("haizflow.desktop.runtime_device_controller.configure_processing_device") as configure,
+            mock.patch("hflow.desktop.runtime_device_controller.configure_processing_device") as configure,
             mock.patch.object(desktop_settings, "save_settings") as save_settings,
         ):
             selected = controller._resolve_startup_processing_device()
@@ -248,8 +248,8 @@ class CpuRuntimeTests(unittest.TestCase):
         detect = mock.Mock(side_effect=[unavailable, available])
         controller = RuntimeDeviceController(host, detect_hardware=detect)
         with (
-            mock.patch("haizflow.desktop.runtime_device_controller.time.sleep") as sleep,
-            mock.patch("haizflow.desktop.runtime_device_controller.configure_processing_device"),
+            mock.patch("hflow.desktop.runtime_device_controller.time.sleep") as sleep,
+            mock.patch("hflow.desktop.runtime_device_controller.configure_processing_device"),
             mock.patch.object(desktop_settings, "save_settings"),
         ):
             self.assertEqual(controller._resolve_startup_processing_device(), "gpu")
@@ -318,7 +318,7 @@ class CpuRuntimeTests(unittest.TestCase):
             _startup_hardware_resolved=True, _hardware_capabilities=capabilities,
             _settings_language="vi",
         )
-        status = qml_controller.HaizFlowController.processingDeviceStatus(host, "gpu")
+        status = qml_controller.HFlowController.processingDeviceStatus(host, "gpu")
         self.assertIn("GPU sẵn sàng", status)
         self.assertIn("VRAM trống đang thấp", status)
 
@@ -341,7 +341,7 @@ class CpuRuntimeTests(unittest.TestCase):
             _pipeline_is_active=lambda: False,
         )
         with mock.patch.object(qml_controller.desktop_settings, "save_settings") as save:
-            applied = qml_controller.HaizFlowController.applySettings(controller, "dark", "en", "gpu")
+            applied = qml_controller.HFlowController.applySettings(controller, "dark", "en", "gpu")
 
         self.assertFalse(applied)
         save.assert_not_called()
@@ -367,7 +367,7 @@ class CpuRuntimeTests(unittest.TestCase):
             mock.patch.object(qml_controller.desktop_settings, "save_settings") as save,
             mock.patch.object(qml_controller.QMessageBox, "warning") as warning,
         ):
-            applied = qml_controller.HaizFlowController.applySettings(controller, "dark", "en", "q4")
+            applied = qml_controller.HFlowController.applySettings(controller, "dark", "en", "q4")
 
         self.assertFalse(applied)
         self.assertEqual(controller._settings_translation_model, "auto")
@@ -394,10 +394,10 @@ class CpuRuntimeTests(unittest.TestCase):
         with (
             mock.patch.object(qml_controller.desktop_settings, "save_settings", return_value=saved) as save,
             mock.patch.object(translation, "shutdown_hymt2_worker") as shutdown,
-            mock.patch("haizflow.desktop.settings_controller._set_ui_language"),
+            mock.patch("hflow.desktop.settings_controller._set_ui_language"),
             mock.patch.dict(hardware.os.environ, {}, clear=False),
         ):
-            self.assertTrue(qml_controller.HaizFlowController.applySettings(controller, "graphite", "vi", "q4"))
+            self.assertTrue(qml_controller.HFlowController.applySettings(controller, "graphite", "vi", "q4"))
             self.assertEqual(hardware.translation_model_preference(), "q4")
         self.assertEqual(save.call_args.args[0]["translation_model"], "q4")
         self.assertEqual(save.call_args.args[0]["processing_device_origin"], "detected")
@@ -407,7 +407,7 @@ class CpuRuntimeTests(unittest.TestCase):
     def test_q4_translation_uses_cpu_engine_on_gpu_profile(self):
         with (
             mock.patch.object(translation, "translation_model_preference", return_value="q4"),
-            mock.patch("haizflow.services.resource_packs.installed_engine_command", return_value=["cpu-engine"]) as engine,
+            mock.patch("hflow.services.resource_packs.installed_engine_command", return_value=["cpu-engine"]) as engine,
         ):
             self.assertEqual(translation._worker_command(), ["cpu-engine"])
         self.assertEqual(engine.call_args.args[2], {"device": "cpu", "translation_model": "q4"})
@@ -415,7 +415,7 @@ class CpuRuntimeTests(unittest.TestCase):
     def test_full_translation_uses_gpu_engine(self):
         with (
             mock.patch.object(translation, "translation_model_preference", return_value="full"),
-            mock.patch("haizflow.services.resource_packs.installed_engine_command", return_value=["gpu-engine"]) as engine,
+            mock.patch("hflow.services.resource_packs.installed_engine_command", return_value=["gpu-engine"]) as engine,
         ):
             self.assertEqual(translation._worker_command(), ["gpu-engine"])
         self.assertEqual(engine.call_args.args[2], {"device": "gpu", "translation_model": "full"})
@@ -463,7 +463,7 @@ class CpuRuntimeTests(unittest.TestCase):
             status="processing", step="manual_translation", step_detail="Đang dịch phụ đề"
         )
         host = SimpleNamespace(_selected_video=lambda: video, _settings_language="vi")
-        label = qml_controller.HaizFlowController.selectedStageLabel.fget(host)
+        label = qml_controller.HFlowController.selectedStageLabel.fget(host)
         self.assertEqual(label, "Đang nhận dạng và dịch")
 
     def test_manual_translation_cache_changes_with_global_model(self):
@@ -476,7 +476,7 @@ class CpuRuntimeTests(unittest.TestCase):
         self.assertNotEqual(q4, full)
 
     def test_default_translation_model_keeps_legacy_cache_signature(self):
-        with mock.patch.dict(hardware.os.environ, {"HAIZFLOW_TRANSLATION_MODEL": "auto"}):
+        with mock.patch.dict(hardware.os.environ, {"HFLOW_TRANSLATION_MODEL": "auto"}):
             self.assertEqual(hardware.translation_model_signature_parts(), ())
 
     def test_desktop_settings_persist_processing_device(self):
@@ -581,9 +581,9 @@ class CpuRuntimeTests(unittest.TestCase):
                 (snapshot / filename).write_bytes(b"installed")
 
             with (
-                mock.patch("haizflow.config.MODELS_DIR", temp_dir),
+                mock.patch("hflow.config.MODELS_DIR", temp_dir),
                 mock.patch("huggingface_hub.snapshot_download") as resolve_snapshot,
-                mock.patch("haizflow.core.model_integrity.verify_gpu_model", return_value=snapshot),
+                mock.patch("hflow.core.model_integrity.verify_gpu_model", return_value=snapshot),
             ):
                 model_source, local_files_only = hymt2_worker._local_transformers_model_source(
                     "tencent/Hy-MT2-1.8B"
@@ -596,9 +596,9 @@ class CpuRuntimeTests(unittest.TestCase):
     def test_frozen_hymt2_models_never_download_when_payload_is_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             with (
-                mock.patch("haizflow.config.MODELS_DIR", temp_dir),
-                mock.patch("haizflow.core.paths.bundle_root", return_value=Path(temp_dir)),
-                mock.patch("haizflow.core.paths.is_frozen", return_value=True),
+                mock.patch("hflow.config.MODELS_DIR", temp_dir),
+                mock.patch("hflow.core.paths.bundle_root", return_value=Path(temp_dir)),
+                mock.patch("hflow.core.paths.is_frozen", return_value=True),
                 mock.patch("huggingface_hub.hf_hub_download") as cpu_download,
                 mock.patch("huggingface_hub.snapshot_download") as gpu_download,
             ):
@@ -717,7 +717,7 @@ class CpuRuntimeTests(unittest.TestCase):
                 mock.patch.object(audio_separation, "communicate_process", return_value=("", "")),
                 mock.patch.object(audio_separation, "check_cancellation"),
                 mock.patch.object(audio_separation, "log_to_video"),
-                mock.patch("haizflow.core.memory.memory_snapshot", return_value=hardware.MemorySnapshot(
+                mock.patch("hflow.core.memory.memory_snapshot", return_value=hardware.MemorySnapshot(
                     installed_bytes=16 * 1024**3, usable_bytes=15 * 1024**3,
                     available_bytes=6 * 1024**3, process_commit_available_bytes=12 * 1024**3,
                 )),
@@ -734,7 +734,7 @@ class CpuRuntimeTests(unittest.TestCase):
         self.assertIn("--segment", command)
 
     def test_four_gb_demucs_keeps_cuda_with_short_segments(self):
-        from haizflow.pipeline import audio_separation
+        from hflow.pipeline import audio_separation
 
         captured = {}
 

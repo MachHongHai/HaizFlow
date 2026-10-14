@@ -20,14 +20,14 @@ def main():
     (ROOT / "build").mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="edge-samples-", dir=ROOT / "build") as temporary:
         # No installed projects, model caches or user subtitle text are read.
-        os.environ["HAIZFLOW_SMOKE_TEST"] = "1"
-        os.environ["HAIZFLOW_HOME"] = temporary
+        os.environ["HFLOW_SMOKE_TEST"] = "1"
+        os.environ["HFLOW_HOME"] = temporary
         os.environ["RUNTIME_DATA_DIR"] = str(Path(temporary) / "data")
-        from haizflow.core.edge_voices import EDGE_VOICES
-        from haizflow.pipeline.edge_tts_backend import synthesize_to_mp3, valid_audio
-        from haizflow.utils.ffmpeg import get_video_duration
+        from hflow.core.edge_voices import EDGE_VOICES
+        from hflow.pipeline.edge_tts_backend import synthesize_to_mp3, valid_audio
+        from hflow.utils.ffmpeg import get_video_duration
 
-        samples = ROOT / "src/haizflow/desktop/assets/voice_samples"
+        samples = ROOT / "src/hflow/desktop/assets/voice_samples"
         manifest = json.loads((samples / "samples.json").read_text(encoding="utf-8"))
         for language, voices in EDGE_VOICES.items():
             for voice, *_labels in voices:

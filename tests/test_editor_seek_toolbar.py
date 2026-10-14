@@ -12,7 +12,7 @@ from PySide6.QtTest import QSignalSpy, QTest
 def test_four_seek_buttons_emit_offsets_and_fit_editor_toolbar():
     app = QGuiApplication.instance() or QGuiApplication([])
     engine = QQmlEngine()
-    qml_dir = Path(__file__).parents[1] / "src/haizflow/desktop/qml"
+    qml_dir = Path(__file__).parents[1] / "src/hflow/desktop/qml"
     component = QQmlComponent(engine)
     component.setData(f'''import QtQuick
 import QtQuick.Controls.Basic
@@ -51,7 +51,7 @@ ApplicationWindow {{
         group_end = group.mapToItem(window.contentItem(), group.width(), 0).x()
         export_start = export.mapToItem(window.contentItem(), 0, 0).x()
         assert group_end < export_start
-        if directory := os.getenv("HAIZFLOW_UI_CAPTURE_DIR"):
+        if directory := os.getenv("HFLOW_UI_CAPTURE_DIR"):
             Path(directory).mkdir(parents=True, exist_ok=True)
             assert window.grabWindow().save(str(Path(directory) / "editor-seek-toolbar.png"))
     finally:

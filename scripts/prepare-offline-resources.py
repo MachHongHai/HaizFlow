@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from haizflow.update.filesystem import atomic_json, no_links, sha256  # noqa: E402
+from hflow.update.filesystem import atomic_json, no_links, sha256  # noqa: E402
 
 
 def prepare(archives: list[Path], output: Path, manifest: Path, *, link_archives: bool = False) -> dict:

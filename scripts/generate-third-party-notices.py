@@ -140,7 +140,7 @@ def generate(
     for distribution in distributions:
         name = str(distribution.metadata.get("Name") or "unknown")
         canonical_name = canonicalize_name(name)
-        if canonical_name not in locked and canonical_name != "haizflow":
+        if canonical_name not in locked and canonical_name != "hflow":
             continue
         distribution_key = (canonical_name, str(distribution.version))
         # Editable installs can expose both their ``.dist-info`` directory and
@@ -197,13 +197,13 @@ def generate(
     if profile == "core":
         lines.extend(
             [
-                "| FFmpeg 8.1.2 HaizFlow CLI build | Bundled separate programs | GPL-3.0-or-later configured build | https://ffmpeg.org/ |",
+                "| FFmpeg 8.1.2 HFlow CLI build | Bundled separate programs | GPL-3.0-or-later configured build | https://ffmpeg.org/ |",
                 "| Douyin native a_bogus / SM3 / web signing and owned-browser SDK capture | Bundled adapted source; "
                 "see DOUYIN-CHANNEL-IMPORT-NOTICE.md | Apache-2.0 | "
                 "https://github.com/Evil0ctal/Douyin_TikTok_Download_API/tree/"
                 "4f0bed8483c35a980315d9c7b3a1d4a1119ad2b2 |",
                 "| Chromium 157.0.8092.0 / snapshot 1714059 | Optional Resource Pack downloaded directly "
-                "from Google's official upstream; not bundled or mirrored by HaizFlow | "
+                "from Google's official upstream; not bundled or mirrored by HFlow | "
                 "Base BSD-3-Clause reference, not complete third-party closure; see Chromium-BSD-3-Clause.txt and BROWSER-BINARY-LICENSES.json | "
                 "https://chromium.googlesource.com/chromium/src/ |",
                 "| Playwright 1.63.0 | Bundled driver, including original driver component notices; no browser binary | "
@@ -228,7 +228,7 @@ def generate(
     else:
         lines.extend(
             [
-                "| HaizFlow inference engine launcher | Bundled | HaizFlow Source-Available 1.0 | "
+                "| HFlow inference engine launcher | Bundled | HFlow Source-Available 1.0 | "
                 "https://github.com/MachHongHai/HaizFlow |",
                 "",
                 "Model checkpoints are distributed as separate checksum-pinned packs and are not "

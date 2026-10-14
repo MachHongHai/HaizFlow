@@ -4,10 +4,10 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 import pytest
 
-from haizflow.desktop.project_import_controller import ProjectImportController
-from haizflow.schemas.editor import EditorClip, EditorTrack
-from haizflow.schemas.video import VideoConfig
-from haizflow.services import editor_documents, editor_view_state, project_store, video_store
+from hflow.desktop.project_import_controller import ProjectImportController
+from hflow.schemas.editor import EditorClip, EditorTrack
+from hflow.schemas.video import VideoConfig
+from hflow.services import editor_documents, editor_view_state, project_store, video_store
 
 
 def test_manual_replacement_clears_layers_assets_drafts_and_preserves_model_choices(tmp_path, monkeypatch):
@@ -71,7 +71,7 @@ def test_source_generation_advances_on_every_replacement(tmp_path, monkeypatch):
 
 def test_locked_old_temp_outputs_cannot_be_migrated_into_new_source(tmp_path, monkeypatch):
     import shutil
-    from haizflow.pipeline import manual_tools
+    from hflow.pipeline import manual_tools
     monkeypatch.setattr(project_store, "PROJECT_INDEX_PATH", str(tmp_path / "projects.json"))
     monkeypatch.setattr(video_store, "LEGACY_VIDEO_WORKSPACES_DIR", str(tmp_path / "legacy"))
     video = video_store.create_video(f"locked-{tmp_path.name}", "old.mp4",
@@ -137,9 +137,9 @@ def test_replaced_source_mixes_without_stale_music_then_accepts_new_music(tmp_pa
     import subprocess
     from pydub import AudioSegment
     from pydub.generators import Sine
-    from haizflow.pipeline import audio_timeline, process_video
-    from haizflow.services.desktop_videos import set_desktop_background_music
-    from haizflow.utils.ffmpeg import _binary
+    from hflow.pipeline import audio_timeline, process_video
+    from hflow.services.desktop_videos import set_desktop_background_music
+    from hflow.utils.ffmpeg import _binary
     monkeypatch.setattr(project_store, 'PROJECT_INDEX_PATH', str(tmp_path / 'projects.json'))
     monkeypatch.setattr(video_store, 'LEGACY_VIDEO_WORKSPACES_DIR', str(tmp_path / 'legacy'))
     video = video_store.create_video(f'mix-{tmp_path.name}', 'old.mp4',

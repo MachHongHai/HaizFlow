@@ -11,8 +11,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.config import HYMT2_MODEL, HYMT2_MODEL_REVISION, MODELS_DIR  # noqa: E402
-from haizflow.core.model_integrity import verify_gpu_model  # noqa: E402
+from hflow.config import HYMT2_MODEL, HYMT2_MODEL_REVISION, MODELS_DIR  # noqa: E402
+from hflow.core.model_integrity import verify_gpu_model  # noqa: E402
 from huggingface_hub import snapshot_download  # noqa: E402
 
 

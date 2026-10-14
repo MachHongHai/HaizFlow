@@ -1,8 +1,8 @@
-# HaizFlow 0.1.7
+# HFlow 0.1.7
 
-**[Tải bộ cài Windows — HaizFlow-0.1.7-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.7/HaizFlow-0.1.7-Setup.exe)**
+**[Tải bộ cài Windows — HFlow-0.1.7-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.7/HaizFlow-0.1.7-Setup.exe)**
 
-HaizFlow là ứng dụng miễn phí để **tải video hàng loạt, dịch video, tạo phụ đề và lồng tiếng** trên Windows. Chọn xử lý tự động, chỉnh từng bước trong chế độ Thủ công hoặc xử lý nhiều video theo hàng đợi.
+HFlow là ứng dụng miễn phí để **tải video hàng loạt, dịch video, tạo phụ đề và lồng tiếng** trên Windows. Chọn xử lý tự động, chỉnh từng bước trong chế độ Thủ công hoặc xử lý nhiều video theo hàng đợi.
 
 ## Chức năng chính
 
@@ -21,7 +21,7 @@ HaizFlow là ứng dụng miễn phí để **tải video hàng loạt, dịch v
 4. Chọn model, ngôn ngữ và giọng đọc. Gemini cần key của bạn; HY-MT2 dịch trên máy, không cần key.
 5. Chạy xử lý, xem lại kết quả rồi bấm **Xuất**. Có thể đăng video qua Zernio.
 
-Đã cài HaizFlow **0.1.6**? Bấm **Phiên bản mới → Kiểm tra lại → Cập nhật**, rồi xác nhận **Khởi động lại**. Có thể nâng trực tiếp lên **0.1.7**, không cần cài từng bản trung gian. Dự án, cài đặt và gói tài nguyên được giữ nguyên. Bạn cũng có thể dùng bộ cài EXE và chọn đúng thư mục HaizFlow đang dùng để nâng cấp.
+Đã cài HFlow **0.1.6**? Bấm **Phiên bản mới → Kiểm tra lại → Cập nhật**, rồi xác nhận **Khởi động lại**. Có thể nâng trực tiếp lên **0.1.7**, không cần cài từng bản trung gian. Dự án, cài đặt và gói tài nguyên được giữ nguyên. Bạn cũng có thể dùng bộ cài EXE và chọn đúng thư mục HFlow đang dùng để nâng cấp.
 
 [Hướng dẫn cài đặt](https://github.com/MachHongHai/HaizFlow/blob/main/docs/install.vi.md) · [Hướng dẫn sử dụng](https://github.com/MachHongHai/HaizFlow/blob/main/docs/user-guide.vi.md) · [Website](https://haizflow.pages.dev/) · [English guide](https://github.com/MachHongHai/HaizFlow/blob/main/docs/user-guide.md)
 

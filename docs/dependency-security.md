@@ -5,7 +5,7 @@
 Last reviewed: **2026-10-04**
 Next review: **before every release and no later than 2026-10-08**
 
-This policy defines the trust boundary for Python packages, native tools, and model artifacts used by HaizFlow. A listed exception is temporary and does not waive future advisories.
+This policy defines the trust boundary for Python packages, native tools, and model artifacts used by HFlow. A listed exception is temporary and does not waive future advisories.
 
 ## Mandatory audit
 
@@ -33,7 +33,7 @@ The script audits the Core lock and every separately shipped engine lock with a 
 
 Temporarily accepted: [PYSEC-2025-217](https://osv.dev/vulnerability/PYSEC-2025-217), [PYSEC-2026-2288](https://osv.dev/vulnerability/PYSEC-2026-2288), [PYSEC-2026-2289](https://osv.dev/vulnerability/PYSEC-2026-2289), [PYSEC-2026-2290](https://osv.dev/vulnerability/PYSEC-2026-2290), and [CVE-2026-9856](https://github.com/advisories/GHSA-xrqw-3rrv-vx5w).
 
-The affected paths load untrusted checkpoints/configuration, expose Trainer/conversion surfaces, or write caller-controlled `chat_template` keys through `save_pretrained()`. HaizFlow loads a fixed, checksum-verified HY-MT2 artifact, refuses remote code, requires safetensors, and never calls tokenizer or processor `save_pretrained()`. Transformers 5 is not substituted until its interpretation of the HY-MT2 RoPE configuration passes compatibility and translation-quality gates.
+The affected paths load untrusted checkpoints/configuration, expose Trainer/conversion surfaces, or write caller-controlled `chat_template` keys through `save_pretrained()`. HFlow loads a fixed, checksum-verified HY-MT2 artifact, refuses remote code, requires safetensors, and never calls tokenizer or processor `save_pretrained()`. Transformers 5 is not substituted until its interpretation of the HY-MT2 RoPE configuration passes compatibility and translation-quality gates.
 
 ### Transformers custom generation: CVE-2026-80047
 
@@ -43,7 +43,7 @@ HY-MT2 and OmniVoice install a process-local denial of `load_custom_generate`
 before loading weights. The guard raises `OSError` without calling the original:
 normal `from_pretrained` retains standard generation, and explicit custom
 generation requests fail before downloading files. Tests cover consent values,
-idempotence and unchanged standard generation. HaizFlow accepts only pinned local
+idempotence and unchanged standard generation. HFlow accepts only pinned local
 checkpoints, not caller-selected generation repositories. Re-review before every
 release and by **2026-10-08**; remove the exception after a patched dependency
 passes model compatibility tests. [Upstream fix](https://github.com/huggingface/transformers/commit/cbc1651a032b923da7f4b44b3d0e6f68e6ba6b55).
@@ -52,35 +52,35 @@ passes model compatibility tests. [Upstream fix](https://github.com/huggingface/
 
 Temporarily accepted: [PYSEC-2026-3740 / CVE-2026-81726](https://github.com/advisories/GHSA-8mgp-746c-j5xp).
 
-NLTK 3.10.3 fixes the earlier parser, corpus-reader, recursion, and denial-of-service advisories. The remaining finding concerns caller-controlled paths in model-artifact loading and persistence APIs. HaizFlow does not expose those APIs: its WhisperX alignment wrapper replaces the NLTK resource loader with an internal sentence splitter, performs no NLTK download, and accepts no user-selected NLTK model path. Remove this exception when a compatible patched NLTK release is available.
+NLTK 3.10.3 fixes the earlier parser, corpus-reader, recursion, and denial-of-service advisories. The remaining finding concerns caller-controlled paths in model-artifact loading and persistence APIs. HFlow does not expose those APIs: its WhisperX alignment wrapper replaces the NLTK resource loader with an internal sentence splitter, performs no NLTK download, and accepts no user-selected NLTK model path. Remove this exception when a compatible patched NLTK release is available.
 
 ### Accelerate 1.14.0
 
 Temporarily accepted: [CVE-2026-69112](https://github.com/advisories/GHSA-4j2p-28q2-5m79).
 
-The affected Accelerate functions trust shard paths from a checkpoint `weight_map`. HaizFlow does not accept user model repositories: HY-MT2 and OmniVoice use immutable, SHA-256-verified local resource packs. In addition, `validate_checkpoint_weight_maps()` runs immediately before either provider loads a model. It rejects absolute paths, traversal, symlinks, missing shards, and any non-regular index or shard. Remove this exception when a compatible patched Accelerate release is published.
+The affected Accelerate functions trust shard paths from a checkpoint `weight_map`. HFlow does not accept user model repositories: HY-MT2 and OmniVoice use immutable, SHA-256-verified local resource packs. In addition, `validate_checkpoint_weight_maps()` runs immediately before either provider loads a model. It rejects absolute paths, traversal, symlinks, missing shards, and any non-regular index or shard. Remove this exception when a compatible patched Accelerate release is published.
 
 ### DiskCache 5.6.3
 
 Temporarily accepted: [PYSEC-2026-2447](https://osv.dev/vulnerability/PYSEC-2026-2447).
 
-DiskCache is transitive through `llama-cpp-python`. HaizFlow neither uses DiskCache for model acquisition nor calls `Llama.from_pretrained`; the CPU path opens a fixed GGUF file verified by size and SHA-256. Remove this exception when upstream provides a compatible fixed dependency path.
+DiskCache is transitive through `llama-cpp-python`. HFlow neither uses DiskCache for model acquisition nor calls `Llama.from_pretrained`; the CPU path opens a fixed GGUF file verified by size and SHA-256. Remove this exception when upstream provides a compatible fixed dependency path.
 
 ### Lightning 2.6.5
 
 Temporarily accepted: [PYSEC-2026-3624 / CVE-2026-58659](https://osv.dev/vulnerability/PYSEC-2026-3624).
 
-`pyannote-audio` requires Lightning. Until a compatible fixed release is available, `haizflow.core.dependency_security` rejects checkpoint-requested `_instantiator` imports outside the official CLI paths in both Lightning namespaces. The guard is regression-tested and disables itself after a fixed upstream version is detected.
+`pyannote-audio` requires Lightning. Until a compatible fixed release is available, `hflow.core.dependency_security` rejects checkpoint-requested `_instantiator` imports outside the official CLI paths in both Lightning namespaces. The guard is regression-tested and disables itself after a fixed upstream version is detected.
 
 ### Torch 2.8.0+cu128 family
 
 Because `pip-audit` cannot directly map the CUDA local-version suffix, the release gate also audits canonical Torch, TorchAudio, and TorchVision versions. Temporarily accepted advisories are [PYSEC-2025-203](https://osv.dev/vulnerability/PYSEC-2025-203), [PYSEC-2025-204](https://osv.dev/vulnerability/PYSEC-2025-204), [PYSEC-2025-206](https://osv.dev/vulnerability/PYSEC-2025-206), [PYSEC-2026-139](https://osv.dev/vulnerability/PYSEC-2026-139), [PYSEC-2026-2286](https://osv.dev/vulnerability/PYSEC-2026-2286), [PYSEC-2025-194](https://osv.dev/vulnerability/PYSEC-2025-194), [CVE-2025-2999](https://osv.dev/vulnerability/CVE-2025-2999), and [CVE-2025-3001](https://osv.dev/vulnerability/CVE-2025-3001).
 
-WhisperX 3.8.6 declares the Torch 2.8 compatibility family. HaizFlow does not accept user Torch checkpoints or expose PT2, JIT, Trainer, or the affected operator paths. HY-MT2 uses pinned safetensors; Whisper uses a pinned CTranslate2 model. Only five checksum-pinned torchaudio alignment assets (`en`, `fr`, `de`, `es`, `it`) are allowed. Other languages retain Whisper timing and use internal segmentation. VAD is commit-, size-, and checksum-pinned.
+WhisperX 3.8.6 declares the Torch 2.8 compatibility family. HFlow does not accept user Torch checkpoints or expose PT2, JIT, Trainer, or the affected operator paths. HY-MT2 uses pinned safetensors; Whisper uses a pinned CTranslate2 model. Only five checksum-pinned torchaudio alignment assets (`en`, `fr`, `de`, `es`, `it`) are allowed. Other languages retain Whisper timing and use internal segmentation. VAD is commit-, size-, and checksum-pinned.
 
 ### Demucs checkpoint format
 
-Demucs 4.0.1 loads an upstream model class through `torch.load`. HaizFlow fixes the `htdemucs` host, URL, size, and full SHA-256 and prevents arbitrary repository resolution. Only the isolated Demucs subprocess receives `TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1`, after verification. The main process and other workers never receive that override.
+Demucs 4.0.1 loads an upstream model class through `torch.load`. HFlow fixes the `htdemucs` host, URL, size, and full SHA-256 and prevents arbitrary repository resolution. Only the isolated Demucs subprocess receives `TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1`, after verification. The main process and other workers never receive that override.
 
 ## Network and data exposure
 

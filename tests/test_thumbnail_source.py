@@ -13,7 +13,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.desktop.media import create_video_thumbnail_path, thumbnail_source
+from hflow.desktop.media import create_video_thumbnail_path, thumbnail_source
 
 
 class ThumbnailSourceTests(unittest.TestCase):
@@ -36,7 +36,7 @@ class ThumbnailSourceTests(unittest.TestCase):
             output = Path(temp_dir) / "thumbnail.jpg"
             source.write_bytes(b"video")
 
-            with patch("haizflow.desktop.media.subprocess.run") as run:
+            with patch("hflow.desktop.media.subprocess.run") as run:
                 create_video_thumbnail_path(str(source), str(output))
 
         self.assertEqual(run.call_args.kwargs["timeout"], 30.0)
@@ -53,7 +53,7 @@ class ThumbnailSourceTests(unittest.TestCase):
                 return type("Result", (), {"returncode": 0})()
 
             with patch(
-                "haizflow.desktop.media.subprocess.run",
+                "hflow.desktop.media.subprocess.run",
                 side_effect=render_thumbnail,
             ):
                 created = create_video_thumbnail_path(str(source), str(output))
@@ -88,7 +88,7 @@ class ThumbnailSourceTests(unittest.TestCase):
             cancel_event.set()
             process = FakeProcess()
             with patch(
-                "haizflow.desktop.media.subprocess.Popen",
+                "hflow.desktop.media.subprocess.Popen",
                 return_value=process,
             ):
                 created = create_video_thumbnail_path(

@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from haizflow.utils.float_pcm import FloatPcmReader
+from hflow.utils.float_pcm import FloatPcmReader
 
 
 def test_float_reader_preserves_overshoots_and_supports_frame_seeks(tmp_path):

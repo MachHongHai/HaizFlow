@@ -40,7 +40,7 @@ $UvCache = Get-DotEnvValue "UV_CACHE_DIR"
 if ([string]::IsNullOrWhiteSpace($UvCache)) {
   $UvCache = Join-Path $RuntimeData "cache\uv"
 }
-$TempDir = Get-DotEnvValue "HAIZFLOW_TMP_DIR"
+$TempDir = Get-DotEnvValue "HFLOW_TMP_DIR"
 if ([string]::IsNullOrWhiteSpace($TempDir)) {
   $TempDir = Join-Path $RuntimeData "cache\tmp"
 }

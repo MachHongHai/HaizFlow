@@ -4,8 +4,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from haizflow.desktop.resource_progress import InstallProgress, localized_progress, progress_copy
-from haizflow.services.model_bootstrap import ModelProgress
+from hflow.desktop.resource_progress import InstallProgress, localized_progress, progress_copy
+from hflow.services.model_bootstrap import ModelProgress
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -49,7 +49,7 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(localized_progress(engine, "en"), "Installing · NVIDIA CUDA 12.8 runtime")
 
     def test_media_adapter_import_does_not_load_pydub(self):
-        filename = ROOT / "src/haizflow/utils/media_subprocess.py"
+        filename = ROOT / "src/hflow/utils/media_subprocess.py"
         spec = importlib.util.spec_from_file_location("media_adapter_without_pydub", filename)
         module = importlib.util.module_from_spec(spec)
         with patch.dict(sys.modules, {"pydub": None}):
@@ -63,9 +63,9 @@ class ProgressTests(unittest.TestCase):
             self.assertIn(f'"{module}"', collection)
 
     def test_progress_delegate_is_retained_and_fill_uses_transform(self):
-        page = (ROOT / "src/haizflow/desktop/qml/ResourcePacksPage.qml").read_text(encoding="utf-8")
+        page = (ROOT / "src/hflow/desktop/qml/ResourcePacksPage.qml").read_text(encoding="utf-8")
         self.assertIn('stableRows.setProperty(i, "modelData", rows[i])', page)
-        bar = (ROOT / "src/haizflow/desktop/qml/AppProgressBar.qml").read_text(encoding="utf-8")
+        bar = (ROOT / "src/hflow/desktop/qml/AppProgressBar.qml").read_text(encoding="utf-8")
         self.assertNotIn("Behavior on width", bar)
         self.assertIn("Behavior on xScale", bar)
         self.assertIn("Theme.motionEnabled", bar)

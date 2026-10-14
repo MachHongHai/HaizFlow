@@ -67,7 +67,7 @@ def _download(url: str, destination: Path, expected_sha256: str) -> Path:
         or parsed.password
     ):
         raise RuntimeError(f"Refusing non-HTTPS or unapproved download source: {url}")
-    request = urllib.request.Request(url, headers={"User-Agent": "HaizFlow-build/1"})
+    request = urllib.request.Request(url, headers={"User-Agent": "HFlow-build/1"})
     print(f"Downloading {url}", flush=True)
     with urllib.request.urlopen(request, timeout=120) as response, destination.open("wb") as output:  # nosec B310
         if urllib.parse.urlsplit(response.geturl()).scheme.lower() != "https":

@@ -235,12 +235,12 @@ audioop-lts==0.2.2 \
     --hash=sha256:f9ee9b52f5f857fbaf9d605a360884f034c92c1c23021fb90b2e39b8e64bede6 \
     --hash=sha256:fbdd522624141e40948ab3e8cdae6e04c748d78710e9f0f8d4dae2750831de19 \
     --hash=sha256:fd3d4602dc64914d462924a08c1a9816435a2155d74f325853c1f1ac3b2d9800
-    # via haizflow (pyproject.toml)
+    # via hflow (pyproject.toml)
 certifi==2026.6.17 \
     --hash=sha256:024c88eeec92ca068db80f02b8b07c9cef7b9fe261d1d535abfd5abd6f6af432 \
     --hash=sha256:2227dcbaafe0d2f59279d1762ddddc37783ed4354594f194ffc31d20f41fc3db
     # via
-    #   haizflow (pyproject.toml)
+    #   hflow (pyproject.toml)
     #   curl-cffi
     #   edge-tts
 cffi==2.0.0 \
@@ -361,11 +361,11 @@ curl-cffi==0.16.3 \
     --hash=sha256:f3b63da797912bc82911e34dfe449725514e4281527fb516931fc457087cfb44 \
     --hash=sha256:fe87b66e324ed7318166698e02169f3208dbda32b872a27d2bc61a9c19b335eb
     # via
-    #   haizflow (pyproject.toml)
+    #   hflow (pyproject.toml)
     #   yt-dlp
 edge-tts @ https://codeload.github.com/rany2/edge-tts/tar.gz/360fa8e1de354e1dda74c09bd695887d6a44df74 \
     --hash=sha256:470d399a288b9ff9800988538ae31c99f06e589ec0ed67cb01141b29a005ab47
-    # via haizflow (pyproject.toml)
+    # via hflow (pyproject.toml)
 flatbuffers==25.12.19 \
     --hash=sha256:7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4
     # via onnxruntime
@@ -821,7 +821,7 @@ numpy==2.5.1 \
     --hash=sha256:f7d60026c0bdb1380e83bfa7a0419c4577ee4b9a08880afcb6dadeb74c649fa2 \
     --hash=sha256:f7feb014281029e628ba2d5a007407443b06e418b6fe451d1e2adcbc8eba0107
     # via
-    #   haizflow (pyproject.toml)
+    #   hflow (pyproject.toml)
     #   onnxruntime
 onnxruntime==1.23.2 \
     --hash=sha256:0be6a37a45e6719db5120e9986fcd30ea205ac8103fd1fb74b6c33348327a0cc \
@@ -846,12 +846,12 @@ onnxruntime==1.23.2 \
     --hash=sha256:bbfd2fca76c855317568c1b36a885ddea2272c13cb0e395002c402f2360429a6 \
     --hash=sha256:da44b99206e77734c5819aa2142c69e64f3b46edc3bd314f6a45a932defc0b3e \
     --hash=sha256:e2b9233c4947907fd1818d0e581c049c41ccc39b2856cc942ff6d26317cee145
-    # via haizflow (pyproject.toml)
+    # via hflow (pyproject.toml)
 packaging==26.2 \
     --hash=sha256:5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e \
     --hash=sha256:ff452ff5a3e828ce110190feff1178bb1f2ea2281fa2075aadb987c2fb221661
     # via
-    #   haizflow (pyproject.toml)
+    #   hflow (pyproject.toml)
     #   onnxruntime
     #   pyinstaller
     #   pyinstaller-hooks-contrib
@@ -949,7 +949,7 @@ pillow==12.3.0 \
     --hash=sha256:fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d \
     --hash=sha256:fe3cca2e4e8a592be0f269a1ca4835c25199d9f3ce815c8491048f785b0a0198 \
     --hash=sha256:ffd0c5368496f41b0944be820fcb7a838aa6e623d250b01acf2643939c3f99d7
-    # via haizflow (pyproject.toml)
+    # via hflow (pyproject.toml)
 pip==26.2 \
     --hash=sha256:2d8542afcc84cdd8e846c2b36b2861fad1da376dd98f8e7113e9108a3c331690 \
     --hash=sha256:931c303696af6fa3417112103b1cad26890e5a07eccb5b99783700e33f2b8aad
@@ -963,7 +963,7 @@ playwright==1.63.0 \
     --hash=sha256:ad21bc07516b187965a7521c5cf0df0bd657b17482eaad74335272d35a2b07de \
     --hash=sha256:c89fc4736502a1f0fac2c8ca5d10c0cbc1c669f1f4774a2d8507a43140e4d53f \
     --hash=sha256:fd1aa00631d44d55e56e0975bf3f3f285fac4a9fd2813183f0c12a488f1a1b24
-    # via haizflow (pyproject.toml)
+    # via hflow (pyproject.toml)
 pluggy==1.6.0 \
     --hash=sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3 \
     --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746
@@ -1127,7 +1127,7 @@ pycparser==3.0 \
 pydantic==2.13.4 \
     --hash=sha256:45a282cde31d808236fd7ea9d919b128653c8b38b393d1c4ab335c62924d9aba \
     --hash=sha256:c40756b57adaa8b1efeeced5c196f3f3b7c435f90e84ea7f443901bec8099ef6
-    # via haizflow (pyproject.toml)
+    # via hflow (pyproject.toml)
 pydantic-core==2.46.4 \
     --hash=sha256:00c603d540afdd6b80eb39f078f33ebd46211f02f33e34a32d9f053bba711de0 \
     --hash=sha256:0186750b482eefa11d7f435892b09c5c606193ef3375bcf94aa00ae6bfb66262 \
@@ -1253,7 +1253,7 @@ pydantic-core==2.46.4 \
 pydub==0.25.1 \
     --hash=sha256:65617e33033874b59d87db603aa1ed450633288aefead953b30bded59cb599a6 \
     --hash=sha256:980a33ce9949cab2a569606b65674d748ecbca4f0796887fd6f46173a7b0d30f
-    # via haizflow (pyproject.toml)
+    # via hflow (pyproject.toml)
 pyee==13.0.1 \
     --hash=sha256:0b931f7c14535667ed4c7e0d531716368715e860b988770fc7eb8578d1f67fc8 \
     --hash=sha256:af2f8fede4171ef667dfded53f96e2ed0d6e6bd7ee3bb46437f77e3b57689228
@@ -1290,7 +1290,7 @@ pyside6==6.11.1 \
     --hash=sha256:75f0005c3eb95c07cfb65522ec50d0815ac007a96482c21dc3cb4b4c04895d84 \
     --hash=sha256:acee467cb5f256cc47ebb9d815a054c1d8416da380c191b247a76d164aa3f805 \
     --hash=sha256:b1fc521ba2bb5109425ab8add06bddbdd524abcad06cfa012cc39a22a189feb2
-    # via haizflow (pyproject.toml)
+    # via hflow (pyproject.toml)
 pyside6-addons==6.11.1 \
     --hash=sha256:0d13c4dfd671b050a48e4f8d8ddc724b7248f9c0437e7fc47fdf316278572923 \
     --hash=sha256:3494f480dee92f415be2f2d989c0b3f4755ac332b28045cbf4ba0f5c5a22ba37 \
@@ -1314,7 +1314,7 @@ pytest==9.1.1 \
 python-dotenv==1.2.2 \
     --hash=sha256:1d8214789a24de455a8b8bd8ae6fe3c6b69a5e3d64aa8a8e5d68e694bbcb285a \
     --hash=sha256:2c371a91fbd7ba082c2c1dc1f8bf89ca22564a087c2c287cd9b662adde799cf3
-    # via haizflow (pyproject.toml)
+    # via hflow (pyproject.toml)
 pywin32-ctypes==0.2.3 \
     --hash=sha256:8a1513379d709975552d202d942d9837758905c8d01eb82b8bcc30918929e7b8 \
     --hash=sha256:d162dc04946d704503b2edc4d55f3dba5c1d539ead017afa00142c38b9885755
@@ -1358,7 +1358,7 @@ shiboken6==6.11.1 \
     #   pyside6-essentials
 srt==3.5.3 \
     --hash=sha256:4884315043a4f0740fd1f878ed6caa376ac06d70e135f306a6dc44632eed0cc0
-    # via haizflow (pyproject.toml)
+    # via hflow (pyproject.toml)
 sympy==1.14.0 \
     --hash=sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517 \
     --hash=sha256:e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5
@@ -1442,7 +1442,7 @@ websockets==16.0 \
     --hash=sha256:eaded469f5e5b7294e2bdca0ab06becb6756ea86894a47806456089298813c89 \
     --hash=sha256:f4a32d1bd841d4bcbffdcb3d2ce50c09c3909fbead375ab28d0181af89fd04da \
     --hash=sha256:fd3cb4adb94a2a6e2b7c0d8d05cb94e6f1c81a0cf9dc2694fb65c7e8d94c42e4
-    # via haizflow (pyproject.toml)
+    # via hflow (pyproject.toml)
 wheel==0.47.0 \
     --hash=sha256:212281cab4dff978f6cedd499cd893e1f620791ca6ff7107cf270781e587eced \
     --hash=sha256:cc72bd1009ba0cf63922e28f94d9d83b920aa2bb28f798a31d0691b02fa3c9b3
@@ -1590,4 +1590,4 @@ yarl==1.25.1 \
 yt-dlp==2026.8.19 \
     --hash=sha256:1d57897e94c6665a0a6f9bc54b34e584284e32c034ffab3a7df25d8f7b24eedf \
     --hash=sha256:9e213e48cea35c66b378e4447903f118f6392a5fa380a2b6d7070ec86f4e0af1
-    # via haizflow (pyproject.toml)
+    # via hflow (pyproject.toml)

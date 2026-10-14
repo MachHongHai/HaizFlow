@@ -58,7 +58,7 @@ def test_missing_replacement_abi_is_rejected_before_mutation(tmp_path):
 def test_engine_packaging_never_targets_a_user_installation(tmp_path):
     module = load("package-engine-media")
     with patch.object(module, "ROOT", tmp_path), pytest.raises(ValueError, match="generated engine"):
-        module.package(tmp_path / "HaizFlow-Test", tmp_path / "inputs")
+        module.package(tmp_path / "HFlow-Test", tmp_path / "inputs")
 
 
 def test_native_input_tampering_is_detected(tmp_path):

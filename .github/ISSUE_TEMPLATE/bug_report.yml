@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible HaizFlow defect
+description: Report a reproducible HFlow defect
 title: "[Bug]: "
 labels: ["bug", "needs-triage"]
 body:

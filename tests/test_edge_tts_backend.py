@@ -8,7 +8,7 @@ import aiohttp
 import pytest
 from edge_tts.exceptions import NoAudioReceived
 
-from haizflow.pipeline import edge_tts_backend as edge, tts
+from hflow.pipeline import edge_tts_backend as edge, tts
 
 VOICE = "vi-VN-HoaiMyNeural"
 AUDIO = b"\xff\xf3\x64" + b"\x01" * 1000
@@ -478,11 +478,11 @@ def test_audio_validator_rejects_header_only_or_unprobeable_audio(tmp_path):
 
 
 def test_edge_config_catalog_migration_and_resources_are_consistent():
-    from haizflow.desktop.presenters import voice_options_for_language
-    from haizflow.desktop.qml_controller import HaizFlowController
-    from haizflow.schemas.video import VideoConfig
-    from haizflow.services.resource_packs import ResourcePackManager
-    from haizflow.services.video_store import _migrate_video_metadata
+    from hflow.desktop.presenters import voice_options_for_language
+    from hflow.desktop.qml_controller import HFlowController
+    from hflow.schemas.video import VideoConfig
+    from hflow.services.resource_packs import ResourcePackManager
+    from hflow.services.video_store import _migrate_video_metadata
 
     assert VideoConfig(tts_provider="edge", tts_voice=VOICE).tts_provider == "edge"
     value, _ = _migrate_video_metadata({"schema_version": 19, "tts_provider": "edge", "tts_voice": VOICE,
@@ -492,7 +492,7 @@ def test_edge_config_catalog_migration_and_resources_are_consistent():
     assert value["files"]["manual_voice_overrides"]["a"]["voice"] == VOICE
     assert ResourcePackManager().required_packs("voice", {"provider": "edge", "device": "gpu"}) == []
     host = SimpleNamespace(_project_gpu_available=lambda: False)
-    options = HaizFlowController._tts_provider_options_for_language(host, "vi")
+    options = HFlowController._tts_provider_options_for_language(host, "vi")
     assert next(item for item in options if item["provider"] == "edge")["available"]
     for language in ("vi", "en", "zh"):
         voices = voice_options_for_language(language, "vi", "edge")
@@ -507,7 +507,7 @@ def test_edge_single_narration_routes_without_loading_omnivoice(tmp_path):
 
 
 def test_edge_skips_local_voice_warmup():
-    from haizflow.desktop.smart_warmup_controller import SmartWarmupController
+    from hflow.desktop.smart_warmup_controller import SmartWarmupController
 
     controller = SmartWarmupController(SimpleNamespace(_keep_models_warm=True), Mock())
     controller.request("voice", {"provider": "edge"})
@@ -515,7 +515,7 @@ def test_edge_skips_local_voice_warmup():
 
 
 def test_edge_policy_invalidates_only_edge_checkpoint_keys():
-    from haizflow.pipeline.process_video import _voice_checkpoint_signature
+    from hflow.pipeline.process_video import _voice_checkpoint_signature
 
     video = SimpleNamespace(tts_provider="edge", tts_voice=VOICE, target_language="vi", files={}, speaker_mode="single")
     old_edge = _voice_checkpoint_signature(video, "transcript")

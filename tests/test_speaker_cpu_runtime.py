@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.pipeline.speaker_runtime import SpeakerSession
+from hflow.pipeline.speaker_runtime import SpeakerSession
 
 
 def test_cpu_session_has_bounded_threads_and_never_loads_cuda():

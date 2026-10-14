@@ -4,11 +4,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.desktop.audio_preview_controller import AudioPreviewController
-from haizflow.desktop.presenters import voice_options_for_language
-from haizflow.desktop.project_import_controller import ProjectImportController
-from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.services.batch_settings import config_for
+from hflow.desktop.audio_preview_controller import AudioPreviewController
+from hflow.desktop.presenters import voice_options_for_language
+from hflow.desktop.project_import_controller import ProjectImportController
+from hflow.desktop.qml_controller import HFlowController
+from hflow.services.batch_settings import config_for
 
 
 @pytest.mark.parametrize("provider", ["vieneu", "vieneu-gpu"])
@@ -22,7 +22,7 @@ def test_vieneu_clone_apply_preserves_backend_and_commits_single_speaker(tmp_pat
         _speaker_mode="multiple", _processing_queue=SimpleNamespace(contains=lambda _: False),
         persistVideoSettingsFor=Mock(return_value=True), ttsProviderChanged=Mock(), ttsVoiceChanged=Mock(),
         ttsVoiceOptionsChanged=Mock(), speakerModeChanged=Mock(), _audio_preview=Mock())
-    with patch("haizflow.desktop.project_import_controller.video_store.get_video", return_value=video):
+    with patch("hflow.desktop.project_import_controller.video_store.get_video", return_value=video):
         assert ProjectImportController(host).apply_voice_reference("video", provider)
         assert host._tts_voice == "vieneu:clone" and host._tts_provider == provider
         assert host._speaker_mode == "single"
@@ -37,7 +37,7 @@ def test_vieneu_clone_apply_preserves_backend_and_commits_single_speaker(tmp_pat
 def test_vieneu_clone_survives_ui_normalization_and_batch_reference_validation(provider):
     host = SimpleNamespace(_voice_options_for_language=lambda language, backend:
                            voice_options_for_language(language, "vi", backend))
-    assert HaizFlowController._normalized_voice_for_language(host, "vi", "vieneu:clone", provider) == "vieneu:clone"
+    assert HFlowController._normalized_voice_for_language(host, "vi", "vieneu:clone", provider) == "vieneu:clone"
     values = {"targetLanguage": "vi", "ttsProvider": provider, "ttsVoice": "vieneu:clone"}
     with pytest.raises(ValueError, match="reference sample"):
         config_for(values)
@@ -50,7 +50,7 @@ def test_vieneu_clone_preview_uses_reference_without_synthesis(tmp_path, provide
     sample.write_bytes(b"reference")
     video = SimpleNamespace(files={"voice_reference": str(sample)}, project_type="single")
     preview = AudioPreviewController(SimpleNamespace())
-    with patch("haizflow.desktop.audio_preview_controller.video_store.get_video", return_value=video):
+    with patch("hflow.desktop.audio_preview_controller.video_store.get_video", return_value=video):
         assert Path(preview.voice_sample_path(provider, "vieneu:clone", "vi", selected_video_id="video")) == sample
     assert preview.voice_sample_path(provider, "vieneu:clone", "vi") == ""
 
@@ -64,7 +64,7 @@ def _check_auto_clone_action_tracks_provider_and_opens_reference_setup():
     from PySide6.QtTest import QSignalSpy
 
     app = QGuiApplication.instance() or QGuiApplication([])
-    qml_dir = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml"
+    qml_dir = Path(__file__).resolve().parents[1] / "src/hflow/desktop/qml"
     setup = (qml_dir / "DubbingSetupPanel.qml").read_text(encoding="utf-8")
     expression = re.search(r"showCloneAction: (.*?)\s+speechRecognitionModel:", setup, re.S).group(1)
     assert 'onCloneVoiceRequested: voiceCloneDialogLoader.invoke("openForSelectedVideo", [])' in setup

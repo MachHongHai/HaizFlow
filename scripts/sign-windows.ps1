@@ -1,8 +1,8 @@
 param(
   [Parameter(Mandatory = $true)][string]$FilePath,
-  [string]$CertificateThumbprint = $env:HAIZFLOW_SIGN_THUMBPRINT,
-  [string]$CertificatePath = $env:HAIZFLOW_SIGN_CERT_PATH,
-  [string]$TimestampServer = $env:HAIZFLOW_SIGN_TIMESTAMP
+  [string]$CertificateThumbprint = $env:HFLOW_SIGN_THUMBPRINT,
+  [string]$CertificatePath = $env:HFLOW_SIGN_CERT_PATH,
+  [string]$TimestampServer = $env:HFLOW_SIGN_TIMESTAMP
 )
 $ErrorActionPreference = "Stop"
 if (!$TimestampServer) { $TimestampServer = "http://timestamp.digicert.com" }
@@ -28,8 +28,8 @@ if ($CertificateThumbprint) {
   $SignArguments += @("/sha1", $CertificateThumbprint, "/s", "My")
 } else {
   if (!(Test-Path -LiteralPath $CertificatePath -PathType Leaf)) { throw "Certificate file is missing." }
-  if (!$env:HAIZFLOW_SIGN_CERT_PASSWORD) { throw "Set HAIZFLOW_SIGN_CERT_PASSWORD for an authorized PFX workflow." }
-  $SignArguments += @("/f", $CertificatePath, "/p", $env:HAIZFLOW_SIGN_CERT_PASSWORD)
+  if (!$env:HFLOW_SIGN_CERT_PASSWORD) { throw "Set HFLOW_SIGN_CERT_PASSWORD for an authorized PFX workflow." }
+  $SignArguments += @("/f", $CertificatePath, "/p", $env:HFLOW_SIGN_CERT_PASSWORD)
 }
 & $SignToolPath @SignArguments $FilePath
 if ($LASTEXITCODE -ne 0) { throw "Authenticode signing failed." }

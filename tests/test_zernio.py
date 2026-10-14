@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from haizflow.services import zernio
+from hflow.services import zernio
 
 
 class _Response:
@@ -77,7 +77,7 @@ class ZernioClientTests(unittest.TestCase):
             captured["timeout"] = timeout
             return _Response({"data": {"post": {"id": "post-1", "status": "publishing"}}})
 
-        with patch("haizflow.services.zernio.urlopen", side_effect=fake_urlopen):
+        with patch("hflow.services.zernio.urlopen", side_effect=fake_urlopen):
             result = zernio.ZernioClient(self.key).create_tiktok_post(
                 account_id="account-1",
                 content="Caption\n#tag",
@@ -107,7 +107,7 @@ class ZernioClientTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory, "clip.mp4")
             source.write_bytes(b"video-bytes")
-            with patch("haizflow.services.zernio.http.client.HTTPConnection", _Connection):
+            with patch("hflow.services.zernio.http.client.HTTPConnection", _Connection):
                 zernio.ZernioClient(self.key).upload_file(
                     "http://upload.example/media?signature=private",
                     str(source),
@@ -130,7 +130,7 @@ class ZernioClientTests(unittest.TestCase):
             captured["body"] = json.loads(request.data.decode("utf-8"))
             return _Response({"post": {"id": "post-instagram"}})
 
-        with patch("haizflow.services.zernio.urlopen", side_effect=fake_urlopen):
+        with patch("hflow.services.zernio.urlopen", side_effect=fake_urlopen):
             zernio.ZernioClient(self.key).create_video_post(
                 platform="instagram",
                 account_id="ig-1",
@@ -162,7 +162,7 @@ class ZernioClientTests(unittest.TestCase):
             captured["body"] = json.loads(request.data.decode("utf-8"))
             return _Response({"post": {"id": "post-facebook"}})
 
-        with patch("haizflow.services.zernio.urlopen", side_effect=fake_urlopen):
+        with patch("hflow.services.zernio.urlopen", side_effect=fake_urlopen):
             zernio.ZernioClient(self.key).create_video_post(
                 platform="facebook",
                 account_id="fb-1",
@@ -191,7 +191,7 @@ class ZernioClientTests(unittest.TestCase):
             captured["body"] = json.loads(request.data.decode("utf-8"))
             return _Response({"post": {"id": "post-youtube"}})
 
-        with patch("haizflow.services.zernio.urlopen", side_effect=fake_urlopen):
+        with patch("hflow.services.zernio.urlopen", side_effect=fake_urlopen):
             zernio.ZernioClient(self.key).create_video_post(
                 platform="youtube",
                 account_id="yt-1",
@@ -215,7 +215,7 @@ class ZernioClientTests(unittest.TestCase):
                 {"id": "ignored", "platform": "linkedin"},
             ]
         }
-        with patch("haizflow.services.zernio.urlopen", return_value=_Response(payload)):
+        with patch("hflow.services.zernio.urlopen", return_value=_Response(payload)):
             accounts = zernio.ZernioClient(self.key).list_accounts(platforms=("tiktok", "youtube"))
 
         self.assertEqual([account["id"] for account in accounts], ["tik-1", "yt-1"])
@@ -227,7 +227,7 @@ class ZernioClientTests(unittest.TestCase):
                 {"id": "other-1", "platform": "youtube"},
             ]
         }
-        with patch("haizflow.services.zernio.urlopen", return_value=_Response(payload)):
+        with patch("hflow.services.zernio.urlopen", return_value=_Response(payload)):
             accounts = zernio.ZernioClient(self.key).list_tiktok_accounts()
 
         self.assertEqual([account["id"] for account in accounts], ["tik-1"])
@@ -239,7 +239,7 @@ class ZernioClientTests(unittest.TestCase):
             captured["url"] = request.full_url
             return _Response({"data": []})
 
-        with patch("haizflow.services.zernio.urlopen", side_effect=fake_urlopen):
+        with patch("hflow.services.zernio.urlopen", side_effect=fake_urlopen):
             zernio.ZernioClient(self.key).list_tiktok_accounts("profile-1")
 
         self.assertIn("platform=tiktok", captured["url"])
@@ -254,7 +254,7 @@ class ZernioClientTests(unittest.TestCase):
             captured["url"] = request.full_url
             return _Response({"accounts": []})
 
-        with patch("haizflow.services.zernio.urlopen", side_effect=fake_urlopen):
+        with patch("hflow.services.zernio.urlopen", side_effect=fake_urlopen):
             zernio.ZernioClient(self.key).list_tiktok_accounts()
 
         self.assertIn("platform=tiktok", captured["url"])
@@ -268,7 +268,7 @@ class ZernioClientTests(unittest.TestCase):
             captured["timeout"] = timeout
             return _Response({"message": "Account disconnected successfully"})
 
-        with patch("haizflow.services.zernio.urlopen", side_effect=fake_urlopen):
+        with patch("hflow.services.zernio.urlopen", side_effect=fake_urlopen):
             result = zernio.ZernioClient(self.key).disconnect_account("account/id")
 
         request = captured["request"]
@@ -287,7 +287,7 @@ class ZernioClientTests(unittest.TestCase):
             captured["url"] = request.full_url
             return _Response({"profiles": []})
 
-        with patch("haizflow.services.zernio.urlopen", side_effect=fake_urlopen):
+        with patch("hflow.services.zernio.urlopen", side_effect=fake_urlopen):
             zernio.ZernioClient(self.key).list_profiles()
 
         self.assertIn("includeOverLimit=true", captured["url"])
@@ -303,7 +303,7 @@ class ZernioClientTests(unittest.TestCase):
                 "postingLimits": {"interactionSettings": {"comment": True, "duet": False, "stitch": True}},
             }
         }
-        with patch("haizflow.services.zernio.urlopen", return_value=_Response(payload)):
+        with patch("hflow.services.zernio.urlopen", return_value=_Response(payload)):
             info = zernio.ZernioClient(self.key).get_tiktok_creator_info("tik-1")
 
         self.assertEqual(info["privacyLevels"], ["PUBLIC_TO_EVERYONE", "SELF_ONLY"])
@@ -408,7 +408,7 @@ class ZernioClientTests(unittest.TestCase):
             {},
             BytesIO(b'{"error":{"message":"Invalid API key"}}'),
         )
-        with patch("haizflow.services.zernio.urlopen", side_effect=response):
+        with patch("hflow.services.zernio.urlopen", side_effect=response):
             with self.assertRaises(zernio.ZernioError) as raised:
                 zernio.ZernioClient(self.key).list_tiktok_accounts()
 
@@ -427,7 +427,7 @@ class ZernioClientTests(unittest.TestCase):
 
     def test_list_posts_accepts_wrapped_post_collection(self):
         with patch(
-            "haizflow.services.zernio.urlopen",
+            "hflow.services.zernio.urlopen",
             return_value=_Response({"data": {"posts": [{"id": "post-1"}]}}),
         ):
             posts = zernio.ZernioClient(self.key).list_posts()
