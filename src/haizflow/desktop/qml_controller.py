@@ -13,6 +13,7 @@ from PySide6.QtCore import Property, QEvent, QEventLoop, QObject, QTimer, QUrl, 
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QmlNamedElement, QmlSingleton
 
+from haizflow import __version__
 from haizflow.config import RUNTIME_DATA_DIR
 from haizflow.core.events import subscribe_log, unsubscribe_log
 from haizflow.core.hardware import (
@@ -25,7 +26,6 @@ from haizflow.core.hardware import (
     validate_processing_device,
 )
 from haizflow.desktop.activity_log import ActivityLogBuffer
-from haizflow.desktop.app_update_controller import AppUpdateController
 from haizflow.desktop.audio_preview_controller import AudioPreviewController
 from haizflow.desktop.catalog import POPULAR_TARGET_LANGUAGES
 from haizflow.desktop.catalog_media_controller import CatalogMediaController
@@ -240,8 +240,6 @@ class HaizFlowController(QObject):
     editorKeyframeClipboardChanged = Signal()
     warmupChanged = Signal()
     resourcePacksChanged = Signal()
-    appUpdateChanged = Signal()
-    appUpdateAvailable = Signal()
 
     def __init__(self):
         super().__init__()
@@ -452,17 +450,10 @@ class HaizFlowController(QObject):
         self._resource_packs.changed.connect(self.resourcePacksChanged.emit)
         self.hardwareChanged.connect(self.resourcePacksChanged.emit)
         self.hardwareChanged.connect(self.ttsProviderOptionsChanged.emit)
-        self._app_updates = AppUpdateController(self)
         self._video_exports = VideoExportController(self)
         from haizflow.services.temporary_cleanup import resume_pending_cleanup
 
         resume_pending_cleanup()
-        self.exportStateChanged.connect(self.appUpdateChanged.emit)
-        self._app_updates.changed.connect(self.appUpdateChanged.emit)
-        for signal in (self.processingChanged, self.resourcePacksChanged, self.mediaImportChanged,
-                       self.channelImportChanged, self.backgroundMusicImportChanged,
-                       self.socialPublishStateChanged, self.editorPreviewChanged):
-            signal.connect(self.appUpdateChanged.emit)
         self._smart_warmup = SmartWarmupController(self, self._resource_packs.manager)
         self.selectedVideoChanged.connect(self._smart_warmup.request_project_prediction)
         self.speechRecognitionModelChanged.connect(self._smart_warmup.request_setup_prediction)
@@ -520,7 +511,6 @@ class HaizFlowController(QObject):
             # Render Home first. Optional engines and models warm in their own
             # low-priority worker only after the Qt event loop is responsive.
             QTimer.singleShot(1250, self._start_smart_warmup_after_hardware)
-            QTimer.singleShot(2500, lambda: self._app_updates.check(manual=False))
             # Smart warm-up is speculative, never a prerequisite for a user
             # command. Foreground work either reuses the resident model or
             # preempts the prediction and starts with the installed engine.
@@ -574,7 +564,6 @@ class HaizFlowController(QObject):
         self._drain_manual_cache_events()
         self._drain_model_setup_events()
         self._resource_packs.drain_events()
-        self._app_updates.drain_events()
         self._smart_warmup.drain_events()
         HaizFlowController._runtime_device_for(self).drain_hardware_events()
 
@@ -888,9 +877,6 @@ class HaizFlowController(QObject):
         resource_packs = getattr(self, "_resource_packs", None)
         if resource_packs is not None:
             resource_packs.shutdown()
-        app_updates = getattr(self, "_app_updates", None)
-        if app_updates is not None:
-            app_updates.shutdown()
         audio = getattr(self, "_manual_audio", None)
         if audio is not None:
             audio.close()
@@ -3004,70 +2990,9 @@ class HaizFlowController(QObject):
     def resourcePackActivityProgress(self):
         return self._resource_packs.activityProgress
 
-    @Property(str, notify=appUpdateChanged)
-    def appUpdateState(self):
-        return self._app_updates.state
-
-    @Property(str, notify=appUpdateChanged)
+    @Property(str, constant=True)
     def currentAppVersion(self):
-        return self._app_updates.current_version
-
-    @Property(str, notify=appUpdateChanged)
-    def latestAppVersion(self):
-        return self._app_updates.latest_version
-
-    @Property(str, notify=appUpdateChanged)
-    def appUpdateReleaseNotes(self):
-        return self._app_updates.release_notes
-
-    @Property(bool, notify=appUpdateChanged)
-    def hasAppUpdate(self):
-        return self._app_updates.available
-
-    @Property(int, notify=appUpdateChanged)
-    def appUpdateDownloadProgress(self):
-        return self._app_updates.download_progress
-
-    @Property(bool, notify=appUpdateChanged)
-    def appUpdateDetailedProgress(self):
-        return self._app_updates.detailed_progress
-
-    @Property(bool, notify=appUpdateChanged)
-    def appUpdateUsesDelta(self):
-        return self._app_updates.uses_delta
-
-    @Property(str, notify=appUpdateChanged)
-    def appUpdateError(self):
-        return self._app_updates.error
-
-    @Property(bool, notify=appUpdateChanged)
-    def appUpdateBlocked(self):
-        return self._app_updates.blocked
-
-    @Slot()
-    def checkAppUpdateIfNeeded(self):
-        self._app_updates.check_if_needed()
-
-    @Slot(result=bool)
-    def installAppUpdate(self):
-        return self._app_updates.install()
-
-    @Slot(str, str, result=bool)
-    def confirmAppUpdate(self, version, state):
-        return self._app_updates.confirm_install(version, state)
-
-    @Slot()
-    def checkForAppUpdates(self):
-        self._app_updates.check(manual=True)
-
-    @Slot()
-    def showAppUpdate(self):
-        self.appUpdateAvailable.emit()
-        self._app_updates.check_if_needed()
-
-    @Slot(result=bool)
-    def openAppUpdatePage(self):
-        return open_external_url(self._app_updates.release_url)
+        return str(__version__)
 
     @Property(str, notify=settingsChanged)
     def settingsTheme(self):

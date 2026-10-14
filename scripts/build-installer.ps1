@@ -129,7 +129,7 @@ try {
   if ($SignedBuild) {
     $OwnExecutables = @((Join-Path $LegalArtifact $BuildInfo.entrypoint))
     if ($VersionedLayout) {
-      $OwnExecutables += @((Join-Path $ArtifactPath "HaizFlow.exe"), (Join-Path $ArtifactPath "updater\HaizFlowUpdater.exe"))
+      $OwnExecutables += @((Join-Path $ArtifactPath "HaizFlow.exe"))
     }
     foreach ($Executable in $OwnExecutables) {
       $Signature = Get-AuthenticodeSignature -LiteralPath $Executable

@@ -23,7 +23,6 @@ Các tài liệu dưới đây trình bày cách phần mềm được xây dự
 | [Rà soát ngày 04/10/2026](release-audit-2026-10-04.md) | xem kiểm tra đã qua và các điều kiện installer còn thiếu. |
 | [Rà soát giấy phép](licensing-review.md) | xem quyền hiện hành, dự thảo và các điều kiện pháp lý chưa giải quyết trước phát hành. |
 | [Lưu trữ và xuất video](project-storage-export.md) | phân biệt bản dựng do app quản lý và video lưu độc lập ngoài dự án. |
-| [Phát hành cập nhật](updates.md#phát-hành-bản-cập-nhật-haizflow) | đưa bản stable mới tới người dùng đã cài HaizFlow. |
 | [Đóng góp](../CONTRIBUTING.vi.md) | gửi issue hoặc pull request có phạm vi rõ ràng. |
 | [Chính sách bảo mật](../SECURITY.vi.md) | báo lỗ hổng qua kênh riêng tư. |
 

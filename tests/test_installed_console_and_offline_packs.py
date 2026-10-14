@@ -25,9 +25,7 @@ class ConsoleTests(unittest.TestCase):
                         and isinstance(node.func.value, ast.Name) and node.func.value.id == "subprocess"
                         and node.func.attr in {"run", "Popen", "check_output", "check_call", "call"}):
                     continue
-                # Intentional, user-requested GUI installer and Linux opener.
-                if path.name == "app_update_controller.py" and isinstance(node.args[0], ast.List):
-                    continue
+                # Intentional Linux opener.
                 if path.name == "media.py" and "xdg-open" in ast.unparse(node):
                     continue
                 if path.name == "media_subprocess.py":

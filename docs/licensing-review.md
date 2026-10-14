@@ -94,6 +94,4 @@ the released binaries; a locally valid ZIP is not a published release.
 
 Prior audit verification (before activation): 1002 pytest cases +96 subtests,
 51 Qt Quick tests, lint and license inventory checks. These are historical
-results, not certification of this new change. Current updater results and
-packaging limits are recorded in [updates](updates.md) and
-[packaging todo](updater-packaging-todo.md).
+results, not certification of this new change.

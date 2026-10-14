@@ -66,7 +66,6 @@ AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
 AppPublisherURL={#AppUrl}
 AppSupportURL={#AppUrl}/issues
-AppUpdatesURL={#AppUrl}/releases
 AppVerName={#AppName} {#AppVersion}
 VersionInfoCompany={#AppPublisher}
 VersionInfoDescription={#AppName} Windows installer
@@ -143,6 +142,8 @@ Type: filesandordirs; Name: "{app}\versions\{#AppVersion}"
 ; verified artifact. runtime\ is intentionally absent: it contains user
 ; projects, settings and caches and must survive upgrade/uninstall.
 Type: filesandordirs; Name: "{app}\_internal"
+; Older releases shipped an in-app updater; it is no longer part of the payload.
+Type: filesandordirs; Name: "{app}\updater"
 Type: filesandordirs; Name: "{app}\licenses"
 Type: filesandordirs; Name: "{app}\sources"
 Type: files; Name: "{app}\HaizFlow.exe"

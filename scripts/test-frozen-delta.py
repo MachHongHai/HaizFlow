@@ -26,7 +26,7 @@ def main():
     parser.add_argument("--update-package", type=Path)
     parser.add_argument("--update-manifest", type=Path)
     parser.add_argument("--require-unsigned", action="store_true",
-                        help="Require NotSigned for Core, launcher and updater before testing")
+                        help="Require NotSigned for Core and launcher before testing")
     parser.add_argument("--process-timeout", type=float, default=300,
                         help="Outer launch bound, including pre-start inventory hashing; health remains 30 seconds")
     args = parser.parse_args()
@@ -53,7 +53,7 @@ def main():
     if args.require_unsigned:
         if sys.platform != "win32":
             raise RuntimeError("Authenticode status inspection requires Windows.")
-        executables = (artifact / "HaizFlow.exe", artifact / "updater/HaizFlowUpdater.exe",
+        executables = (artifact / "HaizFlow.exe",
                        artifact / "versions" / current_version / "HaizFlowCore.exe")
         for executable in executables:
             environment = os.environ.copy()
@@ -71,7 +71,7 @@ def main():
                 raise RuntimeError("Expected an unsigned frozen executable: " + str(executable)
                     + f"; status command exit={check.returncode}, output={check.stdout!r}, error={check.stderr[-500:]!r}")
         unsigned_verified = True
-        print("Core, launcher and updater are all NotSigned; testing unsigned delta.", flush=True)
+        print("Core and launcher are NotSigned; testing unsigned delta.", flush=True)
     parent = ROOT / "build/frozen-delta-smoke"
     root = parent / uuid.uuid4().hex
     report = ROOT / "build/frozen-delta-reports" / root.name

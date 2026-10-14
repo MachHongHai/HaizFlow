@@ -13,7 +13,7 @@ The packaging hook retains the upstream package as plain Python source modules,
 not a private embedded replacement. In a standalone local copy, its modules in
 `_internal/edge_tts/` can be inspected and replaced. Refer to
 `docs/third-party-library-replacement.md` for using modified standalone copies
-without the official updater replacing them. Future frozen releases must test
+without an official installer replacing them. Future frozen releases must test
 this replacement path before publication; no such binary was built in this
 source-only change.
 

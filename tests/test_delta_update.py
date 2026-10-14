@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import copy
-import hashlib
-import json
 import os
 import shutil
 import subprocess
@@ -10,7 +8,6 @@ import sys
 import tempfile
 import unittest
 import zipfile
-from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -18,10 +15,8 @@ from haizflow.update.filesystem import (UpdateError, atomic_json, child, file_lo
                                        relative_path, remove_owned, sha256)
 from haizflow.update.launcher import CoreStillRunningError, launch
 from haizflow.update.manifest import Manifest, inventory
-from haizflow.update.network import API, GitHubClient, RedirectPolicy, allowed_url
 from haizflow.update.packages import generate, reconstruct
 from haizflow.update.state import Layout, provision
-from haizflow.update.updater import prepare_latest
 from haizflow.update.bootstrap import check_install, initialize, uninstall_cores
 
 
@@ -41,16 +36,6 @@ time.sleep(0.25)
 
 
 class DeltaUpdateTests(unittest.TestCase):
-    def test_same_or_older_update_is_rejected_before_network_or_download(self):
-        from unittest.mock import Mock
-        client = Mock()
-        for target in ("0.1.0", "0.0.9"):
-            with self.assertRaisesRegex(UpdateError, "Không cần cập nhật lại"):
-                prepare_latest(self.layout, target, client=client)
-        client.latest.assert_not_called()
-        self.assertIsNone(self.layout.journal())
-        self.assertEqual(self.before, self.user_data())
-
     def test_preparation_reports_real_ordered_phase_progress(self):
         events = []
         self.layout.prepare(self.output / self.delta.data["package_name"], self.delta,
@@ -365,41 +350,6 @@ class DeltaUpdateTests(unittest.TestCase):
             launch(self.install, command_for=self.fake_command)
         self.assertEqual(self.before, self.user_data())
 
-    def test_full_fallback_uses_only_verified_release_assets(self):
-        class Client:
-            def latest(inner):
-                return {"tag_name": "v0.2.0", "assets": [{"name": self.full2.data["package_name"]}]}
-            def fetch_manifest(inner, *_):
-                return self.full2
-            def asset(inner, release, name):
-                return {"sha256": self.full2.data["package_sha256"], "size": self.full2.data["package_size"], "name": name}
-            def download(inner, asset, directory, *, progress):
-                return self.output / asset["name"]
-        self.assertEqual(prepare_latest(self.layout, "0.2.0", client=Client())["state"], "ready")
-        self.layout.validate_core("0.2.0")
-
-    def test_independent_updater_waits_permission_and_actual_exit(self):
-        from haizflow.update.updater import create_request, run_request
-        token = create_request(self.layout, "0.2.0")
-        (self.install / "HaizFlow.exe").write_bytes(b"launcher fixture")
-        atomic_json(child(self.layout.ipc, token + ".activate.json"), {"token": token, "activate": True})
-        with patch("haizflow.update.updater.prepare_latest", side_effect=lambda *_a, **_k: self.prepare()), \
-                patch("haizflow.update.updater.subprocess.Popen") as spawned:
-            run_request(self.install, token, alive=lambda _: False, launch_process=spawned)
-            spawned.assert_called_once()
-        self.assertEqual(self.layout.journal()["state"], "pending_health")
-        self.assertEqual(self.before, self.user_data())
-
-    def test_independent_updater_defer_never_terminates_old_core(self):
-        from haizflow.update.updater import create_request, run_request
-        token = create_request(self.layout, "0.2.0")
-        with patch("haizflow.update.updater.prepare_latest", side_effect=lambda *_a, **_k: self.prepare()), \
-                patch("haizflow.update.updater.subprocess.Popen") as spawned:
-            run_request(self.install, token, activation_timeout=0, launch_process=spawned)
-            spawned.assert_not_called()
-        self.assertEqual(self.layout.journal()["state"], "ready")
-        self.assertEqual(self.layout.active()["active"], "0.1.0")
-
     def test_junction_cleanup_rejected(self):
         if os.name != "nt":
             self.skipTest("Windows junction test")
@@ -416,65 +366,6 @@ class DeltaUpdateTests(unittest.TestCase):
         finally:
             os.rmdir(owned / "link")  # unlink junction only; never recursive
         self.assertEqual(self.before, self.user_data())
-
-
-class Response(BytesIO):
-    def __init__(self, value, url):
-        super().__init__(value)
-        self.url = url
-    def geturl(self):
-        return self.url
-    def __enter__(self):
-        return self
-    def __exit__(self, *_):
-        self.close()
-
-
-class DownloadTests(unittest.TestCase):
-    def test_official_public_release_requires_stable_tag_repo(self):
-        payload = {"tag_name": "v0.2.0", "html_url": "https://github.com/MachHongHai/HaizFlow/releases/tag/v0.2.0",
-                   "draft": False, "prerelease": False, "assets": []}
-        for changes in ({}, {"draft": True}, {"tag_name": "v0.2.0-rc1"}, {"html_url": "https://github.com/other/repo/releases/tag/v0.2.0"}):
-            client = GitHubClient(opener=lambda *_args, **_kwargs: Response(json.dumps(dict(payload, **changes)).encode(), API))
-            if changes:
-                with self.assertRaises(UpdateError):
-                    client.latest()
-            else:
-                self.assertEqual(client.latest(), payload)
-
-    def test_redirect_policy_rejects_before_contacting_untrusted_host(self):
-        for url in ("http://github.com/file", "https://evil.invalid/file", "https://github.com/other/repo/releases/download/v1/file",
-                    "https://github.com@evil.invalid/file"):
-            with self.subTest(url=url), self.assertRaises(UpdateError):
-                allowed_url(url)
-        request = __import__("urllib.request", fromlist=["Request"]).Request("https://github.com/MachHongHai/HaizFlow/releases/download/v0.2.0/file.zip")
-        with self.assertRaises(UpdateError):
-            RedirectPolicy().redirect_request(request, None, 302, "Found", {}, "https://evil.invalid/a")
-
-    def test_partial_and_wrong_digest_downloads_never_publish(self):
-        data = b"package"
-        asset = {"name": "file.zip", "url": "https://github.com/MachHongHai/HaizFlow/releases/download/v0.2.0/file.zip",
-                 "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
-        with tempfile.TemporaryDirectory() as directory:
-            for body in (b"half", b"wrong!!"):
-                client = GitHubClient(opener=lambda *_args, **_kwargs: Response(body, asset["url"]))
-                with self.assertRaises(UpdateError):
-                    client.download(asset, Path(directory))
-                self.assertEqual(list(Path(directory).iterdir()), [])
-
-    def test_api_failure_propagates_without_mutating_files(self):
-        client = GitHubClient(opener=lambda *_args, **_kwargs: (_ for _ in ()).throw(TimeoutError("timeout")))
-        with self.assertRaises(TimeoutError):
-            client.latest()
-
-    def test_asset_missing_digest_or_wrong_repo_is_rejected(self):
-        name = "HaizFlow-Core-0.2.0-windows-x64-full.zip"
-        asset = {"name": name, "size": 1, "state": "uploaded", "digest": "sha256:" + "1" * 64,
-                 "browser_download_url": "https://github.com/MachHongHai/HaizFlow/releases/download/v0.2.0/" + name}
-        client = GitHubClient()
-        for changes in ({"digest": None}, {"size": -1}, {"state": "new"}, {"browser_download_url": "https://evil.invalid/file"}):
-            with self.assertRaises(UpdateError):
-                client.asset({"tag_name": "v0.2.0", "assets": [dict(asset, **changes)]}, name)
 
 
 if __name__ == "__main__":

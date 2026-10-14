@@ -38,10 +38,10 @@ For a local modified build:
 3. Run `D:\HaizFlow-Qt-Test\HaizFlowCore.exe` directly. No HaizFlow publisher
    signature or secret key is required to run this standalone local copy.
 
-The official launcher and updater check the inventory of official Core
-versions. They are not the entry point for this standalone modified copy.
-Do not apply official updates to a customized copy: a full update replaces
-libraries with the official versions. Source builds can also be run directly
+The official launcher checks the inventory of official Core versions. It is
+not the entry point for this standalone modified copy. Do not run an official
+installer over a customized copy: it replaces libraries with the official
+versions. Source builds can also be run directly
 through `haizflow_desktop.py` using the modified PySide environment.
 
 This procedure keeps the original installation and its projects unchanged.

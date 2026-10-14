@@ -20,9 +20,7 @@ class DraftSettingsState(QObject):
     isProcessing = Property(bool, lambda self: False, constant=True)
     processingDeviceSummary = Property(str, lambda self: "CPU", constant=True)
     performanceProfileDetail = Property(str, lambda self: "CPU", constant=True)
-    appUpdateState = Property(str, lambda self: "idle", constant=True)
     currentAppVersion = Property(str, lambda self: "0.1.0", constant=True)
-    latestAppVersion = Property(str, lambda self: "", constant=True)
 
     def __init__(self):
         super().__init__()

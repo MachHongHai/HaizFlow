@@ -208,9 +208,7 @@ AppButton { objectName: "iconOnly"; x: 180; y: 20; iconGlyph: "\\uE768"; toolTip
             keepModelsWarm = Property(bool, lambda self: self.warm, notify=settingsChanged)
             isProcessing = Property(bool, lambda self: False, constant=True)
             performanceProfileDetail = Property(str, lambda self: "CPU · 16 GB RAM", constant=True)
-            appUpdateState = Property(str, lambda self: "idle", constant=True)
             currentAppVersion = Property(str, lambda self: "0.1.0", constant=True)
-            latestAppVersion = Property(str, lambda self: "", constant=True)
 
             @Slot(str, str, bool, result=bool)
             def applyGeneralSettings(self, language, device, warm):

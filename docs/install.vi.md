@@ -14,7 +14,7 @@ Chọn ổ còn đủ chỗ cho ứng dụng, tài nguyên, video nguồn và vi
 
 ## 2. Cài ứng dụng
 
-**[Tải HaizFlow-0.1.10-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.10/HaizFlow-0.1.10-Setup.exe).** Đây là file duy nhất bạn cần để cài ứng dụng. Các tệp Core ở [trang phiên bản](https://github.com/MachHongHai/HaizFlow/releases/latest) dành cho cập nhật tự động; không tải hoặc giải nén chúng để cài.
+**[Tải HaizFlow-0.1.10-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.10/HaizFlow-0.1.10-Setup.exe).** Đây là file duy nhất bạn cần để cài ứng dụng.
 
 1. Mở tệp **Setup.exe**, chọn ngôn ngữ và đọc điều kiện sử dụng.
 2. Chọn thư mục cài. Có thể dùng ổ D hoặc ổ khác còn đủ chỗ.
@@ -68,7 +68,7 @@ Key được lưu trong Windows Credential Manager. Không gửi key trong ảnh
 
 Giữ một bản sao độc lập của video nguồn và video xuất quan trọng. Dữ liệu làm việc của bản cài nằm trong thư mục runtime của ứng dụng; tài nguyên có thể được chuyển qua **Chuyển vị trí** trong Gói tài nguyên. Để ứng dụng hoàn tất thao tác, không di chuyển thư mục khi đang xử lý.
 
-Nút kiểm tra cập nhật sẽ thông báo khi có phiên bản mới. Bạn xác nhận tải và xác nhận khởi động lại để áp dụng. Hoàn tất hoặc tạm dừng công việc đang chạy trước khi cập nhật.
+HaizFlow không tự kiểm tra hay tải phiên bản mới. Để nâng cấp, đóng HaizFlow rồi chạy bộ cài mới và cài vào cùng thư mục. Thư mục runtime được giữ nguyên. Bộ cài không cho cài phiên bản cũ hơn bản đang dùng.
 
 ## Bắt đầu sử dụng
 

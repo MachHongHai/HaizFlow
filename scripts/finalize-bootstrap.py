@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from haizflow.update.filesystem import no_links  # noqa: E402
 
-ENTRIES = {"HaizFlow.exe": "launcher", "HaizFlowUpdater.exe": "updater"}
+ENTRIES = {"HaizFlow.exe": "launcher"}
 
 
 def git(*args: str) -> str:

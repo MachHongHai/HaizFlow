@@ -73,7 +73,6 @@ _INTERNAL_STREAM_MODES = {
     "--vieneu-worker",
     "--runtime-probe",
     "--release-smoke",
-    "--app-update-worker",
     "--ui-smoke-test",
 }
 if any(mode in sys.argv for mode in _INTERNAL_STREAM_MODES):
@@ -131,12 +130,6 @@ if "--release-smoke" in sys.argv:
 
     smoke_index = sys.argv.index("--release-smoke")
     raise SystemExit(run_release_smoke(sys.argv[smoke_index + 1 :]))
-
-if "--app-update-worker" in sys.argv:
-    from haizflow.update.updater import worker_main
-
-    update_index = sys.argv.index("--app-update-worker")
-    raise SystemExit(worker_main(sys.argv[update_index + 1 :]))
 
 if "--ui-smoke-test" in sys.argv:
     os.environ["HAIZFLOW_SMOKE_TEST"] = "1"

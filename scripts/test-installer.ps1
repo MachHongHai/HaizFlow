@@ -161,7 +161,6 @@ try {
   $UninstallerPath = $Uninstaller.FullName
   if ($RequireSignature) {
     foreach ($Executable in @($UninstallerPath, $InstalledExecutable,
-        (Join-Path $InstallRoot "updater\HaizFlowUpdater.exe"),
         (Join-Path $InstallRoot "versions\$TestVersion\HaizFlowCore.exe"))) {
       $Signature = Get-AuthenticodeSignature -LiteralPath $Executable
       if ($Signature.Status -ne "Valid" -or !$Signature.TimeStamperCertificate) {

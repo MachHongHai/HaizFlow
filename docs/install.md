@@ -70,7 +70,7 @@ Keys are stored in Windows Credential Manager. Never include them in screenshots
 
 Keep independent copies of important source and exported videos. Working data lives in the installation's runtime folder. Use **Move location** in Resource packs to move resource storage; let the operation finish and do not move folders during processing.
 
-Update checks notify you when a new version is available. Confirm the download, then confirm restarting to apply it. Finish or pause active work before updating.
+HaizFlow does not check for or download new versions. To upgrade, close HaizFlow, then run the new Setup and install into the same folder. The runtime folder is kept. Setup refuses to install a version older than the one in use.
 
 ## Start using HaizFlow
 

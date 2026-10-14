@@ -23,7 +23,7 @@ if (!$AllowUnsigned) {
   if ($LASTEXITCODE -ne 0 -or $GitStatus) { throw "Public unsigned bootstrap builds require a clean Git checkout." }
   & $Python (Join-Path $PSScriptRoot "verify-legal-state.py") --public-release
   if ($LASTEXITCODE -ne 0) { throw "Public bootstrap licensing review failed." }
-  if ($UnsignedRelease) { Write-Warning "Building an unsigned launcher and updater; Windows policy may block them." }
+  if ($UnsignedRelease) { Write-Warning "Building an unsigned launcher; Windows policy may block it." }
 }
 if (!$OutputDirectory) { $OutputDirectory = Join-Path $Root "dist\bootstrap" }
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
@@ -41,7 +41,7 @@ try {
   $VersionResource = Join-Path $Work "bootstrap-version.txt"
   & $Python (Join-Path $PSScriptRoot "generate-version-resource.py") --output $VersionResource
   if ($LASTEXITCODE -ne 0) { throw "Bootstrap version resource generation failed." }
-  foreach ($Entry in @(@("HaizFlow", "haizflow-launcher.py"), @("HaizFlowUpdater", "haizflow-updater.py"))) {
+  foreach ($Entry in @(,@("HaizFlow", "haizflow-launcher.py"))) {
     & $Python -m PyInstaller --noconfirm --clean --windowed --onedir `
       --name $Entry[0] --distpath $OutputDirectory --workpath (Join-Path $Work $Entry[0]) `
       --specpath $Work --paths (Join-Path $Root "src") `
