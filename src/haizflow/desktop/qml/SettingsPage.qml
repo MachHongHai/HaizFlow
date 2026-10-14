@@ -94,16 +94,9 @@ Item {
                 title: qsTr("Ứng dụng")
                 SettingRow {
                     Layout.fillWidth: true
-                    label: qsTr("Cập nhật HaizFlow")
-                    description: AppController.appUpdateState === "available"
-                        ? qsTr("Phiên bản %1 đã sẵn sàng.").arg(AppController.latestAppVersion)
-                        : AppController.appUpdateState === "checking" ? qsTr("Đang kiểm tra phiên bản mới…")
-                        : qsTr("Phiên bản hiện tại: %1").arg(AppController.currentAppVersion)
-                    StudioButton {
-                        text: AppController.appUpdateState === "available" ? qsTr("Xem bản mới") : qsTr("Kiểm tra")
-                        enabled: AppController.appUpdateState !== "checking"
-                        onClicked: AppController.showAppUpdate()
-                    }
+                    label: qsTr("Phiên bản")
+                    description: qsTr("Phiên bản hiện tại: %1").arg(AppController.currentAppVersion)
+                }
                 }
             }
             Item { Layout.preferredHeight: Theme.space8 }

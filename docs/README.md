@@ -23,7 +23,6 @@ The documents below cover implementation, testing, licensing and packaging requi
 | [Release audit — 2026-10-04](release-audit-2026-10-04.md) | review verified source checks and remaining installer blockers. |
 | [Licensing review](licensing-review.md) | review current rights, draft source/application terms and third-party release blockers. |
 | [Storage and export](project-storage-export.md) | distinguish managed project renders from independently saved video files. |
-| [Publishing updates](updates.md) | publish a stable version that installed copies can discover. |
 | [Contributing](../CONTRIBUTING.md) | submit a focused issue or pull request. |
 | [Security policy](../SECURITY.md) | report a vulnerability privately. |
 

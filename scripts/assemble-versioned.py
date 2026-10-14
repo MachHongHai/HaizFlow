@@ -37,7 +37,7 @@ def finalize_root(output: Path):
     raise ValueError("Versioned disk metadata did not converge.")
 
 
-def assemble(core: Path, launcher: Path, updater: Path, output: Path, assets: Path, *, engineering=False):
+def assemble(core: Path, launcher: Path, output: Path, assets: Path, *, engineering=False):
     spec = importlib.util.spec_from_file_location("release_finalize", ROOT / "scripts" / "finalize-release.py")
     finalizer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(finalizer)
@@ -49,15 +49,13 @@ def assemble(core: Path, launcher: Path, updater: Path, output: Path, assets: Pa
     bootstrap_spec = importlib.util.spec_from_file_location("bootstrap_finalize", ROOT / "scripts/finalize-bootstrap.py")
     bootstrap = importlib.util.module_from_spec(bootstrap_spec)
     bootstrap_spec.loader.exec_module(bootstrap)
-    for directory, executable in ((launcher, "HaizFlow.exe"), (updater, "HaizFlowUpdater.exe")):
-        bootstrap.verify(directory, executable, source_commit=info["git_commit"],
-                         version=target, engineering=engineering)
+    bootstrap.verify(launcher, "HaizFlow.exe", source_commit=info["git_commit"],
+                     version=target, engineering=engineering)
     no_links(output)
     if output.exists():
         raise ValueError("Output already exists; choose a new staging directory.")
     manifest = generate(None, core, assets, base_version=None, target_version=target)
     shutil.copytree(launcher, output)
-    shutil.copytree(updater, output / "updater")
     reconstruct(assets / manifest.data["package_name"], manifest, output / "versions" / target, None)
     provision(output)
     Layout(output).validate_core(target)
@@ -72,8 +70,8 @@ def assemble(core: Path, launcher: Path, updater: Path, output: Path, assets: Pa
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    for argument in ("core", "launcher", "updater", "output", "assets"):
+    for argument in ("core", "launcher", "output", "assets"):
         parser.add_argument("--" + argument, type=Path, required=True)
     parser.add_argument("--engineering", action="store_true")
     args = parser.parse_args()
-    assemble(args.core, args.launcher, args.updater, args.output, args.assets, engineering=args.engineering)
+    assemble(args.core, args.launcher, args.output, args.assets, engineering=args.engineering)

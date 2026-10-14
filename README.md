@@ -69,7 +69,7 @@ Add processed videos from existing projects to the publishing queue and prepare 
 
 Choose the interface language and CPU/GPU mode. The other tabs manage API keys and resource packs.
 
-![Settings page with language, processing device, warm-up and update controls](docs/images/screenshots/settings.png)
+![Settings page with language, processing device, warm-up and version](docs/images/screenshots/settings.png)
 
 ## Local translation without per-call API charges
 

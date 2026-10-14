@@ -328,16 +328,6 @@
         <translation>Settings</translation>
     </message>
     <message>
-        <location line="-193"/>
-        <source>Phiên bản mới</source>
-        <translation>Updates</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Phiên bản mới, có 1 thông báo</source>
-        <translation>Updates, 1 notification</translation>
-    </message>
-    <message>
         <location line="+140"/>
         <source>Dự án Tự động mới</source>
         <translation>New automatic project</translation>
@@ -398,170 +388,6 @@
         <location line="-201"/>
         <source>Thông tin HaizFlow</source>
         <translation>HaizFlow information</translation>
-    </message>
-</context>
-<context>
-    <name>AppUpdatePopup</name>
-    <message><source>Đang kiểm tra bản cập nhật…</source><translation>Verifying update…</translation></message>
-    <message><source>Đang chuẩn bị phiên bản mới…</source><translation>Preparing the new version…</translation></message>
-    <message>
-        <source>Thông tin chi tiết xem tại:</source>
-        <translation>More information:</translation>
-    </message>
-    <message>
-        <source>Có phiên bản mới.</source>
-        <translation>A new version is available.</translation>
-    </message>
-    <message>
-        <source>Bạn đang dùng phiên bản mới nhất.</source>
-        <translation>You are using the latest version.</translation>
-    </message>
-    <message>
-        <source>Khởi động lại để cập nhật?</source>
-        <translation>Restart to update?</translation>
-    </message>
-    <message>
-        <source>Tải bản cập nhật?</source>
-        <translation>Download the update?</translation>
-    </message>
-    <message>
-        <source>HaizFlow sẽ đóng và mở lại để áp dụng phiên bản %1. Lưu các thay đổi đang chỉnh sửa trước khi tiếp tục.</source>
-        <translation>HaizFlow will close and reopen to apply version %1. Save any changes you are editing before continuing.</translation>
-    </message>
-    <message>
-        <source>Tải và kiểm tra phiên bản %1. HaizFlow sẽ hỏi lại trước khi khởi động lại; dự án và gói tài nguyên được giữ nguyên.</source>
-        <translation>Download and verify version %1. HaizFlow will ask again before restarting; your projects and resource packs will be kept.</translation>
-    </message>
-    <message>
-        <source>Tải cập nhật</source>
-        <translation>Download update</translation>
-    </message>
-    <message>
-        <source>Trạng thái cập nhật đã thay đổi. Kiểm tra lại trước khi xác nhận.</source>
-        <translation>The update status has changed. Check again before confirming.</translation>
-    </message>
-    <message>
-        <source>Không thể tải bản cập nhật. Kiểm tra kết nối mạng rồi thử lại.</source>
-        <translation>Could not download the update. Check your connection and try again.</translation>
-    </message>
-    <message>
-        <source>Chưa có bản phát hành công khai.</source>
-        <translation>No public release is available yet.</translation>
-    </message>
-    <message>
-        <location filename="../qml/AppUpdatePopup.qml" line="+22"/>
-        <source>Dừng hoặc chờ các tác vụ hoàn tất trước khi cập nhật.</source>
-        <translation>Stop or wait for your tasks to finish before updating.</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Cập nhật trực tiếp chỉ dùng trong bản HaizFlow đã cài đặt.</source>
-        <translation>Direct updates are available only in an installed HaizFlow build.</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Bản phát hành chưa có bộ cài Windows kèm mã kiểm tra. Hãy xem chi tiết cập nhật.</source>
-        <translation>This release does not have a Windows installer with a checksum yet. See the release details.</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Bộ cài chưa có chữ ký hợp lệ. Không thể cập nhật tự động.</source>
-        <translation>The installer does not have a valid signature. Automatic updating is unavailable.</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Bộ cài tải xuống chưa đầy đủ hoặc mã kiểm tra không khớp. Hãy thử lại.</source>
-        <translation>The download is incomplete or its checksum does not match. Please try again.</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Bộ cài đã đóng. Nếu cập nhật thành công, hãy khởi động lại HaizFlow.</source>
-        <translation>The installer has closed. Restart HaizFlow if the update finished successfully.</translation>
-    </message>
-    <message>
-        <location line="+17"/>
-        <source>Phiên bản mới</source>
-        <translation>Updates</translation>
-    </message>
-    <message>
-        <location line="+21"/>
-        <source>Đang kiểm tra phiên bản mới…</source>
-        <translation>Checking for updates…</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Không thể kiểm tra phiên bản mới. Kiểm tra kết nối mạng rồi thử lại.</source>
-        <translation>Could not check for updates. Check your connection and try again.</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Có phiên bản mới. Xem thay đổi tại:</source>
-        <translation>A new version is available. See what's changed at:</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Bạn đang dùng phiên bản mới nhất. Xem chi tiết tại:</source>
-        <translation>You are using the latest version. See details at:</translation>
-    </message>
-    <message>
-        <location line="+36"/>
-        <source>Bộ cài đã mở. Làm theo hướng dẫn để hoàn tất cập nhật.</source>
-        <translation>The installer is open. Follow its instructions to finish updating.</translation>
-    </message>
-    <message>
-        <location line="+40"/>
-        <source>Chờ các tác vụ hoàn tất trước khi cập nhật.</source>
-        <translation>Wait for your tasks to finish before updating.</translation>
-    </message>
-    <message>
-        <location line="+12"/>
-        <source>Kiểm tra lại</source>
-        <translation>Check again</translation>
-    </message>
-    <message>
-        <location line="+10"/>
-        <source>Cập nhật</source>
-        <translation>Update</translation>
-    </message>
-    <message>
-        <location line="-66"/>
-        <source>Đang tải bản cập nhật · %1%</source>
-        <translation>Downloading update · %1%</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Đang kiểm tra bản cập nhật · %1%</source>
-        <translation>Verifying update · %1%</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Đang chuẩn bị phiên bản mới · %1%</source>
-        <translation>Preparing the new version · %1%</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Đang khởi động lại HaizFlow…</source>
-        <translation>Restarting HaizFlow…</translation>
-    </message>
-    <message>
-        <location line="+19"/>
-        <source>Đã sẵn sàng. Khởi động lại khi các tác vụ hoàn tất để áp dụng bản cập nhật.</source>
-        <translation>Ready. Restart after your tasks finish to apply the update.</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Không thể mở phiên bản mới. HaizFlow đã khôi phục phiên bản trước.</source>
-        <translation>The new version could not start. HaizFlow restored the previous version.</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Đã cập nhật HaizFlow.</source>
-        <translation>HaizFlow has been updated.</translation>
-    </message>
-    <message>
-        <location line="+42"/>
-        <source>Khởi động lại</source>
-        <translation>Restart</translation>
     </message>
 </context>
 <context>
@@ -3788,33 +3614,13 @@ Author and owner of HaizFlow.</translation>
     </message>
     <message>
         <location line="+19"/>
-        <source>Cập nhật HaizFlow</source>
-        <translation>Update HaizFlow</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Phiên bản %1 đã sẵn sàng.</source>
-        <translation>Version %1 is available.</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Đang kiểm tra phiên bản mới…</source>
-        <translation>Checking for updates…</translation>
+        <source>Phiên bản</source>
+        <translation>Version</translation>
     </message>
     <message>
         <location line="+1"/>
         <source>Phiên bản hiện tại: %1</source>
         <translation>Current version: %1</translation>
-    </message>
-    <message>
-        <location line="+4"/>
-        <source>Xem bản mới</source>
-        <translation>View update</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Kiểm tra</source>
-        <translation>Check</translation>
     </message>
 </context>
 <context>

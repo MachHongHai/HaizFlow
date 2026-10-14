@@ -25,7 +25,6 @@ Bố cục dự kiến:
 D:\Apps\HaizFlow-Test\
   HaizFlow.exe                    launcher, mở app bằng tệp này
   _internal\                     runtime riêng của launcher
-  updater\                       updater độc lập
   versions\0.1.0\                Core bất biến và phụ thuộc
   update-state\                  pointer, transaction, health IPC
   runtime\
@@ -163,7 +162,6 @@ git status --short
 
 .venv\Scripts\python.exe scripts\assemble-versioned.py `
   --core dist\HaizFlowCore --launcher dist\bootstrap-public\HaizFlow `
-  --updater dist\bootstrap-public\HaizFlowUpdater `
   --output dist\HaizFlow-public --assets dist\release-assets-0.1.0
 
 .\scripts\build-installer.ps1 -ArtifactPath D:\Du-an\HaizFlow\dist\HaizFlow-public `
@@ -180,69 +178,28 @@ git status --short
 
 `AllowRegisteredInstall` chỉ dùng trong VM sạch; không dùng trên máy có HaizFlow production. Test tự cài vào đường dẫn có khoảng trắng, không tạo shortcut, chạy UI frozen, repair, gỡ, cài lại trên dữ liệu giữ lại và kiểm hash fixture. Vẫn cần test tương tác wizard/IME/DPI, cảnh báo từ file tải qua browser và pipeline với engine thật. Không truyền `RequireSignature` cho bản unsigned.
 
-Cả Core, launcher, updater, engine, setup và uninstaller của HaizFlow sẽ không ký trong hướng này. Manifest/Full Core được tạo sau khi executable hoàn chỉnh; bất kỳ thay đổi bytes nào sau đó đều cần build lại metadata/hash/package/installer tương ứng. Không thay version hay bytes của một release đã công khai.
+Cả Core, launcher, engine, setup và uninstaller của HaizFlow sẽ không ký trong hướng này. Manifest/Full Core được tạo sau khi executable hoàn chỉnh; bất kỳ thay đổi bytes nào sau đó đều cần build lại metadata/hash/package/installer tương ứng. Không thay version hay bytes của một release đã công khai.
 
-Launcher/updater mới có `BOOTSTRAP-INFO.json` và checksum riêng; assembly
+Launcher có `BOOTSTRAP-INFO.json` và checksum riêng; assembly
 kiểm chúng cùng commit/phiên bản/chế độ build với Core. Không tái dùng thư mục
 bootstrap cũ thiếu metadata hoặc metadata thuộc commit khác, không sửa metadata
 bằng tay để vượt kiểm tra. Build lại bootstrap từ cùng source sạch khi cần.
 
-## 7. Delta update và lưu baseline
+## 7. Nâng cấp phiên bản
 
-Release đầu **0.1.0 chỉ có Full Core**. Chưa có phiên bản public trước đó thì không tạo delta giả để phát hành. Các bản 0.1.1/0.1.2 trong test frozen chỉ là fixture cục bộ, không đổi version app và không đưa lên release.
-
-Lưu nguyên `dist/HaizFlowCore` đã finalized của mỗi release ở archive nội bộ; gồm `BUILD-INFO.json`, `SHA256SUMS.txt`, licenses và mọi tệp. Không dùng thư mục `runtime`, không dùng Core đã chỉnh tay và không bỏ thư viện “ít dùng” khỏi baseline.
-
-Khi release thực kế tiếp là 0.1.1, sau khi build Core 0.1.1 sạch/unsigned:
-
-```powershell
-.venv\Scripts\python.exe scripts\build-core-update.py `
-  --base D:\ReleaseArchive\0.1.0\HaizFlowCore `
-  --target dist\HaizFlowCore --output dist\delta-assets-0.1.1
-```
-
-Assembly tạo Full; lệnh trên tạo delta cùng manifest. Tên updater yêu cầu:
-
-```text
-HaizFlow-Core-0.1.1-windows-x64-full.zip
-HaizFlow-Core-0.1.1-windows-x64-full.manifest.json
-HaizFlow-Core-0.1.1-windows-x64-from-0.1.0.zip
-HaizFlow-Core-0.1.1-windows-x64-from-0.1.0.manifest.json
-```
-
-Giữ Full trong mọi release để fallback. Delta chỉ cập nhật Core, **không cập nhật root launcher/updater hoặc engine/model**. Khi cần đổi protocol/bootstrap/layout, phát hành installer đầy đủ và kế hoạch tương thích riêng. Core mới có migration không rollback-safe không được lách manifest compatibility.
-
-Updater kiểm nguồn GitHub repo cố định, metadata digest, SHA-256 package/từng tệp và inventory; staging riêng, không patch Core đang chạy; health xác nhận rồi mới chấp nhận phiên bản. Đây là kiểm toàn vẹn + nguồn HTTPS/repository, **không phải chữ ký detached của manifest hoặc hệ thống TUF**. Bảo vệ GitHub bằng 2FA/passkey, hạn chế quyền release, bảo vệ tag và runner/signing identity.
-
-### Luồng cập nhật trong app
-
-- Nút **Phiên bản mới** trên thanh menu và **Cập nhật HaizFlow** trong Cài đặt mở cùng một cửa sổ trạng thái.
-- **Cập nhật** hỏi xác nhận phiên bản trước khi tải. Hủy hoặc Escape không tải và không đóng app.
-- Bản cài versioned gọi `HaizFlowUpdater.exe`: tải Full/Delta phù hợp, kiểm checksum và chuẩn bị Core riêng. Không mở trang web để thay thế thao tác cập nhật.
-- Khi tải xong, app thông báo sẵn sàng; **Khởi động lại** hỏi xác nhận lần nữa và nhắc lưu thay đổi đang chỉnh sửa. Chỉ sau xác nhận mới cấp quyền kích hoạt và đóng Core.
-- Khi đang xử lý video, xuất video, nhập media hoặc cài gói, cập nhật bị chặn. Backend kiểm lại ngay lúc xác nhận; xác nhận cũ không được dùng cho phiên bản/trạng thái mới.
-- Lỗi tải/kiểm tra/kích hoạt được hiển thị; Core cũ không bị đóng nếu không ghi được yêu cầu kích hoạt. Khởi động bản mới lỗi sẽ rollback theo health check.
-- Versioned delta không đòi Authenticode; vẫn bắt buộc nguồn GitHub cố định, HTTPS, digest và inventory đúng. Nhánh installer legacy vẫn yêu cầu chữ ký và không được dùng làm đường cập nhật unsigned.
-- Phiên bản `0.1.0` không tự cập nhật sang bytes mới cũng mang số `0.1.0`. Lần phát hành tiếp theo phải tăng phiên bản và cung cấp Full manifest/package; thêm Delta từ baseline đã phát hành nếu phù hợp.
-
-Kiểm thử delta local:
-
-```powershell
-.venv\Scripts\python.exe scripts\test-frozen-delta.py --artifact dist\HaizFlow-public --require-unsigned
-```
-
-Còn phải thử download qua GitHub release thật, gián đoạn/mạng yếu/ổ gần đầy và upgrade từ installer cũ trên VM. Kết quả fixture local không chứng minh toàn bộ hành trình mạng đã qua.
+- HaizFlow không tự kiểm tra hay tải phiên bản mới.
+- Người dùng nâng cấp bằng cách chạy bộ cài phiên bản mới và cài vào cùng thư mục. `runtime\` được giữ nguyên.
+- Bộ cài không cho cài phiên bản thấp hơn bản đang dùng.
+- Bộ cài xóa thư mục `updater\` còn sót lại từ các bản cài cũ.
+- Mỗi release phải tăng phiên bản. Không phát hành bytes mới dưới số phiên bản đã công khai.
 
 ## 8. Phát hành GitHub Releases
-
-Repo updater cố định: `MachHongHai/HaizFlow`. Repo khác cần sửa source và rebuild; không chỉ upload sang repo mới.
 
 Chỉ sau khi tất cả gate và installer acceptance qua, bạn review/commit source, tag **đúng commit đã build**, push tag. Ghi rõ acceptance dùng fixture AppId riêng hay chính installer public trên VM; không gọi kiểm cục bộ là ma trận Windows đầy đủ. Không dùng `git add .` nếu có tệp secret hoặc thay đổi không thuộc release. Không retag/thay bytes của phiên bản đã phát hành.
 
 Assets release v0.1.0 gồm:
 
 - `HaizFlow-0.1.0-Setup.exe` và `.exe.sha256`.
-- Full Core ZIP và `.manifest.json` đúng tên.
 - Changelog/release notes: yêu cầu máy, resource downloads, vị trí dữ liệu, trạng thái unsigned/caveat SmartScreen và Smart App Control, giấy phép/limitations.
 - Có thể kèm checksum tổng, SBOM và evidence build; không kèm `.env`, API key, PFX, runtime, test fixtures hay installer DEVELOPMENT.
 
@@ -254,9 +211,7 @@ gh auth status
 gh release create v0.1.0 --repo MachHongHai/HaizFlow --verify-tag --draft `
   --title 'HaizFlow 0.1.0' --notes-file docs\release-notes-0.1.0.md `
   dist\installer\HaizFlow-0.1.0-Setup.exe `
-  dist\installer\HaizFlow-0.1.0-Setup.exe.sha256 `
-  dist\release-assets-0.1.0\HaizFlow-Core-0.1.0-windows-x64-full.zip `
-  dist\release-assets-0.1.0\HaizFlow-Core-0.1.0-windows-x64-full.manifest.json
+  dist\installer\HaizFlow-0.1.0-Setup.exe.sha256
 ```
 
 `docs/release-notes-0.1.0.md` phải viết theo kết quả nghiệm thu thực, không có sẵn chứng nhận production. Kiểm tra draft có đủ asset, verify digest phía GitHub, tên và nguồn thư viện đi kèm; trạng thái Authenticode của các executable HaizFlow sẽ là `NotSigned`. Kiểm tải/cài trên máy sạch là bước bổ sung cần ghi riêng, không được giả định đã qua. Nếu bật immutable releases, tải đủ assets **trước** publish; GitHub không cho thay assets/tag sau đó. Xem [quản lý release](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository) và [CLI create](https://cli.github.com/manual/gh_release_create).
@@ -267,11 +222,11 @@ Khi đã chốt stable:
 gh release edit v0.1.0 --repo MachHongHai/HaizFlow --draft=false --latest
 ```
 
-Updater hiện lấy stable Latest, bỏ draft/prerelease. Không đặt release engine `resources-v1` hoặc bản DEVELOPMENT/test làm Latest. Bản unsigned stable đã qua các gate có thể làm Latest theo lựa chọn của chủ dự án. Giữ release assets public tải được không cần token người dùng. Sau publish, test metadata/digest/download bằng tài khoản/máy mới; release sau test delta từ bản đang public, không từ baseline tự dựng.
+Không đặt release engine `resources-v1` hoặc bản DEVELOPMENT/test làm Latest. Bản unsigned stable đã qua các gate có thể làm Latest theo lựa chọn của chủ dự án. Giữ release assets public tải được không cần token người dùng. Sau publish, test tải và cài bằng tài khoản/máy mới.
 
 ## 9. Khi có lỗi
 
-- Installer từ chối upgrade: đóng app, hoàn tất cập nhật chờ; không xóa lock/pointer thủ công khi process còn chạy. Bộ cài thấp hơn bản active không được hạ phiên bản.
+- Installer từ chối upgrade: đóng app; không xóa lock/pointer thủ công khi process còn chạy. Bộ cài thấp hơn bản active không được hạ phiên bản.
 - Checksum sai: dừng; tải lại từ nguồn chính thức. Không regenerate hash trên file lỗi để “sửa”.
 - Core lỗi startup: dùng rollback/repair có kiểm chứng; backup runtime trước mọi thao tác phục hồi, không đoán active version từ tên thư mục.
 - Download engine không có URL: cần hoàn tất catalog phát hành; không phải lỗi key Gemini/Zernio.

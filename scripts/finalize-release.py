@@ -117,9 +117,9 @@ def verify_installer_eligibility(artifact_directory: Path, *, engineering: bool 
             raise RuntimeError("Mutable data must not be packaged in a versioned installer.")
         layout = Layout(artifact)
         layout.validate_core(str(build_info.get("version")))
-        for executable in (artifact / "HaizFlow.exe", artifact / "updater" / "HaizFlowUpdater.exe"):
-            if not executable.is_file() or not (executable.parent / "_internal").is_dir():
-                raise RuntimeError("Independent bootstrap is incomplete.")
+        executable = artifact / "HaizFlow.exe"
+        if not executable.is_file() or not (executable.parent / "_internal").is_dir():
+            raise RuntimeError("Independent bootstrap is incomplete.")
         verify_installer_eligibility(layout.core(build_info["version"]), engineering=engineering)
         return
     core_markers = artifact.parent.name == "versions" and (artifact / "core-complete.json").is_file()

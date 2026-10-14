@@ -29,7 +29,6 @@ Rectangle {
     property bool editAvailable: false
     property bool canUndo: false
     property bool canRedo: false
-    property var updateController: AppController
     property bool helpWasOpenOnPress: false
 
     implicitHeight: 40
@@ -116,40 +115,6 @@ Rectangle {
             Layout.fillWidth: true
         }
 
-        TopBarMenuButton {
-            id: updatesButton
-            objectName: "appUpdatesButton"
-            text: qsTr("Phiên bản mới")
-            Accessible.name: root.updateController.hasAppUpdate
-                ? qsTr("Phiên bản mới, có 1 thông báo") : text
-            onPressed: menuWasOpenOnPress = updatesPopup.visible
-            onClicked: {
-                if (menuWasOpenOnPress) updatesPopup.close();
-                else root.showUpdates();
-            }
-
-            Rectangle {
-                objectName: "appUpdateBadge"
-                visible: root.updateController.hasAppUpdate
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.topMargin: -2
-                anchors.rightMargin: -2
-                width: 14
-                height: 14
-                radius: 7
-                color: Theme.windowCloseHover
-                Text {
-                    anchors.centerIn: parent
-                    text: "1"
-                    color: Theme.textOnDark
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 10
-                    font.weight: Font.DemiBold
-                }
-            }
-        }
-
         TopBarNavigationButton {
             id: helpButton
 
@@ -161,14 +126,12 @@ Rectangle {
                 projectMenu.close();
                 editMenu.close();
                 settingsMenu.close();
-                updatesPopup.close();
                 root.toggleMenu(helpMenu, helpButton, root.helpWasOpenOnPress);
             }
         }
     }
 
     function toggleMenu(menu, anchorButton, wasOpenOnPress) {
-        updatesPopup.close();
         if (wasOpenOnPress || menu.visible) {
             menu.close();
             return;
@@ -184,25 +147,6 @@ Rectangle {
             Overlay.overlay.width - menu.width - Theme.space8)));
         menu.y = Math.round(barBottom.y + Theme.space4);
         menu.open();
-    }
-
-    function showUpdates() {
-        if (updatesPopup.visible) return;
-        projectMenu.close();
-        editMenu.close();
-        settingsMenu.close();
-        helpMenu.close();
-        const position = updatesButton.mapToItem(Overlay.overlay, 0, updatesButton.height);
-        updatesPopup.x = Math.max(Theme.space8, Math.min(position.x,
-            Overlay.overlay.width - updatesPopup.width - Theme.space8));
-        updatesPopup.y = position.y + Theme.space8;
-        updatesPopup.open();
-        root.updateController.checkAppUpdateIfNeeded();
-    }
-
-    AppUpdatePopup {
-        id: updatesPopup
-        controller: root.updateController
     }
 
     TopBarPopupMenu {

@@ -69,7 +69,7 @@ Thêm video đã xử lý từ dự án vào hàng đợi và chuẩn bị bài 
 
 Chọn ngôn ngữ giao diện và chế độ CPU/GPU. Các tab còn lại quản lý API key và gói tài nguyên.
 
-![Trang cài đặt với ngôn ngữ, bộ xử lý, giữ model sẵn sàng và kiểm tra cập nhật](docs/images/screenshots/settings.png)
+![Trang cài đặt với ngôn ngữ, bộ xử lý, giữ model sẵn sàng và phiên bản](docs/images/screenshots/settings.png)
 
 ## Dịch trên máy, không cần trả phí API theo lượt
 

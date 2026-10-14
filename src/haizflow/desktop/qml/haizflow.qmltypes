@@ -95,15 +95,8 @@ Module {
         Property { name: "resourcePackActivityProgress"; type: "double"; isReadonly: true }
         Property { name: "keepModelsWarm"; type: "bool"; isReadonly: true }
         Property { name: "gpuModelsAvailable"; type: "bool"; isReadonly: true }
-        Property { name: "appUpdateState"; type: "QString"; isReadonly: true }
         Method { name: "applyVoiceCloneReference"; type: "bool"; Parameter { name: "videoId"; type: "string" } Parameter { name: "provider"; type: "string" } }
-        Property { name: "hasAppUpdate"; type: "bool"; isReadonly: true }
-        Property { name: "appUpdateBlocked"; type: "bool"; isReadonly: true }
-        Property { name: "appUpdateDownloadProgress"; type: "int"; isReadonly: true }
-        Property { name: "appUpdateError"; type: "QString"; isReadonly: true }
         Property { name: "currentAppVersion"; type: "QString"; isReadonly: true }
-        Property { name: "latestAppVersion"; type: "QString"; isReadonly: true }
-        Property { name: "appUpdateReleaseNotes"; type: "QString"; isReadonly: true }
         Property { name: "manualProjectCacheGiB"; type: "int"; isReadonly: true }
         Property { name: "manualGlobalCacheGiB"; type: "int"; isReadonly: true }
         Property { name: "selectedStepId"; type: "QString"; isReadonly: true }
@@ -122,11 +115,6 @@ Module {
         Method { name: "applyGeneralSettings"; type: "bool"; Parameter { name: "language"; type: "string" } Parameter { name: "device"; type: "string" } Parameter { name: "keepWarm"; type: "bool" } }
         Method { name: "voiceCloneInputDevices"; type: "QVariantList" }
         Method { name: "selectVoiceCloneInputDevice"; type: "bool"; Parameter { name: "deviceId"; type: "string" } }
-        Method { name: "checkForAppUpdates" }
-        Method { name: "checkAppUpdateIfNeeded" }
-        Method { name: "installAppUpdate"; type: "bool" }
-        Method { name: "showAppUpdate" }
-        Method { name: "openAppUpdatePage"; type: "bool" }
         Method { name: "setManualCacheLimits"; Parameter { name: "projectGiB"; type: "int" } Parameter { name: "globalGiB"; type: "int" } }
         Method { name: "warmCapabilities"; Parameter { name: "capability"; type: "string" } Parameter { name: "context"; type: "QVariantMap" } }
         Method { name: "installResourcePacks"; Parameter { name: "packIds"; type: "QVariantList" } }
