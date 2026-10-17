@@ -1,6 +1,5 @@
 """Deterministic optional-browser install and session gates; no network/browser."""
 import hashlib
-import json
 import threading
 import zipfile
 from dataclasses import replace
@@ -41,6 +40,23 @@ def test_playwright_import_is_not_an_installed_browser(pack):
     with patch.object(manager, "_module_available", return_value=True):
         assert manager.status(browser.PACK_ID) == "missing"
         assert not browser.installed()
+
+
+def test_install_smoke_uses_same_owned_browser_flags_and_keeps_sandbox(tmp_path):
+    driver = Mock()
+    context = driver.chromium.launch_persistent_context.return_value
+    context.pages = [Mock()]
+    with patch.object(browser, "verify_files") as verify, patch("playwright.sync_api.sync_playwright") as start:
+        start.return_value.__enter__.return_value = driver
+        browser.smoke(tmp_path)
+    verify.assert_called_once_with(tmp_path, full=True, cancel_event=None)
+    options = driver.chromium.launch_persistent_context.call_args.kwargs
+    assert options["chromium_sandbox"] is True
+    assert options["args"] == list(browser.LAUNCH_ARGS)
+    assert "--test-type=haizflow-douyin" in options["args"]
+    assert not any("no-sandbox" in arg or "disable-web-security" in arg or "api-key" in arg for arg in options["args"])
+    context.pages[0].goto.assert_called_once_with("about:blank")
+    context.close.assert_called_once()
 
 
 def test_install_reuses_cache_and_second_install_does_not_unpack_again(pack):

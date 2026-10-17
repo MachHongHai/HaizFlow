@@ -66,6 +66,7 @@ def test_owned_profile_sdk_and_browser_are_reused_without_personal_profile():
             assert Path(options["executable_path"]).name == "chrome.exe"
             assert "1714059" in Path(options["executable_path"]).parts
             assert options["timezone_id"] == "Asia/Shanghai"
+            assert "--test-type=haizflow-douyin" in options["args"]
             assert not any("fingerprint" in arg for arg in options["args"])
             assert not any("no-sandbox" in arg or "disable-web-security" in arg for arg in options["args"])
             profile = Path(options["user_data_dir"])
@@ -483,18 +484,23 @@ def test_first_creation_recovers_before_returning_without_second_user_click(outc
             state["backend"].close()
 
 
-def test_park_closes_window_and_driver_but_keeps_owned_profile_for_explicit_refresh():
+def test_park_closes_window_and_driver_but_keeps_owned_profile_for_explicit_refresh(caplog):
     driver, context, page = guest()
     with patch("haizflow.services.douyin_browser._driver", return_value=driver):
         state = create_anonymous_state()
         backend = state["backend"]
         profile = backend._profile_dir.name
         try:
-            backend.park()
+            with caplog.at_level("INFO", logger="haizflow.services.douyin_browser"):
+                backend.park()
+            messages = [record.message for record in caplog.records]
+            assert messages.index("douyin browser close_requested reason=native_session_verified") < messages.index(
+                "douyin browser closed_after_native_verification=True")
             context.close.assert_awaited_once()
             driver.stop.assert_awaited_once()
             assert backend._context is None and backend._driver_instance is None
             assert backend._idle is None and not backend._closed
+            assert "--test-type=haizflow-douyin" in driver.launch_persistent_context_async.call_args.kwargs["args"]
             assert Path(profile).is_dir()
             updated = [{**state["cookies"][0], "value": "native-new-visitor"}]
             backend.sign(DETAIL_PATH, {"aweme_id": "0"}, updated, refresh=True)

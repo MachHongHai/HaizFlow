@@ -53,7 +53,7 @@ ColumnLayout {
     }
     TranslationModelCombo {
         Layout.fillWidth: true
-        enabled: root.inspector.editable && !AppController.isProcessing
+        enabled: root.inspector.editable && !AppController.isSwitchingProcessingDevice
         selectedModel: AppController.translationModel
         onEdited: function(value) {
             AppController.translationModel = value;

@@ -18,6 +18,60 @@ QML_DIR = ROOT / "src" / "haizflow" / "desktop" / "qml"
 
 
 class QmlMenuTests(unittest.TestCase):
+    def test_project_translation_picker_remains_editable_while_another_project_runs(self):
+        for filename, indent in (("ManualTranslationToolPanel.qml", "    "),
+                                 ("ProcessingSettingsForm.qml", "            ")):
+            with self.subTest(panel=filename):
+                source = (QML_DIR / filename).read_text(encoding="utf-8")
+                picker_source = "TranslationModelCombo {" + source.split("TranslationModelCombo {", 1)[1].split(
+                    "\n" + indent + "}", 1)[0] + "\n}"
+                picker_source = picker_source.replace("TranslationModelCombo {", 'TranslationModelCombo { objectName: "picker";')
+                engine = QQmlEngine()
+                state = QQmlPropertyMap()
+                for key, value in {"isProcessing": False, "isSwitchingProcessingDevice": False,
+                                   "hasSelectedVideo": True, "canEditSelectedVideo": True,
+                                   "translationModel": "q4"}.items():
+                    state.insert(key, value)
+                engine.rootContext().setContextProperty("TestController", state)
+                component = QQmlComponent(engine)
+                component.setData(('import QtQuick\nimport QtQuick.Layouts\nimport "."\nItem { id: root;'
+                    'property bool editable: TestController.canEditSelectedVideo && TestController.hasSelectedVideo;'
+                    'property var inspector: ({editable: root.editable, scheduleSave: function() {}});'
+                    'property string translationModel: TestController.translationModel;'
+                    'signal translationModelEdited(string value);'
+                    + picker_source.replace("AppController", "TestController") + '}').encode(),
+                    QUrl.fromLocalFile(str(QML_DIR / "ProjectTranslationQueueTest.qml")))
+                self.assertTrue(component.isReady(), "\n".join(error.toString() for error in component.errors()))
+                item = component.create()
+                self.assertIsNotNone(item)
+                try:
+                    picker = item.findChild(QQuickItem, "picker")
+                    self.assertTrue(picker.isEnabled())
+                    # Export/recognition in A must not lock configuration in B.
+                    state.insert("isProcessing", True)
+                    self.assertTrue(picker.isEnabled())
+                    state.insert("translationModel", "gemini-3.5-flash-lite")
+                    self.assertEqual(picker.property("currentIndex"), 3)
+                    # Freeze B as soon as its immutable job enters the queue.
+                    state.insert("canEditSelectedVideo", False)
+                    self.assertFalse(picker.isEnabled())
+                    state.insert("isProcessing", False)
+                    self.assertFalse(picker.isEnabled())
+                    # Navigation to an unqueued project restores editability.
+                    state.insert("isProcessing", True)
+                    state.insert("canEditSelectedVideo", True)
+                    self.assertTrue(picker.isEnabled())
+                    state.insert("isSwitchingProcessingDevice", True)
+                    self.assertFalse(picker.isEnabled())
+                    state.insert("isSwitchingProcessingDevice", False)
+                    self.assertTrue(picker.isEnabled())
+                    state.insert("hasSelectedVideo", False)
+                    self.assertFalse(picker.isEnabled())
+                finally:
+                    item.deleteLater()
+                    engine.deleteLater()
+                    self.app.processEvents()
+
     def test_busy_progress_sweeps_the_complete_track_and_survives_resize(self):
         engine = QQmlEngine()
         component = QQmlComponent(engine)

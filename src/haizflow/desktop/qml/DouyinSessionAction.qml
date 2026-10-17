@@ -30,7 +30,8 @@ ColumnLayout {
         }
         Text {
             Layout.fillWidth: true
-            text: root.session.status.length > 0 ? I18n.runtimeStatus(root.session.status)
+            text: root.session.status.length > 0 ? I18n.runtimeStatus(root.session.status === "Douyin session ready"
+                ? "Douyin session ready. Chromium closed automatically." : root.session.status)
                 : qsTr("Mở phiên trình duyệt riêng cho Douyin. Không dùng tài khoản hoặc dữ liệu trình duyệt cá nhân.")
             font.family: Theme.fontFamily
             font.pixelSize: TypeScale.metadata

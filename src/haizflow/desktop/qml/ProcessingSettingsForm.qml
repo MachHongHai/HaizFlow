@@ -130,7 +130,7 @@ GridLayout {
             }
             TranslationModelCombo {
                 Layout.fillWidth: true
-                enabled: root.editable && !AppController.isProcessing
+                enabled: root.editable && !AppController.isSwitchingProcessingDevice
                 selectedModel: root.translationModel
                 onEdited: function(value) { root.translationModelEdited(value) }
             }

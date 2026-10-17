@@ -53,6 +53,7 @@ var vietnamese = {
         "Creating the Douyin session timed out. Try again later.": "Tạo phiên Douyin quá thời gian chờ. Hãy thử lại sau.",
         "TikTok video data is empty while reading the channel.": "TikTok chưa trả về dữ liệu kênh. Hãy thử lại sau.",
         "Douyin session ready": "Phiên Douyin đã sẵn sàng.",
+        "Douyin session ready. Chromium closed automatically.": "Phiên Douyin sẵn sàng. Chromium đã tự đóng.",
         "Douyin session needs refresh": "Douyin chưa chấp nhận phiên. Làm mới phiên để thử lại.",
         "Douyin refresh failed; previous session retained": "Chưa làm mới được phiên. Phiên trước vẫn được giữ.",
         "Douyin refresh cancelled; previous session retained": "Đã hủy làm mới. Phiên trước vẫn được giữ.",

@@ -15,6 +15,13 @@ ARCHIVE_BYTES = 361641954
 INSTALLED_BYTES = 484202247
 MISSING_MESSAGE = "Install the Douyin browser in Resource Packs before creating a session."
 EXCLUDED = {"interactive_ui_tests.exe", "setup.exe", "First Run"}
+LAUNCH_ARGS = (
+    "--no-first-run", "--no-default-browser-check", "--disable-background-networking",
+    # Playwright 1.63 no longer supplies --enable-automation. Chromium ignores
+    # --disable-infobars here; its test-type switch skips the missing Google
+    # service-key startup infobar without supplying keys or disabling sandboxing.
+    "--test-type=haizflow-douyin",
+)
 
 
 def component_root():
@@ -90,7 +97,7 @@ def smoke(root: Path, cancel_event=None):
             context = driver.chromium.launch_persistent_context(
                 profile, executable_path=str(root / "chrome-win/chrome.exe"), headless=True,
                 chromium_sandbox=True, timeout=15000,
-                args=["--no-first-run", "--no-default-browser-check", "--disable-background-networking"])
+                args=list(LAUNCH_ARGS))
             try:
                 (context.pages[0] if context.pages else context.new_page()).goto("about:blank")
             finally:

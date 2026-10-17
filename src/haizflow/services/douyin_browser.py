@@ -185,6 +185,8 @@ class DouyinBrowserSession:
                 IDLE_SECONDS, lambda: self._loop.create_task(self._close_context()))
 
     async def _launch(self, cookies=(), cancel_event=None):
+        from haizflow.services.douyin_component import LAUNCH_ARGS
+
         if self._context:
             return
         if self._profile_dir is None:
@@ -196,7 +198,7 @@ class DouyinBrowserSession:
             executable_path=str(browser_executable()), user_data_dir=self._profile_dir.name,
             headless=False, timeout=15000, locale="zh-CN", timezone_id="Asia/Shanghai",
             chromium_sandbox=True, no_viewport=True,
-            args=["--no-first-run", "--no-default-browser-check", "--disable-background-networking"])
+            args=list(LAUNCH_ARGS))
         if cookies:
             if self._parked_for_native:
                 # Explicit refresh adopts the current verified native jar,
@@ -383,6 +385,7 @@ class DouyinBrowserSession:
 
         Only the explicit create/refresh action may use this backend again.
         """
+        logger.info("douyin browser close_requested reason=native_session_verified")
         self._submit(self._dispose_context(), timeout=15)
         self._parked_for_native = True
         logger.info("douyin browser closed_after_native_verification=True")

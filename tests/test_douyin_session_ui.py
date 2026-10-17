@@ -7,7 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QObject, QUrl
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlPropertyMap
+from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlExpression, QQmlPropertyMap
 
 from haizflow.desktop.douyin_session_controller import DouyinSessionController
 
@@ -67,6 +67,13 @@ def test_session_action_loads_without_launching_browser_and_shows_cancel_only_wh
             session._complete("Douyin session ready")
             app.processEvents()
             assert session.ready and create.property("text") == "Làm mới phiên"
+            texts = [obj.property("text") for obj in root.findChildren(QObject)]
+            assert "Douyin session ready. Chromium closed automatically." in texts
+            expression = QQmlExpression(QQmlEngine.contextForObject(root), root, 'I18n.language = "vi"')
+            expression.evaluate()
+            assert not expression.hasError(), expression.error().toString()
+            app.processEvents()
+            assert "Phiên Douyin sẵn sàng. Chromium đã tự đóng." in [obj.property("text") for obj in root.findChildren(QObject)]
             adapter.assert_not_called()
         finally:
             root.deleteLater()
