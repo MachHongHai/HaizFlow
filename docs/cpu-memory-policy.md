@@ -81,6 +81,36 @@ Logs contain stage, resident/cold state and numeric memory budgets, not user
 identity, cookies or API keys. Free RAM/commit are sampled live, not cached with
 the static hardware profile.
 
+## HY-MT2 GPU cold-load admission
+
+Foreground local translation retires idle recognition/separation/OCR/voice and
+translation RPC owners before dispatch. Keeping the last CUDA process alive
+can retain DLL/context commit even after its model tensors were released.
+Already-completed translation checkpoints do not trigger model retirement or
+loading. Gemini is not routed through this local-model handoff.
+
+Before starting a new translator, Core samples live Windows commit and queries
+current free VRAM without importing Torch. The pinned full checkpoint requires
+its weight size plus a 1 GiB VRAM reserve and a 3 GiB cold-start commit reserve
+(including child interpreter/CUDA imports). These are conservative admission
+budgets, not measured RTX 3050 peak-memory claims. A bounded one-second settle
+window and a final fresh VRAM sample avoid using stale post-release counters.
+
+When a full GPU load does not fit, an installed HY-MT2 Q4 model and CPU engine
+can be selected for that worker only. Its usual CPU admission still applies;
+fallback never equates CPU with unlimited RAM. The project/global model choice
+is unchanged, no resource is downloaded automatically, and diagnostics record
+requested/effective models and the memory reason. Missing Q4 resources produce
+an actionable error before CUDA loading. Other failures are not classified as
+OOM or retried on CPU. A warm Q4 worker uses the resident budget instead of
+loading another model. Parallel checkpoint loading is disabled in the child.
+
+`tests/test_translation_load_memory.py` covers 4/6 GiB profiles, actual zero
+versus unknown memory, commit pressure, delayed release, missing Q4 resources,
+child-only configuration, warm reuse and shutdown. Inference is mocked; this
+is not a hardware throughput/quality benchmark. The Q4 fallback may be slower
+than full-GPU translation and uses the existing quantized model's precision.
+
 ## Verification limits
 
 `tests/test_cpu_memory_policy.py` mocks native API results and inference clients;

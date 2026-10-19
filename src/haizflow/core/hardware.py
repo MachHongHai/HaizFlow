@@ -234,6 +234,15 @@ def _cuda_free_memory_bytes() -> int:
     return _nvidia_snapshot().free_vram_bytes
 
 
+def live_cuda_free_memory_bytes() -> int | None:
+    """Fresh admission telemetry; cached startup VRAM is not a load budget."""
+    values = _run_nvidia_query(("memory.free",))
+    try:
+        return max(0, int(float(values[0]) * 1024**2)) if values else None
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
 def _cuda_precision_details() -> tuple[tuple[int, int], bool]:
     """Return the active CUDA architecture and its safe HY-MT2 precision."""
     capability = _nvidia_snapshot().compute_capability

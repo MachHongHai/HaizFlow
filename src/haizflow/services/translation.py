@@ -54,6 +54,8 @@ _WORKER_READER = None
 _WORKER_WARM = False
 _WORKER_IDLE_TIMER = None
 _WORKER_DIAGNOSTIC_PATH = None
+_WORKER_EFFECTIVE_MODEL = ""
+_WORKER_MEMORY_NOTE = ""
 
 
 def language_name(language_code: str) -> str:
@@ -154,6 +156,7 @@ def translate_segments(
             speech_durations=speech_durations,
         )
     else:
+        _release_translation_competitors(video_id)
         translations = _translate_with_hymt2_worker(
             source_texts,
             video_id=video_id,
@@ -306,13 +309,27 @@ def translate_segments(
     return translated_segments
 
 
-def _worker_command() -> list[str]:
+def _release_translation_competitors(video_id: str) -> None:
+    """Retire idle imported runtimes, not only their CUDA weight tensors."""
+    from haizflow.services.external_engine import shared_external_engine_pool
+
+    check_cancellation(video_id)
+    shared_external_engine_pool().release({"recognition", "separation", "ocr", "voice", "translation"})
+    for name, method in (("haizflow.pipeline.transcribe", "release_warm_whisperx_model"),
+                         ("haizflow.pipeline.omnivoice_tts", "clear_runtime")):
+        module = sys.modules.get(name)
+        if module is not None:
+            getattr(module, method)()
+    check_cancellation(video_id)
+
+
+def _worker_command(*, model_preference: str | None = None) -> list[str]:
     from haizflow.services.resource_packs import ResourcePackError, installed_engine_command
 
     # On an 8 GB GPU, use the installed CPU speech pack's Q4 translator when
     # available. The CUDA engine pack does not include llama_cpp, and loading
     # full HY-MT2 alongside Whisper can exhaust both Windows commit and VRAM.
-    preference = translation_model_preference()
+    preference = model_preference or translation_model_preference()
     profile = runtime_profile() if preference == "auto" else None
     if preference == "q4" or (preference == "auto" and profile.key == "cuda_low_memory"):
         cpu_engine = installed_engine_command(
@@ -339,8 +356,73 @@ def _worker_command() -> list[str]:
     return [sys.executable, "-m", "haizflow.services.hymt2_worker", "--server"]
 
 
+def _gpu_load_pressure(profile, snapshot, free_vram: int | None) -> str:
+    from haizflow.core.memory import GIB
+    from haizflow.core.model_integrity import HYMT2_GPU_FILES
+
+    weights = sum(size for name, (size, _digest) in HYMT2_GPU_FILES.items() if name.endswith(".safetensors"))
+    total_vram = getattr(profile, "total_vram_bytes", 0)
+    if 0 < total_vram < 5 * GIB:
+        return "VRAM dưới 5 GiB"
+    commit = snapshot.commit_available_bytes
+    # The child checks weights + 2 GiB after importing CUDA. Budget its cold
+    # interpreter/DLL/context imports here too, before starting that process.
+    if os.name == "nt" and commit is not None and commit < weights + 3 * GIB:
+        return f"bộ nhớ Windows còn cấp phát {commit / GIB:.1f} GiB, cần {(weights + 3 * GIB) / GIB:.1f} GiB khi nạp mới"
+    if free_vram is not None and free_vram < weights + GIB:
+        return f"VRAM trống {free_vram / GIB:.1f} GiB, cần {(weights + GIB) / GIB:.1f} GiB"
+    return ""
+
+
+def _worker_launch_plan() -> tuple[list[str], str, str]:
+    """Choose before importing CUDA; never mutate the project's model choice."""
+    from haizflow.config import MODELS_DIR, HYMT2_CPU_MODEL_FILE
+    from haizflow.core.hardware import live_cuda_free_memory_bytes
+    from haizflow.core.memory import memory_snapshot
+    from haizflow.services.resource_packs import ResourcePackError
+
+    requested = translation_model_preference()
+    profile = runtime_profile()
+    if requested == "q4" or not profile.cuda_available:
+        return _worker_command(), requested, ""
+    free_vram = live_cuda_free_memory_bytes()
+    pressure = _gpu_load_pressure(profile, memory_snapshot(), free_vram)
+    if pressure:
+        # A retired Windows worker's commit accounting can settle slightly
+        # after process.wait(). Recheck cheaply, without repeatedly spawning SMI.
+        for _ in range(5):
+            if _WORKER_SHUTDOWN_EVENT.wait(0.2):
+                raise RuntimeError("HY-MT2 worker startup was cancelled because HaizFlow is shutting down.")
+            pressure = _gpu_load_pressure(profile, memory_snapshot(), free_vram)
+            if not pressure:
+                break
+        if pressure and free_vram is not None and getattr(profile, "total_vram_bytes", 0) >= 5 * 1024**3:
+            free_vram = live_cuda_free_memory_bytes()
+            pressure = _gpu_load_pressure(profile, memory_snapshot(), free_vram)
+    prefer_q4 = requested == "auto" and getattr(profile, "key", "") == "cuda_low_memory"
+    if pressure or prefer_q4:
+        model = Path(MODELS_DIR) / "hymt2-gguf" / HYMT2_CPU_MODEL_FILE
+        if model.is_file():
+            try:
+                command = _worker_command(model_preference="q4")
+            except ResourcePackError:
+                command = []
+            if command:
+                note = (f"HY-MT2 dùng CPU Q4 cho lượt chạy này vì {pressure}." if pressure
+                        else "HY-MT2 dùng CPU Q4 để giữ bộ nhớ cho GPU ít VRAM.")
+                return command, "q4", note
+        if pressure:
+            raise RuntimeError(
+                f"Chưa đủ bộ nhớ để nạp HY-MT2 GPU: {pressure}. "
+                "Hãy cài HY-MT2 CPU Q4 trong Gói tài nguyên để app tự chuyển khi thiếu bộ nhớ, "
+                "hoặc đóng bớt ứng dụng và để Windows tự quản lý bộ nhớ ảo."
+            )
+    return _worker_command(), requested, ""
+
+
 def _discard_hymt2_worker(process=None) -> None:
     global _WORKER_PROCESS, _WORKER_OUTPUT, _WORKER_READER, _WORKER_WARM, _WORKER_DIAGNOSTIC_PATH
+    global _WORKER_EFFECTIVE_MODEL, _WORKER_MEMORY_NOTE
     if process is not None and process is not _WORKER_PROCESS:
         return
     discarded_process = _WORKER_PROCESS
@@ -349,6 +431,8 @@ def _discard_hymt2_worker(process=None) -> None:
     _WORKER_READER = None
     _WORKER_WARM = False
     _WORKER_DIAGNOSTIC_PATH = None
+    _WORKER_EFFECTIVE_MODEL = ""
+    _WORKER_MEMORY_NOTE = ""
     if discarded_process is not None and discarded_process.poll() is not None:
         release_process_job(discarded_process)
 
@@ -523,17 +607,23 @@ def _ensure_hymt2_worker():
 
 def _ensure_hymt2_worker_locked():
     global _WORKER_PROCESS, _WORKER_OUTPUT, _WORKER_READER, _WORKER_WARM, _WORKER_DIAGNOSTIC_PATH
+    global _WORKER_EFFECTIVE_MODEL, _WORKER_MEMORY_NOTE
     if _WORKER_SHUTDOWN_EVENT.is_set():
         raise RuntimeError("HY-MT2 worker startup was cancelled because HaizFlow is shutting down.")
     _cancel_worker_idle_timer()
-    if processing_device_preference() == "cpu" or translation_model_preference() == "q4":
-        from haizflow.core.memory import require_cpu_memory
-
-        require_cpu_memory("translation", resident=is_hymt2_worker_warm(), settle_seconds=2)
     if _WORKER_PROCESS is not None and _WORKER_PROCESS.poll() is None and _WORKER_OUTPUT is not None:
+        if processing_device_preference() == "cpu" or _WORKER_EFFECTIVE_MODEL == "q4":
+            from haizflow.core.memory import require_cpu_memory
+
+            require_cpu_memory("translation", resident=is_hymt2_worker_warm(), settle_seconds=2)
         return _WORKER_PROCESS, _WORKER_OUTPUT
 
     _discard_hymt2_worker()
+    command, effective_model, memory_note = _worker_launch_plan()
+    if processing_device_preference() == "cpu" or effective_model == "q4":
+        from haizflow.core.memory import require_cpu_memory
+
+        require_cpu_memory("translation", settle_seconds=2)
     from haizflow.core.paths import engine_environment
 
     environment = engine_environment()
@@ -542,6 +632,8 @@ def _ensure_hymt2_worker_locked():
     environment["MKL_NUM_THREADS"] = "1"
     environment["PYTHONFAULTHANDLER"] = "1"
     environment["PYTHONIOENCODING"] = "utf-8"
+    environment["HF_ENABLE_PARALLEL_LOADING"] = "false"
+    environment["HAIZFLOW_TRANSLATION_MODEL"] = effective_model
     startupinfo = None
     if os.name == "nt":
         # Hide the console window while retaining normal process semantics for
@@ -550,7 +642,7 @@ def _ensure_hymt2_worker_locked():
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         startupinfo.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
     process = subprocess.Popen(
-        _worker_command(),
+        command,
         cwd=str(project_root()),
         env=environment,
         stdin=subprocess.PIPE,
@@ -577,12 +669,15 @@ def _ensure_hymt2_worker_locked():
                 "event": "worker_started",
                 "timestamp_utc": datetime.now(timezone.utc).isoformat(),
                 "launcher_pid": process.pid,
-                "command": _worker_command(),
+                "command": command,
                 "python": sys.version,
                 "model": HYMT2_MODEL,
                 "profile": profile.key,
                 "backend": profile.hymt2_backend,
                 "requested_device": profile.requested_device,
+                "requested_model": translation_model_preference(),
+                "effective_model": effective_model,
+                "memory_note": memory_note,
                 "cuda_name": profile.cuda_name,
                 "vram_gib": profile.total_vram_gib,
                 "ram_gib": profile.total_ram_gib,
@@ -620,6 +715,8 @@ def _ensure_hymt2_worker_locked():
     _WORKER_PROCESS = process
     _WORKER_OUTPUT = output_queue
     _WORKER_DIAGNOSTIC_PATH = diagnostic_path
+    _WORKER_EFFECTIVE_MODEL = effective_model
+    _WORKER_MEMORY_NOTE = memory_note
     reader = threading.Thread(target=read_output, name="hymt2-worker-output", daemon=True)
     _WORKER_READER = reader
     _WORKER_WARM = False
@@ -758,6 +855,8 @@ def _translate_with_hymt2_worker(
             timing_budget(duration, target_language_name)
     with _WORKER_OPERATION_LOCK:
         process, output_queue = _ensure_hymt2_worker()
+        if _WORKER_MEMORY_NOTE:
+            log_to_video(video_id, _WORKER_MEMORY_NOTE)
         request_id = uuid.uuid4().hex
         payload = {
             "request_id": request_id,
