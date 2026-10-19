@@ -265,6 +265,13 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "socialImportBusy"
+            type: "bool"
+            read: "socialImportBusy"
+            notify: "socialPublishStateChanged"
+            isReadonly: true
+        }
+        Property {
             name: "tiktokPublishStatus"
             type: "QString"
             read: "tiktokPublishStatus"
@@ -2307,6 +2314,23 @@ Module {
             Parameter { name: "a1"; type: "int" }
         }
         Method { name: "publishNextTikTokItem"; type: "bool" }
+        Method {
+            name: "socialPublishItemToken"
+            type: "QString"
+            Parameter { name: "a1"; type: "int" }
+        }
+        Method {
+            name: "publishSocialItemToken"
+            type: "bool"
+            Parameter { name: "a1"; type: "QString" }
+        }
+        Method {
+            name: "updateSocialPublishItemToken"
+            type: "bool"
+            Parameter { name: "a1"; type: "QString" }
+            Parameter { name: "a2"; type: "QString" }
+            Parameter { name: "a3"; type: "QString" }
+        }
         Method { name: "publishAllTikTokItems"; type: "bool" }
         Method { name: "refreshTikTokPostStatuses"; type: "bool" }
         Method { name: "cancelTikTokPublishing" }
