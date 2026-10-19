@@ -2,7 +2,7 @@
   <img src="src/haizflow/desktop/assets/branding/haizflow-mark.png" width="96" alt="HaizFlow logo">
   <h1>HaizFlow</h1>
   <p><strong>A free Windows app for downloading, translating, subtitling and dubbing videos.</strong></p>
-  <p><a href="https://github.com/MachHongHai/HaizFlow/releases/download/v1.0.1/HaizFlow-1.0.1-Setup.exe">Installation</a> · <a href="docs/user-guide.md">User guide</a> · <a href="docs/support.md">Help</a> · <a href="README.vi.md">Tiếng Việt</a></p>
+  <p><a href="https://github.com/MachHongHai/HaizFlow/releases/download/v1.0.2/HaizFlow-1.0.2-Setup.exe">Installation</a> · <a href="docs/user-guide.md">User guide</a> · <a href="docs/support.md">Help</a> · <a href="README.vi.md">Tiếng Việt</a></p>
 </div>
 
 ## About HaizFlow
@@ -81,7 +81,7 @@ Gemini, Zernio and other external services have their own terms, limits and char
 
 ## Install and get started
 
-**[Download the Windows installer](https://github.com/MachHongHai/HaizFlow/releases/download/v1.0.1/HaizFlow-1.0.1-Setup.exe).** Run this EXE only; do not download or extract Core files. Resource packs are installed inside HaizFlow. Version 1.0.0 can update directly in the app. [Release and installation details](https://github.com/MachHongHai/HaizFlow/releases/latest).
+**[Download the Windows installer](https://github.com/MachHongHai/HaizFlow/releases/download/v1.0.2/HaizFlow-1.0.2-Setup.exe).** Run this EXE only; do not download or extract Core files. Resource packs are installed inside HaizFlow. Versions 1.0.0 and 1.0.1 can update directly in the app. [Release and installation details](https://github.com/MachHongHai/HaizFlow/releases/latest).
 
 1. Install and open HaizFlow. Vietnamese is the default; English is available in Settings.
 2. Choose CPU or NVIDIA GPU in **Settings → General**, then install the resource packs you need.

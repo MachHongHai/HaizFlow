@@ -2,7 +2,7 @@
   <img src="src/haizflow/desktop/assets/branding/haizflow-mark.png" width="96" alt="Logo HaizFlow">
   <h1>HaizFlow</h1>
   <p><strong>Ứng dụng miễn phí để tải, dịch, tạo phụ đề và lồng tiếng video trên Windows.</strong></p>
-  <p><a href="https://github.com/MachHongHai/HaizFlow/releases/download/v1.0.1/HaizFlow-1.0.1-Setup.exe">Cài đặt</a> · <a href="docs/user-guide.vi.md">Hướng dẫn sử dụng</a> · <a href="docs/support.vi.md">Trợ giúp</a> · <a href="README.md">English</a></p>
+  <p><a href="https://github.com/MachHongHai/HaizFlow/releases/download/v1.0.2/HaizFlow-1.0.2-Setup.exe">Cài đặt</a> · <a href="docs/user-guide.vi.md">Hướng dẫn sử dụng</a> · <a href="docs/support.vi.md">Trợ giúp</a> · <a href="README.md">English</a></p>
 </div>
 
 ## Giới thiệu
@@ -81,7 +81,7 @@ Gemini, Zernio và các dịch vụ bên ngoài có điều khoản, hạn mức
 
 ## Cài đặt và bắt đầu
 
-**[Tải bộ cài Windows](https://github.com/MachHongHai/HaizFlow/releases/download/v1.0.1/HaizFlow-1.0.1-Setup.exe).** Chỉ mở file EXE này; không cần tải hoặc giải nén các tệp Core. Gói tài nguyên được cài trong HaizFlow. Bản 1.0.0 có thể cập nhật trực tiếp trong app. [Thông tin phiên bản và cài đặt](https://github.com/MachHongHai/HaizFlow/releases/latest).
+**[Tải bộ cài Windows](https://github.com/MachHongHai/HaizFlow/releases/download/v1.0.2/HaizFlow-1.0.2-Setup.exe).** Chỉ mở file EXE này; không cần tải hoặc giải nén các tệp Core. Gói tài nguyên được cài trong HaizFlow. Bản 1.0.0 và 1.0.1 có thể cập nhật trực tiếp trong app. [Thông tin phiên bản và cài đặt](https://github.com/MachHongHai/HaizFlow/releases/latest).
 
 1. Cài và mở HaizFlow. Giao diện mặc định là tiếng Việt.
 2. Chọn CPU hoặc GPU NVIDIA trong **Cài đặt → Chung** và cài các gói cần dùng trong **Gói tài nguyên**.

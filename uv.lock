@@ -609,7 +609,7 @@ wheels = [
 
 [[package]]
 name = "haizflow"
-version = "0.1.7"
+version = "1.0.2"
 source = { editable = "." }
 dependencies = [
     { name = "audioop-lts" },
