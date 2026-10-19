@@ -167,6 +167,63 @@ def test_multiple_speakers_uses_native_mapping_without_mutating_source_cache(tmp
     assert json.dumps(source) == before
 
 
+@pytest.mark.parametrize('provider', ['vieneu', 'vieneu-gpu'])
+def test_multispeaker_long_path_reaches_synthesis_and_reuses_source_map(tmp_path, provider):
+    from haizflow.pipeline import speaker_identity
+    from haizflow.utils import atomic_file
+
+    directory = tmp_path / ('d' * (175 - len(str(tmp_path)) - 1))
+    directory.mkdir()
+    wav = directory / 'vocals.wav'
+    wav.write_bytes(b'source speech fixture')
+    segments = [{'start': 0, 'end': 1, 'text': 'A male voice.'},
+                {'start': 1, 'end': 2, 'text': 'A female voice.'}]
+    source = tmp_path / 'source.json'
+    source.write_text(json.dumps(segments), encoding='utf-8')
+    subtitles = tmp_path / 'subtitles.json'
+    subtitles.write_text(json.dumps([{**segment, 'text': text} for segment, text in
+                                      zip(segments, ['Xin chào.', 'Cảm ơn.'])]), encoding='utf-8')
+    video = SimpleNamespace(speaker_mode='multiple', files={'source_segments': str(source), 'speech_audio': str(wav)})
+    queued = []
+    create = atomic_file.tempfile.mkstemp
+
+    def legacy_mkstemp(*args, **kwargs):
+        prospective = Path(kwargs['dir']) / (kwargs.get('prefix', '') + 'abcdefgh' + kwargs.get('suffix', ''))
+        if len(str(prospective)) >= 260:
+            raise FileNotFoundError(2, 'No such file or directory', str(prospective))
+        return create(*args, **kwargs)
+
+    def identify(_capability, _operation, payload, *_args, **_kwargs):
+        return {'segments': [{**segment, 'speaker_id': f's{index}', 'speaker_voice': voice}
+                             for index, (segment, voice) in enumerate(zip(payload['segments'],
+                                 ['omnivoice:male', 'omnivoice:bright']))]}
+
+    def synthesize(items, *args, **kwargs):
+        queued.extend(items)
+        for item in items:
+            Path(item['output_path']).write_bytes(b'ID3' + b'0' * 600)
+        kwargs['progress_callback'](len(items), len(items), 'completed')
+
+    with (patch.object(atomic_file.tempfile, 'mkstemp', side_effect=legacy_mkstemp),
+          patch.object(speaker_identity, 'verify_model'),
+          patch('haizflow.services.external_tasks.run_external_task', side_effect=identify) as engine,
+          patch('haizflow.services.external_engine.shared_external_engine_pool'),
+          patch.object(tts, 'get_video', return_value=video), patch.object(tts, 'log_to_video'),
+          patch.object(tts, '_level_voice_peers', return_value=set()),
+          patch.object(vieneu_tts, 'synthesize_batch_to_mp3', side_effect=synthesize)):
+        tts.generate_voice_parts(str(subtitles), str(tmp_path), 'per-speaker', 'test', provider=provider)
+        assert [item['voice'] for item in queued] == ['vieneu:Hải Đăng', 'vieneu:Trúc Ly']
+        assert engine.call_count == 1
+        caches = list(directory.glob('speaker-map-*.json'))
+        assert len(caches) == 1 and len(str(caches[0])) == 257
+        cached = json.loads(caches[0].read_text(encoding='utf-8'))
+        assert [entry['speaker_voice'] for entry in cached] == ['omnivoice:male', 'omnivoice:bright']
+        assert speaker_identity.prepare_speakers(str(wav), segments, 'test') == cached
+        assert engine.call_count == 1
+    assert wav.read_bytes() == b'source speech fixture'
+    assert not list(directory.glob('*.tmp'))
+
+
 def test_cpu_loader_forces_onnx_fp32_local_codec_even_on_gpu_machine(tmp_path):
     original = Mock()
     module = SimpleNamespace(OnnxV3LiteEngine=original)

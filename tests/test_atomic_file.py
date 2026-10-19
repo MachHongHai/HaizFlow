@@ -2,12 +2,41 @@ import errno
 import json
 import os
 import threading
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from haizflow.utils import atomic_file
 from haizflow.services import video_store
+
+
+def test_speaker_cache_temp_name_fits_legacy_windows_path_limit(tmp_path):
+    # The user's final speaker map fits MAX_PATH; the former temp name did not.
+    directory = tmp_path / ("d" * (175 - len(str(tmp_path)) - 1))
+    directory.mkdir()
+    target = directory / ("speaker-map-" + "a" * 64 + ".json")
+    assert len(str(target)) == 257
+    target.write_text('{"old": true}', encoding="utf-8")
+    create = atomic_file.tempfile.mkstemp
+    temporary_paths = []
+
+    def legacy_mkstemp(*args, **kwargs):
+        prospective = Path(kwargs["dir"]) / (kwargs.get("prefix", "") + "abcdefgh" + kwargs.get("suffix", ""))
+        if len(str(prospective)) >= 260:
+            raise FileNotFoundError(2, "No such file or directory", str(prospective))
+        descriptor, name = create(*args, **kwargs)
+        temporary_paths.append(Path(name))
+        assert json.loads(target.read_text(encoding="utf-8")) == {"old": True}
+        return descriptor, name
+
+    with patch.object(atomic_file.tempfile, "mkstemp", side_effect=legacy_mkstemp):
+        atomic_file.atomic_json(target, {"speaker": "Tiếng Việt"})
+    assert json.loads(target.read_text(encoding="utf-8")) == {"speaker": "Tiếng Việt"}
+    assert len(temporary_paths) == 1
+    assert temporary_paths[0].parent == directory
+    assert len(str(temporary_paths[0])) < 260
+    assert list(directory.iterdir()) == [target]
 
 
 def test_metadata_publish_retries_reader_lock_without_exposing_partial_json(tmp_path):

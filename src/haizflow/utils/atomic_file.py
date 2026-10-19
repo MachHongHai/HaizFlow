@@ -25,7 +25,9 @@ def replace_with_retry(source: str | Path, destination: str | Path) -> None:
 def atomic_json(path: str | Path, data, *, indent: int | None = None, ensure_ascii: bool = False) -> None:
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, name = tempfile.mkstemp(prefix=f".{destination.stem}-", suffix=".json.tmp", dir=destination.parent)
+    # A hash-named destination can fit Windows MAX_PATH while a temp name
+    # derived from it does not. Keep staging short and on the same filesystem.
+    descriptor, name = tempfile.mkstemp(prefix=".j-", suffix=".tmp", dir=destination.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             json.dump(data, stream, ensure_ascii=ensure_ascii, indent=indent)
