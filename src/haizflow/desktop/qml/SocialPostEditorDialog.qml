@@ -7,9 +7,9 @@ import "."
 AppDialog {
     id: root
 
-    signal saveRequested(int row, string caption, string hashtags)
+    signal saveRequested(string itemToken, string caption, string hashtags)
 
-    property int row: -1
+    property string itemToken: ""
     property string fileName: ""
     property string initialCaption: ""
     property string initialHashtags: ""
@@ -23,7 +23,7 @@ AppDialog {
     subtitle: root.fileName
 
     function openForItem(itemRow, name, caption, hashtags) {
-        row = itemRow
+        itemToken = AppController.socialPublishItemToken(itemRow)
         fileName = name
         initialCaption = caption
         initialHashtags = hashtags
@@ -35,7 +35,7 @@ AppDialog {
     function savePost() {
         if (root.postLength > 2200)
             return
-        root.saveRequested(root.row, captionInput.text, hashtagInput.text)
+        root.saveRequested(root.itemToken, captionInput.text, hashtagInput.text)
         root.close()
     }
 

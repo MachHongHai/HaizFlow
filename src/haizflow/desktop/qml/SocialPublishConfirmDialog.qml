@@ -5,7 +5,7 @@ import "."
 AppDialog {
     id: root
 
-    property int itemRow: -1
+    property string itemToken: ""
     property bool publishAllItems: false
 
     title: qsTr("Xác nhận đăng")
@@ -14,7 +14,7 @@ AppDialog {
     maximumWidth: 480
 
     function openForPublish(row, publishAll) {
-        itemRow = row
+        itemToken = publishAll ? "" : AppController.socialPublishItemToken(row)
         publishAllItems = publishAll
         open()
     }
@@ -70,7 +70,7 @@ AppDialog {
                 if (root.publishAllItems)
                     AppController.publishAllTikTokItems()
                 else
-                    AppController.publishTikTokItem(root.itemRow)
+                    AppController.publishSocialItemToken(root.itemToken)
                 root.close()
             }
         }

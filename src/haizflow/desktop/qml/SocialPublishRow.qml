@@ -29,20 +29,21 @@ Rectangle {
     readonly property bool published: publishStatus === "published" || publishStatus === "posted"
     readonly property bool remoteInFlight: hasRemotePost && !published
         && !["failed", "partial", "cancelled", "deleted", "draft", "scheduled"].includes(publishStatus)
-    readonly property bool working: ["uploading", "publishing", "pending", "processing", "queued"].includes(publishStatus) || remoteInFlight
+    readonly property bool locallyQueued: publishStatus === "queued_local"
+    readonly property bool working: locallyQueued || ["uploading", "publishing", "pending", "processing", "queued"].includes(publishStatus) || remoteInFlight
     readonly property bool awaitingUrl: published && hasRemotePost
         && (!platformPostUrlVerified || platformPostUrl.length === 0)
     readonly property bool canPublish: !published && !working && publishStatus !== "missing"
         && publishStatus !== "scheduled"
         && (!hasRemotePost || ["failed", "partial", "draft"].includes(publishStatus))
-        && !AppController.tiktokPublishBusy && !AppController.zernioAccountSyncing
+        && !AppController.zernioAccountSyncing
         && AppController.zernioApiKeyVerified && AppController.zernioAccountReady
         && !AppController.zernioCredentialBusy
     readonly property string statusLabel: published ? (awaitingUrl ? qsTr("Đang lấy liên kết") : "")
         : working ? (publishStatus === "uploading" && uploadProgress > 0
             ? qsTr("Đang tải lên %1%").arg(uploadProgress)
             : publishStatus === "uploading" ? qsTr("Đang bắt đầu tải lên")
-            : publishStatus === "queued" || publishStatus === "pending" ? qsTr("Đang chờ lượt đăng")
+            : locallyQueued || publishStatus === "queued" || publishStatus === "pending" ? qsTr("Đang chờ lượt đăng")
             : qsTr("Đang chờ nền tảng"))
         : publishStatus === "failed" || publishStatus === "partial" ? qsTr("Lỗi")
         : publishStatus === "scheduled" ? qsTr("Đã hẹn giờ")
@@ -179,10 +180,10 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        visible: root.working
+        visible: root.working && !root.locallyQueued
         value: root.uploadProgress
         indeterminate: root.publishStatus !== "uploading" || root.uploadProgress <= 0
-        active: root.working
+        active: root.working && !root.locallyQueued
     }
 
     Menu {

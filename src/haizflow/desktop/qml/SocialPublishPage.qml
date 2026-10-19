@@ -168,12 +168,13 @@ Item {
 
             StudioButton {
                 id: addVideosButton
+                objectName: "socialAddVideosButton"
                 property bool menuWasOpenOnPress: false
 
                 text: qsTr("Thêm video")
                 iconGlyph: "\uE710"
                 variant: "secondary"
-                enabled: !AppController.tiktokPublishBusy
+                enabled: !AppController.socialImportBusy
                 onPressed: menuWasOpenOnPress = addSourceMenu.visible
                 onClicked: {
                     if (menuWasOpenOnPress || addSourceMenu.visible)
@@ -278,8 +279,8 @@ Item {
         sourceComponent: Component {
             SocialPostEditorDialog {
                 onClosed: postEditorLoader.release()
-                onSaveRequested: function(row, caption, hashtags) {
-                    AppController.updateTikTokPublishItem(row, caption, hashtags)
+                onSaveRequested: function(itemToken, caption, hashtags) {
+                    AppController.updateSocialPublishItemToken(itemToken, caption, hashtags)
                 }
             }
         }

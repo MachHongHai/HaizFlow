@@ -44,10 +44,10 @@ class SocialPublishLayoutUiTests(unittest.TestCase):
             "platform_post_url": "https://example.com/post", "platform_post_url_verified": True,
         } for index in range(count)])
         for name, value in {
-            "projectName": "Hàng đợi", "tiktokPublishBusy": False,
+            "projectName": "Hàng đợi", "tiktokPublishBusy": False, "socialImportBusy": False,
             "tiktokWaitingCount": 0, "tiktokPublishCount": count, "tiktokPublishModel": model,
             "tiktokDefaultCaption": "Nội dung mặc định", "tiktokDefaultHashtags": "#video",
-            "zernioApiKeyConfigured": True, "zernioApiKeyVerified": True,
+            "zernioApiKeyConfigured": True, "zernioApiKeyVerified": True, "zernioCredentialBusy": False,
             "zernioAccountReady": True, "zernioAccountSyncing": False,
             "zernioOauthSyncPending": False, "zernioConnectedAccountCount": 1,
             "zernioCanPostMore": True, "zernioSelectedAccountIndex": 0,
@@ -152,6 +152,51 @@ class SocialPublishLayoutUiTests(unittest.TestCase):
             buttons = [item for item in visual_descendants(page) if item.objectName() == name]
             self.assertEqual(len(buttons), 2)
             self.assertTrue(all(button.isEnabled() for button in buttons), name)
+
+    def test_add_videos_is_available_during_upload_but_not_during_another_import(self):
+        _, page = self.create_page(2)
+        state, _ = self.context_objects
+        add = page.findChild(QQuickItem, "socialAddVideosButton")
+        self.assertTrue(add.isEnabled())
+        state.insert("tiktokPublishBusy", True)
+        QTest.qWait(20)
+        self.assertTrue(add.isEnabled())
+        state.insert("socialImportBusy", True)
+        QTest.qWait(20)
+        self.assertFalse(add.isEnabled())
+        state.insert("socialImportBusy", False)
+        QTest.qWait(20)
+        self.assertTrue(add.isEnabled())
+
+    def test_individual_post_can_queue_while_uploading_then_disables_queued_actions(self):
+        _, page = self.create_page(1)
+        state, model = self.context_objects
+        state.insert("tiktokPublishBusy", True)
+        item = dict(model.item_at(0))
+        item.update(status="ready", zernio_post_id="", upload_progress=0)
+        model.update_item(item["id"], item)
+        QTest.qWait(30)
+        def find_visual(item, name):
+            if item.objectName() == name:
+                return item
+            for child in item.childItems():
+                found = find_visual(child, name)
+                if found is not None:
+                    return found
+            return None
+        post = find_visual(page, "socialPostButton")
+        remove = find_visual(page, "socialRemoveButton")
+        self.assertIsNotNone(post)
+        self.assertTrue(post.isEnabled())
+        item["status"] = "queued_local"
+        model.update_item(item["id"], item)
+        QTest.qWait(30)
+        self.assertFalse(post.isEnabled())
+        self.assertFalse(remove.isEnabled())
+        item["status"] = "ready"
+        model.update_item(item["id"], item)
+        QTest.qWait(30)
+        self.assertTrue(post.isEnabled())
 
 
 def test_social_publish_queue_layout_in_isolated_qt_process():

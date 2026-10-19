@@ -1021,6 +1021,10 @@ class HaizFlowController(QObject):
     def tiktokPublishBusy(self):
         return self._tiktok_publisher.busy
 
+    @Property(bool, notify=socialPublishStateChanged)
+    def socialImportBusy(self):
+        return self._tiktok_publisher.import_busy
+
     @Property(bool, notify=zernioAccountsChanged)
     def zernioAccountSyncing(self):
         return self._tiktok_publisher.account_syncing
@@ -6855,6 +6859,18 @@ class HaizFlowController(QObject):
     @Slot(int, result=bool)
     def publishTikTokItem(self, row: int):
         return self._tiktok_publisher.publish_item(row)
+
+    @Slot(int, result=str)
+    def socialPublishItemToken(self, row: int):
+        return self._tiktok_publisher.item_token(row)
+
+    @Slot(str, result=bool)
+    def publishSocialItemToken(self, token: str):
+        return self._tiktok_publisher.publish_token(token)
+
+    @Slot(str, str, str, result=bool)
+    def updateSocialPublishItemToken(self, token: str, caption: str, hashtags: str):
+        return self._tiktok_publisher.update_item_token(token, caption, hashtags)
 
     @Slot(result=bool)
     def publishNextTikTokItem(self):

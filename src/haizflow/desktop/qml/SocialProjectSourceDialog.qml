@@ -152,7 +152,7 @@ AppDialog {
             text: qsTr("Thêm video")
             variant: "primary"
             enabled: AppController.tiktokProjectSourceSelectedCount > 0
-                && !AppController.tiktokPublishBusy
+                && !AppController.socialImportBusy
             onClicked: {
                 if (AppController.addSelectedTikTokProjectVideos())
                     root.close()

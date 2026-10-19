@@ -140,6 +140,10 @@ class SocialPublishController:
         self._project_root = ""
         self._state = tiktok_publish.empty_state()
         self._busy = False
+        self._import_busy = False
+        self._import_cancel = threading.Event()
+        self._import_thread: threading.Thread | None = None
+        self._pending_posts: list[dict] = []
         self._account_syncing = False
         self._background_account_refreshing = False
         self._creator_syncing = False
@@ -172,6 +176,7 @@ class SocialPublishController:
         self._creator_info_loaded = False
         self._can_post_more = True
         self._auto_continue = False
+        self._auto_post_ids: set[str] | None = None
         self._consent_confirmed = False
         self._oauth_sync_pending = False
         self._oauth_account_ids_before: set[str] = set()
@@ -187,7 +192,11 @@ class SocialPublishController:
 
     @property
     def busy(self) -> bool:
-        return self._busy
+        return self._busy or self._import_busy or bool(self._pending_posts)
+
+    @property
+    def import_busy(self) -> bool:
+        return self._import_busy
 
     @property
     def account_syncing(self) -> bool:
@@ -369,11 +378,11 @@ class SocialPublishController:
         return sum(1 for item in self._project_sources if item["selected"])
 
     def has_project_work(self, project_key: str) -> bool:
-        return bool(self._busy and self._project_key == str(project_key or ""))
+        return bool(self.busy and self._project_key == str(project_key or ""))
 
     def can_switch_project(self, project_key: str) -> bool:
         target = str(project_key or "")
-        return not self._busy or not self._project_key or self._project_key == target
+        return not self.busy or not self._project_key or self._project_key == target
 
     def attach_project(self, project_key: str, project_root: str) -> None:
         next_key = str(project_key or "")
@@ -392,7 +401,7 @@ class SocialPublishController:
             self._creator_worker_thread = None
         self._project_key = next_key
         self._project_root = next_root
-        if not self._busy and self._project_root:
+        if not self.busy and self._project_root:
             tiktok_publish.migrate_project_layout(self._project_root)
             tiktok_publish.cleanup_orphaned_media(self._project_root)
         self._reload()
@@ -401,14 +410,14 @@ class SocialPublishController:
         # Verify a securely stored key and restore the connected-account state
         # as soon as the publishing project opens.  Users should not need to
         # press Refresh on every app launch just to make the page usable.
-        if self.api_key_configured and not self._busy:
+        if self.api_key_configured and not self.busy:
             self.reconcile_accounts()
 
     def detach_project(self) -> None:
         # Navigating to Manual/Auto/Batch is not cancellation. Workers and
         # their queued events still belong to this publishing project; clearing
         # its identity here would drop completion events and leave busy stuck.
-        if self._busy:
+        if self.busy:
             return
         self._project_key = ""
         self._project_root = ""
@@ -458,6 +467,10 @@ class SocialPublishController:
             target_platform = self.selected_platform
         return {
             **item,
+            "status": (
+                "queued_local" if any(post["id"] == item["id"] for post in self._pending_posts)
+                else item["status"]
+            ),
             "post_text": tiktok_publish.compose_post_text(item["caption"], item["hashtags"]),
             "thumbnail_source": thumbnail_source(item.get("thumbnail_path") or ""),
             "target_platform": target_platform,
@@ -490,7 +503,8 @@ class SocialPublishController:
 
     def _emit_changed(self) -> None:
         publish_snapshot = (
-            self._busy,
+            self.busy,
+            self._import_busy,
             self._status,
             self.default_caption,
             self.default_hashtags,
@@ -553,7 +567,7 @@ class SocialPublishController:
         self._host.tiktokPublishChanged.emit()
 
     def save_api_key(self, value: str) -> bool:
-        if self._busy or self._account_syncing or self._creator_syncing or self._credential_busy:
+        if self.busy or self._account_syncing or self._creator_syncing or self._credential_busy:
             return False
         key = str(value or "").strip()
         if not _API_KEY_PATTERN.fullmatch(key):
@@ -572,7 +586,7 @@ class SocialPublishController:
             return []
 
     def add_api_key(self, label: str, value: str) -> bool:
-        if self._busy or self._account_syncing or self._creator_syncing or self._credential_busy:
+        if self.busy or self._account_syncing or self._creator_syncing or self._credential_busy:
             return False
         label, key = str(label or "").strip(), str(value or "").strip()
         if not label or len(label) > 64 or not _API_KEY_PATTERN.fullmatch(key):
@@ -582,7 +596,7 @@ class SocialPublishController:
         return self._start_credential_check(key, replace=True, label=label)
 
     def select_api_key(self, key_id: str) -> bool:
-        if self._busy or self._account_syncing or self._creator_syncing or self._credential_busy:
+        if self.busy or self._account_syncing or self._creator_syncing or self._credential_busy:
             return False
         try:
             key = zernio_keys.key_value(key_id)
@@ -593,7 +607,7 @@ class SocialPublishController:
         return self._start_credential_check(key, replace=True, key_id=key_id)
 
     def remove_api_key(self, key_id: str) -> bool:
-        if self._busy or self._account_syncing or self._creator_syncing or self._credential_busy:
+        if self.busy or self._account_syncing or self._creator_syncing or self._credential_busy:
             return False
         try:
             active = zernio_keys.active_id() == key_id
@@ -610,7 +624,7 @@ class SocialPublishController:
         return True
 
     def verify_api_key(self) -> bool:
-        if self._busy or self._account_syncing or self._creator_syncing or self._credential_busy:
+        if self.busy or self._account_syncing or self._creator_syncing or self._credential_busy:
             return False
         key_ids = [item["id"] for item in self.api_keys]
         if not key_ids:
@@ -742,7 +756,7 @@ class SocialPublishController:
             self._status = "Could not check Zernio. The saved key was not changed."
 
     def clear_api_key(self) -> bool:
-        if self._busy or self._account_syncing or self._creator_syncing or self._credential_busy:
+        if self.busy or self._account_syncing or self._creator_syncing or self._credential_busy:
             return False
         try:
             zernio_keys.remove_key(zernio_keys.active_id() or "legacy")
@@ -844,7 +858,7 @@ class SocialPublishController:
         account_id: str = "",
         silent: bool = False,
     ) -> bool:
-        if self._busy or self._credential_busy:
+        if self.busy or self._credential_busy:
             return False
         if silent and (self._background_account_refreshing or self._account_syncing):
             return False
@@ -1033,7 +1047,7 @@ class SocialPublishController:
         return message
 
     def select_account(self, index: int) -> bool:
-        if index < 0 or index >= len(self._accounts) or not self._ensure_publish_project():
+        if self.busy or index < 0 or index >= len(self._accounts) or not self._ensure_publish_project():
             return False
         account_id = self._object_id(self._accounts[index])
         if not account_id:
@@ -1121,7 +1135,7 @@ class SocialPublishController:
             )
 
     def _start_creator_info_worker(self, account_id: str) -> bool:
-        if self._busy:
+        if self.busy:
             return False
         key = self._api_key()
         if not key:
@@ -1201,7 +1215,7 @@ class SocialPublishController:
         ai_generated: bool = False,
         first_comment: str = "",
     ) -> bool:
-        if not self._ensure_publish_project():
+        if self.busy or not self._ensure_publish_project():
             return False
         level = str(privacy_level or "")
         if self._privacy_levels and level not in self._privacy_levels:
@@ -1246,7 +1260,7 @@ class SocialPublishController:
         return {key: self._state.get(key) for key in keys}
 
     def _apply_publish_settings_snapshot(self, values: dict[str, object]) -> bool:
-        if not self._ensure_publish_project() or self._busy:
+        if not self._ensure_publish_project() or self.busy:
             return False
         self._state = tiktok_publish.update_publish_settings(self._project_root, **values)
         self._emit_changed()
@@ -1312,7 +1326,7 @@ class SocialPublishController:
         return True
 
     def add_selected_project_videos(self) -> bool:
-        if self._busy:
+        if self._import_busy:
             return False
         selected = [item for item in self._project_sources if item["selected"]]
         sources = [source for item in selected for source in item["output_paths"]]
@@ -1350,7 +1364,7 @@ class SocialPublishController:
         return accepted
 
     def browse_videos(self) -> bool:
-        if self._busy or not self._ensure_publish_project():
+        if self._import_busy or not self._ensure_publish_project():
             return False
         paths, _selected_filter = QFileDialog.getOpenFileNames(
             None,
@@ -1361,7 +1375,7 @@ class SocialPublishController:
         return self.add_videos(paths) if paths else False
 
     def browse_folder(self) -> bool:
-        if self._busy or not self._ensure_publish_project():
+        if self._import_busy or not self._ensure_publish_project():
             return False
         folder = QFileDialog.getExistingDirectory(
             None,
@@ -1389,7 +1403,7 @@ class SocialPublishController:
         return self.add_videos(paths)
 
     def add_videos(self, paths, display_names: dict[str, str] | None = None) -> bool:
-        if not self._ensure_publish_project() or self._busy:
+        if not self._ensure_publish_project() or self._import_busy:
             return False
         valid: list[tuple[str, str]] = []
         duplicate_count = 0
@@ -1414,11 +1428,12 @@ class SocialPublishController:
                 return False
             QMessageBox.warning(None, "Social publishing", "Choose an MP4, MOV, or WebM video smaller than 4 GB.")
             return False
-        self._busy = True
-        self._cancel.clear()
-        self._status = "Adding videos to the publishing project"
+        self._import_busy = True
+        self._import_cancel.clear()
+        if not self._busy:
+            self._status = "Adding videos to the publishing project"
         self._emit_changed()
-        self._worker = threading.Thread(
+        self._import_thread = threading.Thread(
             target=self._import_worker,
             args=(
                 self._project_key,
@@ -1431,7 +1446,7 @@ class SocialPublishController:
             name="haizflow-social-import",
             daemon=True,
         )
-        self._worker.start()
+        self._import_thread.start()
         return True
 
     def _import_worker(self, project_key, project_root, sources, caption, hashtags, starting_order) -> None:
@@ -1451,10 +1466,10 @@ class SocialPublishController:
         except (OSError, ValueError) as exc:
             self._release_source_render_leases()
             self._events.put({"type": "import_finished", "project_key": project_key, "done": 0,
-                              "total": len(sources), "errors": [str(exc)], "cancelled": self._cancel.is_set()})
+                              "total": len(sources), "errors": [str(exc)], "cancelled": self._import_cancel.is_set()})
             return
         for offset, (source, display_name) in enumerate(sources):
-            if self._cancel.is_set():
+            if self._import_cancel.is_set():
                 break
             item_id = str(uuid.uuid4())
             destination = os.path.join(media_dir, f"{item_id}{Path(source).suffix.lower()}")
@@ -1470,7 +1485,7 @@ class SocialPublishController:
                     if not record or record["resolved_outputs"].get("video") != source:
                         raise FileNotFoundError("The selected completed render is unavailable or corrupted.")
                 shutil.copy2(source, temporary)
-                if self._cancel.is_set():
+                if self._import_cancel.is_set():
                     raise InterruptedError
                 os.replace(temporary, destination)
                 imported_destination = True
@@ -1478,7 +1493,7 @@ class SocialPublishController:
                 if duration < 3.0 or duration > 600.0:
                     raise ValueError("Videos must be between 3 seconds and 10 minutes long.")
                 width, height = get_video_dimensions(destination, timeout_seconds=20.0)
-                create_video_thumbnail_path(destination, thumbnail_path, cancel_event=self._cancel)
+                create_video_thumbnail_path(destination, thumbnail_path, cancel_event=self._import_cancel)
                 item = tiktok_publish.new_item(
                     destination,
                     thumbnail_path if os.path.isfile(thumbnail_path) else "",
@@ -1531,7 +1546,7 @@ class SocialPublishController:
                 "done": imported,
                 "total": len(sources),
                 "errors": errors,
-                "cancelled": self._cancel.is_set(),
+                "cancelled": self._import_cancel.is_set(),
             }
         )
 
@@ -1543,7 +1558,7 @@ class SocialPublishController:
         self._source_render_leases = {}
 
     def save_defaults(self, caption: str, hashtags: str, apply_to_existing: bool) -> bool:
-        if not self._ensure_publish_project():
+        if self.busy or not self._ensure_publish_project():
             return False
         before = self._publish_content_snapshot()
         self._state = tiktok_publish.update_defaults(
@@ -1588,7 +1603,7 @@ class SocialPublishController:
         }
 
     def _apply_publish_content_snapshot(self, snapshot: dict[str, object]) -> bool:
-        if not self._ensure_publish_project() or self._busy:
+        if not self._ensure_publish_project() or self.busy:
             return False
         state = tiktok_publish.load_state(self._project_root)
         state["default_caption"] = str(snapshot.get("default_caption") or "")
@@ -1608,7 +1623,8 @@ class SocialPublishController:
         if (
             not item
             or not self._ensure_publish_project()
-            or item["status"] in {"uploading", "publishing", "published", "posted", "scheduled"}
+            or self._item_in_flight(item)
+            or item["status"] in {"published", "posted", "scheduled"}
         ):
             return False
         updated = tiktok_publish.update_item(
@@ -1649,7 +1665,7 @@ class SocialPublishController:
         return True
 
     def _apply_item_edit(self, item_id: str, values: dict[str, str]) -> bool:
-        if not self._ensure_publish_project() or self._busy:
+        if not self._ensure_publish_project() or self.busy:
             return False
         updated = tiktok_publish.update_item(self._project_root, item_id, **values)
         if updated is None:
@@ -1666,15 +1682,50 @@ class SocialPublishController:
         item = self._host.tiktok_publish_items.item_at(row)
         return self._publish_item(item, continue_queue=continue_queue)
 
-    def _publish_item(self, item: dict | None, *, continue_queue: bool, background: bool = False) -> bool:
+    def item_token(self, row: int) -> str:
+        item = self._host.tiktok_publish_items.item_at(row)
+        return f"{self._project_key}:{item['id']}" if item and self._ensure_publish_project() else ""
+
+    def update_item_token(self, token: str, caption: str, hashtags: str) -> bool:
+        if not self._ensure_publish_project():
+            return False
+        for row, item in enumerate(self._queue_items()):
+            if token == f"{self._project_key}:{item['id']}":
+                return self.update_item(row, caption, hashtags)
+        return False
+
+    def publish_token(self, token: str) -> bool:
+        # Imports prepend display rows while confirmation dialogs are open.
+        # Resolve immutable identity, never the row captured before an import.
+        if not self._ensure_publish_project():
+            return False
+        item = next((item for item in self._state.get("items") or []
+                     if token == f"{self._project_key}:{item['id']}"), None)
+        return self._publish_item(item, continue_queue=False)
+
+    def _publish_item(self, item: dict | None, *, continue_queue: bool, background: bool = False,
+                      queued: bool = False) -> bool:
+        if item and (item.get("status") in {"uploading", "publishing", "pending", "processing", "queued", "queued_local"}
+                     or any(post["id"] == item["id"] for post in self._pending_posts)):
+            return False
         if item and (item.get("status") in {"published", "posted", "scheduled"}
                      or (item.get("zernio_post_id") and item.get("status") not in {"failed", "partial", "draft"})):
             self._status = "This video already has a social post; it will not be published again."
             self._emit_changed()
             return False
-        if not item or not self._ensure_ready_to_publish(item, background=background):
+        if not item or not self._ensure_ready_to_publish(item, background=background, queued=queued):
             return False
-        self._auto_continue = bool(continue_queue)
+        if self._busy or self._import_busy:
+            if (self._busy and self._cancel.is_set()) or (self._import_busy and self._import_cancel.is_set()):
+                return False
+            if not self._busy:
+                self._cancel.clear()
+            self._pending_posts.append(dict(item))
+            self._sync_model()
+            self._emit_changed()
+            return True
+        if not queued:
+            self._auto_continue = bool(continue_queue)
         self._busy = True
         self._cancel.clear()
         self._status = f"Uploading {item['file_name']}"
@@ -1712,27 +1763,37 @@ class SocialPublishController:
         return False
 
     def publish_all(self) -> bool:
+        # Consent covers this selection, not videos imported later.
+        self._auto_post_ids = {item["id"] for item in self._queue_items() if self._waiting_to_publish(item)}
         return self.publish_next(continue_queue=True)
 
     def _continue_owned_queue(self) -> bool:
+        if self._busy or self._import_busy or self._cancel.is_set():
+            return False
+        while self._pending_posts:
+            requested = self._pending_posts.pop(0)
+            item = next((item for item in self._state.get("items") or []
+                         if item["id"] == requested["id"]), None)
+            if self._publish_item(item, continue_queue=False, background=True, queued=True):
+                return True
+            self._sync_model()
+        self._emit_changed()
         # Only the already-confirmed Publish All workflow may continue without
         # a visible publishing workspace. Never derive its owner from the newly
         # selected Manual/Auto project or from a different screen's row model.
         if not self._auto_continue or self._cancel.is_set():
             return False
         for item in reversed(self._queue_items()):
-            if self._waiting_to_publish(item):
+            if (self._auto_post_ids is None or item["id"] in self._auto_post_ids) and self._waiting_to_publish(item):
                 return self._publish_item(item, continue_queue=True, background=True)
         self._auto_continue = False
         self._status = "No videos are waiting to be published."
         self._emit_changed()
         return False
 
-    def _ensure_ready_to_publish(self, item: dict, *, background: bool = False) -> bool:
-        if self._busy:
-            return False
+    def _ensure_ready_to_publish(self, item: dict, *, background: bool = False, queued: bool = False) -> bool:
         if background:
-            if not self._auto_continue or not self._project_key or not self._project_root:
+            if not (self._auto_continue or queued) or not self._project_key or not self._project_root:
                 return False
         elif not self._ensure_publish_project():
             return False
@@ -1746,7 +1807,7 @@ class SocialPublishController:
             self._status = "Choose a visibility option for the selected connection."
         elif not self._can_post_more:
             self._status = "The selected account has reached its current posting limit."
-        elif not self._consent_confirmed:
+        elif not self._consent_confirmed and not queued:
             self._status = "Review the queued posts and confirm consent before uploading."
         elif not os.path.isfile(item.get("file_path") or ""):
             self._status = "The selected video file is unavailable."
@@ -2170,18 +2231,22 @@ class SocialPublishController:
                 self._creator_info_loaded = False
                 self._status = str(event.get("message") or "Could not load TikTok publishing options.")
             elif kind == "import_progress":
-                self._status = f"Adding video {event['done']} / {event['total']}"
+                if not self._busy:
+                    self._status = f"Adding video {event['done']} / {event['total']}"
             elif kind == "import_finished":
-                self._busy = False
-                self._worker = None
-                self._consent_confirmed = False
+                self._import_busy = False
+                self._import_thread = None
+                if not self._busy and not self._pending_posts and not self._auto_continue:
+                    self._consent_confirmed = False
                 self._reload()
                 errors = list(event.get("errors") or [])
-                self._status = (
-                    f"Added {event['done']} video(s)."
-                    if not errors
-                    else f"Added {event['done']} video(s); {len(errors)} failed."
-                )
+                if not self._busy:
+                    self._status = (
+                        f"Added {event['done']} video(s)."
+                        if not errors
+                        else f"Added {event['done']} video(s); {len(errors)} failed."
+                    )
+                continue_queue = continue_queue or bool(self._pending_posts) or self._auto_continue
                 refresh_projects = True
             elif kind == "upload_progress":
                 self._update_item_state(event["item_id"], upload_progress=event["progress"])
@@ -2223,7 +2288,7 @@ class SocialPublishController:
                 ):
                     self._schedule_post_status_poll(immediate=True)
                 refresh_projects = True
-                continue_queue = self._auto_continue and status not in {"ready"}
+                continue_queue = (self._auto_continue or bool(self._pending_posts)) and status != "ready"
                 if status == "failed":
                     self._auto_continue = False
             elif kind == "statuses":
@@ -2295,7 +2360,7 @@ class SocialPublishController:
         if refresh_projects:
             project_store.touch_project_by_key(self._project_key)
             self._host.refreshVideos()
-        if continue_queue and not self._busy:
+        if continue_queue and not self._busy and not self._import_busy:
             self._continue_owned_queue()
         self._poll_oauth_accounts()
         self._poll_connected_accounts()
@@ -2365,10 +2430,11 @@ class SocialPublishController:
         self._host.refreshVideos()
         return True
 
-    @staticmethod
-    def _item_in_flight(item: dict) -> bool:
+    def _item_in_flight(self, item: dict) -> bool:
         status = str(item.get("status") or "")
-        return status in _POLLABLE_POST_STATUSES or bool(
+        if any(post["id"] == item.get("id") for post in self._pending_posts):
+            return True
+        return status == "queued_local" or status in _POLLABLE_POST_STATUSES or bool(
             item.get("zernio_post_id") and status not in {
                 "published", "posted", "failed", "partial", "cancelled", "deleted", "draft", "scheduled",
             }
@@ -2376,7 +2442,10 @@ class SocialPublishController:
 
     def cancel(self) -> None:
         self._auto_continue = False
+        self._pending_posts.clear()
+        self._sync_model()
         self._cancel.set()
+        self._import_cancel.set()
         self._status = "Stopping after the current request"
         self._emit_changed()
 
@@ -2384,7 +2453,9 @@ class SocialPublishController:
         self._credential_generation += 1
         self._credential_busy = False
         self._auto_continue = False
+        self._pending_posts.clear()
         self._cancel.set()
+        self._import_cancel.set()
         self._stop_post_status_poll()
 
     def _api_key(self) -> str:
@@ -2414,7 +2485,7 @@ class SocialPublishController:
         self._oauth_sync_next = now + _OAUTH_ACCOUNT_POLL_SECONDS
 
     def _poll_oauth_accounts(self) -> None:
-        if not self._oauth_sync_pending or self._busy or self._account_syncing or not self._project_key:
+        if not self._oauth_sync_pending or self.busy or self._account_syncing or not self._project_key:
             return
         now = time.monotonic()
         if now >= self._oauth_sync_deadline:
@@ -2430,7 +2501,7 @@ class SocialPublishController:
         """Quietly reconcile connections changed in the Zernio dashboard."""
         if (
             self._oauth_sync_pending
-            or self._busy
+            or self.busy
             or self._account_syncing
             or self._background_account_refreshing
             or not self._project_key
