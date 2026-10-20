@@ -84,6 +84,18 @@ Demucs 4.0.1 loads an upstream model class through `torch.load`. HaizFlow fixes 
 
 ## Network and data exposure
 
+### aiohttp engine transport patch (2026-10-20)
+
+The 1.0.3 audit newly reported CPU/CUDA's aiohttp 3.14.3 for
+[GHSA-2g87-pp6c-29x5](https://github.com/aio-libs/aiohttp/security/advisories/GHSA-2g87-pp6c-29x5),
+[CVE-2026-111063](https://github.com/aio-libs/aiohttp/security/advisories/GHSA-494j-54xm-rwp3)
+and [CVE-2026-111064](https://github.com/aio-libs/aiohttp/security/advisories/GHSA-5wr8-gcqf-gqf3).
+Upstream fixes are in 3.14.4. Both engines now pin 3.14.5 plus its required
+yarl 1.25.1, matching the existing Core lock. All other engine package
+versions remain unchanged. This is an upgrade, not an audit exception.
+Regenerate exact hashes/notices and rebuild the shipping engines; the
+earlier private draft artifacts must not be published.
+
 CPU/CUDA pin `multidict==6.9.1`, containing the reference-leak fix for
 [GHSA-54p9-h82j-f925](https://github.com/aio-libs/multidict/security/advisories/GHSA-54p9-h82j-f925).
 This is a patch upgrade, not a new audit exception. Both engine environments
