@@ -19,6 +19,15 @@ class ExternalEngineError(RuntimeError):
     pass
 
 
+def _engine_failure_message(pack_id: str, error: str) -> str:
+    if "scipy" in error.lower() and any(marker in error.lower() for marker in (
+            "no module named", "dll load failed", "cannot import name")):
+        return (f"Bộ xử lý {pack_id} thiếu hoặc không nạp được thư viện SciPy. "
+                "Mở Gói tài nguyên để xác minh; nếu vẫn lỗi, tải/cài lại đúng bộ xử lý. "
+                "Không cần cài Python hay pip riêng. Chi tiết: " + error)
+    return error
+
+
 @dataclass(frozen=True)
 class EngineResponse:
     result: dict
@@ -156,7 +165,8 @@ class ExternalEngineClient:
                     self.terminate()
                     raise ExternalEngineError("Engine protocol version changed during the request.")
                 if not bool(event.get("ok")):
-                    raise ExternalEngineError(str(event.get("error") or "Engine request failed."))
+                    raise ExternalEngineError(_engine_failure_message(
+                        self.pack_id, str(event.get("error") or "Engine request failed.")))
                 result = event.get("result")
                 return EngineResponse(dict(result) if isinstance(result, dict) else {}, tuple(statuses))
             self.terminate()

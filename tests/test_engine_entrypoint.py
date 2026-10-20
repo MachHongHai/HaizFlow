@@ -29,6 +29,24 @@ write_manifest = load_script("write-engine-manifest.py")
 
 
 class EngineEntrypointTests(unittest.TestCase):
+    def test_scipy_native_module_is_explicitly_frozen_and_smoke_checked(self):
+        for profile in ("cpu", "cuda128"):
+            self.assertIn("scipy.linalg._linalg_pythran", engine_main.SMOKE_MODULES[profile])
+        hook = load_script("hooks/hook-scipy.linalg.py")
+        self.assertIn("scipy.linalg._linalg_pythran", hook.hiddenimports)
+        self.assertIn("scipy.linalg.cython_blas", hook.hiddenimports)
+        self.assertIn("scipy.linalg.cython_lapack", hook.hiddenimports)
+
+    def test_smoke_rejects_missing_scipy_native_module_before_model_load(self):
+        def imported(module):
+            if module == "scipy.linalg._linalg_pythran":
+                raise ModuleNotFoundError("No module named 'scipy.linalg._linalg_pythran'")
+            return SimpleNamespace()
+
+        with patch.object(engine_main.importlib, "import_module", side_effect=imported):
+            with self.assertRaisesRegex(ModuleNotFoundError, "_linalg_pythran"):
+                engine_main.smoke_test("cpu")
+
     def test_frozen_entrypoint_reconfigures_stdio_for_unicode_paths(self):
         streams = [SimpleNamespace(reconfigure=unittest.mock.Mock()) for _ in range(3)]
         with patch.object(engine_main.sys, "stdin", streams[0]), \

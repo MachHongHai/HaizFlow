@@ -10,10 +10,12 @@ import time
 
 from haizflow.core.events import unsubscribe_log
 from haizflow.core.hardware import (
+    HardwareCapabilities,
     configure_processing_device,
     detect_hardware_capabilities,
     processing_device_preference,
     recommended_processing_device,
+    refresh_hardware_metadata,
     validate_processing_device,
 )
 from haizflow.core.runtime_probe import probe_runtime
@@ -596,6 +598,12 @@ class RuntimeDeviceController:
             elif kind == "error":
                 host._status_message = f"Không thể kiểm tra GPU: {event.get('message', '')}"
                 host.statusMessageChanged.emit()
+        capabilities = getattr(host, "_hardware_capabilities", None)
+        if isinstance(capabilities, HardwareCapabilities):
+            refreshed = refresh_hardware_metadata(capabilities)
+            if refreshed != capabilities:
+                host._hardware_capabilities = refreshed
+                host.hardwareChanged.emit()
 
     def setHardwareTelemetryActive(self, active: bool):
         host = self._host

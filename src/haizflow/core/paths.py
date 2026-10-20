@@ -56,15 +56,28 @@ def install_root() -> Path:
         core = Path(sys.executable).absolute().parent
         if Path(sys.executable).name == "HaizFlowEngine.exe" and not runtime_overrides_allowed():
             # Optional engines may live on a different resource drive. Core
-            # explicitly supplies its provisioned app root; never infer mutable
+            # explicitly supplies its app root; never infer mutable
             # data from the immutable engine executable directory.
             value = os.getenv("HAIZFLOW_ENGINE_APP_ROOT", "")
             root = Path(value)
             if not value or not root.is_absolute() or str(root).startswith("\\\\"):
                 raise ValueError("Hãy chạy bộ xử lý từ HaizFlow, không mở EXE của gói tài nguyên trực tiếp.")
             from haizflow.update.state import Layout
+            from haizflow.update.filesystem import no_links
 
-            return Layout(root).root
+            no_links(root)
+            if (root / "update-layout.json").exists():
+                return Layout(root).root
+            # Flat legacy installs and standalone full-Core payloads have no
+            # version pointer. Keep their runtime at the same app root, without
+            # inventing update markers or writing into an external engine pack.
+            if not (root / "versions").exists():
+                for name in ("HaizFlow.exe", "HaizFlowCore.exe"):
+                    executable = root / name
+                    no_links(executable)
+                    if executable.is_file():
+                        return root.resolve()
+            raise ValueError("Thư mục HaizFlow không đầy đủ. Hãy cài lại bằng HaizFlow-Setup.exe; giữ nguyên dữ liệu dự án.")
         # Infer from the executable, never trust an inherited install-root
         # environment variable. Provisioning marker and no-reparse checks are
         # required before using the persistent root.

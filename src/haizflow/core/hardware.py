@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import ctypes
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -33,6 +34,7 @@ _WINDOWS_INFO_LOCK = threading.Lock()
 # Dynamic telemetry such as VRAM and battery status is collected without
 # PowerShell. Avoid launching a shell repeatedly while Settings is closed.
 _WINDOWS_INFO_TTL_SECONDS = 24 * 60 * 60
+_WINDOWS_INFO_RETRY_SECONDS = 60
 
 
 @dataclass(frozen=True)
@@ -285,18 +287,53 @@ def _normalize_cim_items(value) -> list[dict]:
     return []
 
 
+def _metadata_int(value) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (ValueError, TypeError, OverflowError):
+        return 0
+
+
+def _read_windows_cpu_info() -> dict:
+    """Cheap CPU identity, independent of PowerShell/WMI availability."""
+    if os.name != "nt":
+        return {}
+    values = {}
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                            r"HARDWARE\DESCRIPTION\System\CentralProcessor\0") as key:
+            for field, name in (("cpu_name", "ProcessorNameString"),
+                                ("cpu_manufacturer", "VendorIdentifier"), ("cpu_max_mhz", "~MHz")):
+                try:
+                    values[field] = winreg.QueryValueEx(key, name)[0]
+                except OSError:
+                    pass
+    except (ImportError, OSError):
+        pass
+    values["cpu_name"] = str(values.get("cpu_name") or os.environ.get("PROCESSOR_IDENTIFIER", "")).strip()
+    values["cpu_manufacturer"] = str(values.get("cpu_manufacturer") or "").strip()
+    values["cpu_max_mhz"] = _metadata_int(values.get("cpu_max_mhz"))
+    return {key: value for key, value in values.items() if value}
+
+
 def _read_windows_system_info() -> dict:
     """Read display and CPU metadata without using CUDA's static device list."""
     if os.name != "nt":
         return {}
     command = (
-        "$video = Get-CimInstance Win32_VideoController | Select-Object "
+        "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
+        "try { $video = Get-CimInstance Win32_VideoController -ErrorAction Stop | Select-Object "
         "Name,VideoProcessor,CurrentHorizontalResolution,CurrentVerticalResolution,"
-        "CurrentBitsPerPixel,DriverVersion,Availability; "
-        "$cpu = Get-CimInstance Win32_Processor | Select-Object "
-        "Name,Manufacturer,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed; "
+        "CurrentBitsPerPixel,DriverVersion,Availability } catch { $video = @() }; "
+        "try { $cpu = Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object "
+        "Name,Manufacturer,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed } catch { $cpu = @() }; "
         "[pscustomobject]@{video=$video;cpu=$cpu} | ConvertTo-Json -Depth 4 -Compress"
     )
+    environment = os.environ.copy()
+    # PowerShell 7's inherited module paths can break Windows PowerShell 5 CIM.
+    environment.pop("PSModulePath", None)
     try:
         result = subprocess.run(
             ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
@@ -307,6 +344,7 @@ def _read_windows_system_info() -> dict:
             timeout=8,
             check=False,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            env=environment,
         )
         if result.returncode != 0 or not result.stdout.strip():
             return {}
@@ -314,21 +352,23 @@ def _read_windows_system_info() -> dict:
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
         return {}
 
+    if not isinstance(payload, dict):
+        return {}
     adapters = _normalize_cim_items(payload.get("video"))
     active = next(
         (
             adapter for adapter in adapters
-            if int(adapter.get("CurrentHorizontalResolution") or 0) > 0
-            and int(adapter.get("CurrentVerticalResolution") or 0) > 0
+            if _metadata_int(adapter.get("CurrentHorizontalResolution")) > 0
+            and _metadata_int(adapter.get("CurrentVerticalResolution")) > 0
         ),
         None,
     )
     if active is None:
-        active = next((adapter for adapter in adapters if int(adapter.get("Availability") or 0) == 3), None)
+        active = next((adapter for adapter in adapters if _metadata_int(adapter.get("Availability")) == 3), None)
     cpu_items = _normalize_cim_items(payload.get("cpu"))
     cpu = cpu_items[0] if cpu_items else {}
-    width = int((active or {}).get("CurrentHorizontalResolution") or 0)
-    height = int((active or {}).get("CurrentVerticalResolution") or 0)
+    width = _metadata_int((active or {}).get("CurrentHorizontalResolution"))
+    height = _metadata_int((active or {}).get("CurrentVerticalResolution"))
     return {
         "active_display_gpu_name": str((active or {}).get("Name") or ""),
         "active_display_gpu_driver": str((active or {}).get("DriverVersion") or ""),
@@ -336,8 +376,8 @@ def _read_windows_system_info() -> dict:
         "detected_graphics": tuple(str(adapter.get("Name") or "") for adapter in adapters if adapter.get("Name")),
         "cpu_name": str(cpu.get("Name") or ""),
         "cpu_manufacturer": str(cpu.get("Manufacturer") or ""),
-        "cpu_physical_cores": int(cpu.get("NumberOfCores") or 0),
-        "cpu_max_mhz": int(cpu.get("MaxClockSpeed") or 0),
+        "cpu_physical_cores": _metadata_int(cpu.get("NumberOfCores")),
+        "cpu_max_mhz": _metadata_int(cpu.get("MaxClockSpeed")),
     }
 
 
@@ -347,24 +387,54 @@ def _windows_system_info() -> dict:
     if os.name != "nt":
         return {}
     now = time.monotonic()
+    worker = None
     with _WINDOWS_INFO_LOCK:
+        if "cpu_name" not in _WINDOWS_INFO_CACHE:
+            _WINDOWS_INFO_CACHE.update(_read_windows_cpu_info())
         cached_at = float(_WINDOWS_INFO_CACHE.get("timestamp", 0.0))
-        stale = now - cached_at >= _WINDOWS_INFO_TTL_SECONDS
-        if stale and not _WINDOWS_INFO_REFRESHING:
+        attempted_at = _WINDOWS_INFO_CACHE.get("attempted_at")
+        stale = not cached_at or now - cached_at >= _WINDOWS_INFO_TTL_SECONDS
+        retry_due = attempted_at is None or now - attempted_at >= _WINDOWS_INFO_RETRY_SECONDS
+        if stale and retry_due and not _WINDOWS_INFO_REFRESHING:
             _WINDOWS_INFO_REFRESHING = True
+            _WINDOWS_INFO_CACHE["attempted_at"] = now
 
             def refresh():
                 global _WINDOWS_INFO_REFRESHING
-                details = _read_windows_system_info()
-                with _WINDOWS_INFO_LOCK:
-                    if details:
-                        _WINDOWS_INFO_CACHE.clear()
-                        _WINDOWS_INFO_CACHE.update(details)
-                        _WINDOWS_INFO_CACHE["timestamp"] = time.monotonic()
-                    _WINDOWS_INFO_REFRESHING = False
+                details = {}
+                try:
+                    details = _read_windows_system_info()
+                except Exception:
+                    logging.getLogger(__name__).debug("Windows metadata probe failed", exc_info=True)
+                finally:
+                    with _WINDOWS_INFO_LOCK:
+                        if details:
+                            _WINDOWS_INFO_CACHE.update({key: value for key, value in details.items() if value})
+                            _WINDOWS_INFO_CACHE["timestamp"] = time.monotonic()
+                        _WINDOWS_INFO_REFRESHING = False
 
-            threading.Thread(target=refresh, name="hardware-telemetry", daemon=True).start()
-        return {key: value for key, value in _WINDOWS_INFO_CACHE.items() if key != "timestamp"}
+            try:
+                worker = threading.Thread(target=refresh, name="hardware-telemetry", daemon=True)
+            except Exception:
+                _WINDOWS_INFO_REFRESHING = False
+                logging.getLogger(__name__).debug("Could not create Windows metadata probe", exc_info=True)
+        details = {key: value for key, value in _WINDOWS_INFO_CACHE.items()
+                   if key not in {"timestamp", "attempted_at"}}
+    if worker is not None:
+        try:
+            worker.start()
+        except Exception:
+            with _WINDOWS_INFO_LOCK:
+                _WINDOWS_INFO_REFRESHING = False
+            logging.getLogger(__name__).debug("Could not start Windows metadata probe", exc_info=True)
+    return details
+
+
+def refresh_hardware_metadata(capabilities: HardwareCapabilities) -> HardwareCapabilities:
+    """Apply completed static metadata without probing CUDA or live memory."""
+    details = _windows_system_info()
+    changed = {key: value for key, value in details.items() if value and getattr(capabilities, key) != value}
+    return replace(capabilities, **changed) if changed else capabilities
 
 
 def detect_hardware_capabilities() -> HardwareCapabilities:

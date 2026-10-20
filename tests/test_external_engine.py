@@ -59,6 +59,16 @@ class _Manager:
 
 
 class ExternalEngineTests(unittest.TestCase):
+    def test_missing_scipy_error_preserves_cause_and_offers_pack_repair(self):
+        from haizflow.services.external_engine import _engine_failure_message
+
+        cause = "No module named 'scipy.linalg._linalg_pythran'"
+        message = _engine_failure_message("engine-cpu-py313", cause)
+        self.assertIn(cause, message)
+        self.assertIn("Gói tài nguyên", message)
+        self.assertIn("engine-cpu-py313", message)
+        self.assertEqual(_engine_failure_message("engine-test", "out of memory"), "out of memory")
+
     def test_rpc_request_paths_survive_a_legacy_windows_decoder(self):
         # ASCII JSON remains portable even before the child reconfigures stdin.
         with tempfile.TemporaryDirectory() as temp_dir:
