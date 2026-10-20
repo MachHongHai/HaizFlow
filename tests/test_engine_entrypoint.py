@@ -37,6 +37,15 @@ class EngineEntrypointTests(unittest.TestCase):
         self.assertIn("scipy.linalg.cython_blas", hook.hiddenimports)
         self.assertIn("scipy.linalg.cython_lapack", hook.hiddenimports)
 
+    def test_network_transport_is_explicitly_frozen_and_smoke_checked(self):
+        script = (ROOT / "scripts/build-resource-engine.ps1").read_text(encoding="utf-8")
+        for profile in ("cpu", "cuda128"):
+            self.assertIn("aiohttp", engine_main.SMOKE_MODULES[profile])
+            self.assertIn("yarl", engine_main.SMOKE_MODULES[profile])
+            self.assertIn("aiohttp==3.14.5", (ROOT / f"requirements-engine-{profile}.in").read_text())
+        self.assertIn('"aiohttp"', script)
+        self.assertIn('"yarl"', script)
+
     def test_smoke_rejects_missing_scipy_native_module_before_model_load(self):
         def imported(module):
             if module == "scipy.linalg._linalg_pythran":

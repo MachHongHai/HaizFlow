@@ -142,6 +142,8 @@ try {
       "pydub"
       "pydub.silence"
       "audioop"
+      "aiohttp"
+      "yarl"
     )) {
       $Arguments += @("--hidden-import", $Module)
     }
