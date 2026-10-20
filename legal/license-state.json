@@ -10,14 +10,14 @@
     "basis": "Explicit owner approval and request to clarify redistribution and commercial software restrictions",
     "language_precedence": "vi"
   },
-  "effective_release": "1.0.2 reviewed Windows cache-path, HY-MT2 memory and social-queue patch; publication tracked by GitHub release state",
+  "effective_release": "1.0.3 reviewed Windows CPU metadata, flat engine root and SciPy packaging patch; publication tracked by GitHub release state",
   "public_release_review": {
     "approved_by": "Codex (scoped technical packaging review, not independent legal certification)",
-    "approved_at": "2026-10-19",
-    "source_commit": "bb27f93ae3ca87b4b577ff14d96b31535056ab36 (review baseline; final release commit is bound by BUILD-INFO)",
-    "release_version": "1.0.2",
-    "owner_release_authorization": "Direct owner request to push, build and publish the next patch, with direct updates from 1.0.0. Include 1.0.1 support and preserve earlier releases/assets.",
-    "publication_condition": "Retain unchanged ThirdPartySources 1.0.0, CPU 15/CUDA 17 at their immutable 1.0.1 URLs and vision 7 at its immutable 0.1.10 URL. Verify installer, frozen Full/Delta upgrades from 1.0.0 and 1.0.1, rollback, data preservation and public download/hash checks. No new library, model, preview, font, artwork or media recipe is introduced. Keep existing license restrictions and notices. Scoped technical packaging review, not independent legal certification or an all-machine benchmark claim.",
+    "approved_at": "2026-10-20",
+    "source_commit": "f40a7e350b3a1f413bdb329e1dc25d4bd7f3b7f5 (review baseline; final release commit is bound by BUILD-INFO)",
+    "release_version": "1.0.3",
+    "owner_release_authorization": "Direct owner request to publish the runtime patch with updates from 1.0.1. Also support current stable 1.0.2 and preserve earlier releases/assets.",
+    "publication_condition": "Retain unchanged ThirdPartySources 1.0.0 and all earlier release assets. Rebuild CPU 16/CUDA 18/vision 8 with unchanged reviewed locks and pin only measured new archive sizes/hashes at immutable 1.0.3 URLs. Verify real engine smoke and app roots, installer, frozen Full/Delta upgrades from 1.0.1 and 1.0.2, rollback, data preservation and public download/part/hash checks. No new library, model, preview, font, artwork or media recipe. Keep existing license restrictions and notices. Scoped technical packaging review, not independent legal certification or an all-machine benchmark claim.",
     "clearances": {
       "owned-code-and-contributor-scope": {
         "path": "legal/reviews/application-scope-2026-10-06.md",
@@ -28,8 +28,8 @@
         "sha256": "fd3764dcb816168e9ec62737823ecf9eca79655e39999b5073779ac927cd7702"
       },
       "ffmpeg-complete-corresponding-source": {
-        "path": "legal/reviews/media-source-1.0.2.md",
-        "sha256": "4b0228503930c4d8e8acc9c72cc0680221a481fff237c470f3404dd8d0bc565f"
+        "path": "legal/reviews/media-source-1.0.3.md",
+        "sha256": "dda9e58abedf1b038c887ed6b5accfbecc291535059a1d10e0c1b7685bc63ea5"
       },
       "qt-lgpl-module-and-relinking-evidence": {
         "path": "legal/reviews/qt-replacement-2026-10-06.md",
