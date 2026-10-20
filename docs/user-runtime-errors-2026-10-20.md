@@ -49,3 +49,18 @@ the frozen engine.
 Shipping these fixes requires rebuilding Core and the affected engine packs
 (shared path code also belongs to the vision engine). No archive, catalog hash,
 published asset or resource receipt was changed by this source-only fix.
+
+## 1.0.3 release-gate isolation
+
+Two full-suite attempts exposed test-process interference: the clone QML
+subprocess exceeded its unchanged 30-second deadline, and one storage fixture
+cleanup raced a background metadata reader left by an earlier QML singleton.
+The clone module alone passed 9/9 in 4.94 seconds. The complete storage and
+clone modules together passed 68 tests plus 3 subtests, with one existing skip,
+in 27.76 seconds in a fresh process.
+
+The release gate now runs all other modules in the main test process, then
+these two complete modules in a fresh Qt process with a separate runtime.
+It still runs every collected test, keeps all assertions and the 30-second
+clone deadline, and fails the build if either process fails. This changes the
+test harness only, not product QML, cache cleanup behavior, or engine inputs.

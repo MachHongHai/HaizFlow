@@ -58,9 +58,24 @@ try {
 
   # pytest also collects the unittest suites, plus function/fixture tests that
   # unittest discovery silently omitted from previous release gates.
-  & $Python -m pytest (Join-Path $Root "tests") -q -p no:cacheprovider --basetemp (Join-Path $TestTemp "pytest")
+  # QML singletons created by earlier component tests can keep background
+  # catalog readers alive for the lifetime of the Qt process. They must not
+  # read a storage fixture while that fixture restores patched global paths,
+  # or share the clone subprocess's runtime. Run these two complete modules
+  # in a fresh process after the main suite; no test or assertion is omitted.
+  $StorageTests = Join-Path $Root "tests\test_render_export_storage.py"
+  $CloneTests = Join-Path $Root "tests\test_vieneu_clone_ui.py"
+  Write-Output "Running main application test suite."
+  & $Python -m pytest (Join-Path $Root "tests") -q -p no:cacheprovider `
+    --ignore $StorageTests --ignore $CloneTests --basetemp (Join-Path $TestTemp "pytest-main")
   if ($LASTEXITCODE -ne 0) {
     throw "Test suite failed."
+  }
+  Write-Output "Running complete storage and clone UI modules in an isolated Qt process."
+  & $Python -m pytest $StorageTests $CloneTests -q -p no:cacheprovider `
+    --basetemp (Join-Path $TestTemp "pytest-qt-storage")
+  if ($LASTEXITCODE -ne 0) {
+    throw "Isolated storage and clone UI test suite failed."
   }
 
   $QmlFiles = Get-ChildItem -LiteralPath $QmlDirectory -Filter "*.qml" -File |
