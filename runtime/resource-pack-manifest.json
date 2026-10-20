@@ -5,35 +5,35 @@
     "engine-cpu-py313": {
       "version": "16",
       "url": "https://github.com/MachHongHai/HaizFlow/releases/download/v1.0.3/engine-cpu-py313-16.zip",
-      "sha256": "185e49415efed5bc8f66e1aba910b7b09aa32425da8be24d85dc2c4e028389a0",
-      "download_size": 357883795,
-      "installed_size": 880070463
+      "sha256": "c10e923d5e31f26e7056289b781ae40a190a782a4c587cfd2594b5f9ca290b2c",
+      "download_size": 357928207,
+      "installed_size": 880156667
     },
     "engine-cuda128-py313": {
       "version": "18",
       "url": "",
-      "sha256": "ad56ac14cc00839f6d23c7814fef558c424c1fa2d25c35b8aafe4a9e4421ee3c",
-      "download_size": 3196602564,
-      "installed_size": 5098280803,
+      "sha256": "6333b041b04c98df7834b56dedfd632d96db3e07a78ed2b3eb95f3812a16506a",
+      "download_size": 3196649143,
+      "installed_size": 5098367007,
       "parts": [
         {
           "url": "https://github.com/MachHongHai/HaizFlow/releases/download/v1.0.3/engine-cuda128-py313-18.zip.001",
           "size": 1610612736,
-          "sha256": "a5326a079762fbe639b47c44550fabe24f50ef02f2272ed645dfdb92fc14a133"
+          "sha256": "b3e925453094b7d3dc73609b7af671267fe99ac36f2b043a364321bb4f09d546"
         },
         {
           "url": "https://github.com/MachHongHai/HaizFlow/releases/download/v1.0.3/engine-cuda128-py313-18.zip.002",
-          "size": 1585989828,
-          "sha256": "f33c893b0d5f70988eff42da655764e94619cb45d02f4d77107829091d47bc40"
+          "size": 1586036407,
+          "sha256": "0a5ee061cf136615dd8c6467467547526c98a3d538568567fd23b235df8621ca"
         }
       ]
     },
     "engine-vision-onnx": {
       "version": "8",
       "url": "https://github.com/MachHongHai/HaizFlow/releases/download/v1.0.3/engine-vision-onnx-8.zip",
-      "sha256": "a9638251833553daf51c2ab0eef12458afe7e0276af0b94a931a35055e546b1c",
-      "download_size": 92851154,
-      "installed_size": 233116497
+      "sha256": "0c6cb32d91dae3298ee40170650d9b3ab2c284560631dce5d8c9d6afa95357e7",
+      "download_size": 92852120,
+      "installed_size": 233117270
     }
   }
 }
