@@ -868,8 +868,8 @@ Item {
                 EditorDockGroup {
                     id: rightDock
                     SplitView.fillHeight: true
-                    SplitView.preferredWidth: root.width < 1500 ? 296
-                        : Math.max(300, Math.min(480,
+                    SplitView.preferredWidth: root.width < 1500 ? (root.selectedStageIndex === 2 ? 340 : 296)
+                        : Math.max(root.selectedStageIndex === 2 ? 380 : 300, Math.min(480,
                             Number(AppController.manualEditorLayout.inspectorWidth || 340)))
                     SplitView.minimumWidth: 260
                     SplitView.maximumWidth: 480
@@ -1073,6 +1073,7 @@ Item {
         toolModel: root.toolModel
         subtitleSegments: root.segments
         selectedSubtitleIndex: root.selectedSubtitleIndex
+        playheadSeconds: comparePreview.positionSeconds
         selectedEditorClip: root.selectedEditorClip
         onSubtitleSelected: function(index) { root.selectSubtitle(index, true); }
         onSubtitleDialogSelectionRequested: function(index) {

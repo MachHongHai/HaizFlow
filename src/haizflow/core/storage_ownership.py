@@ -49,10 +49,27 @@ def safe_tree(root) -> Path:
     """Preflight a recursive removal without following links or nested projects."""
     owner = Path(os.path.abspath(root))
     owned_path(owner, owner, allow_root=True)
-    for directory, folders, files in os.walk(owner, followlinks=False):
-        for name in (*folders, *files):
-            child = Path(directory) / name
-            owned_path(child, owner)
-            if name == ".haizflow-project.json" and Path(directory) != owner:
-                raise ValueError("Cleanup blocked: another project is nested inside this storage root.")
+    pending = [owner]
+    while pending:
+        directory = pending.pop()
+        if directory != owner:
+            # Check directory ancestry again immediately before descending;
+            # a queued directory must not have become a junction meanwhile.
+            owned_path(directory, owner)
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                # The parent has already been checked. Re-resolving every
+                # ancestor for every file made long-project cleanup O(N*depth)
+                # in filesystem calls. Inspect each entry once, without ever
+                # following a link or Windows junction.
+                info = entry.stat(follow_symlinks=False)
+                if stat.S_ISLNK(info.st_mode) or bool(
+                    getattr(info, "st_file_attributes", 0)
+                    & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 1024)
+                ):
+                    raise ValueError("Managed storage contains a symlink or Windows reparse point.")
+                if entry.name == ".haizflow-project.json" and directory != owner:
+                    raise ValueError("Cleanup blocked: another project is nested inside this storage root.")
+                if stat.S_ISDIR(info.st_mode):
+                    pending.append(Path(entry.path))
     return owner

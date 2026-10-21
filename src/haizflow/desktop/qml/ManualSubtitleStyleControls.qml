@@ -6,6 +6,7 @@ import "."
 
 ColumnLayout {
     id: root
+    objectName: "manualSubtitleStyleControls"
 
     property bool editable: true
     signal styleCommitted()
@@ -24,4 +25,5 @@ ColumnLayout {
                 root.styleCommitted();
         }
     }
+
 }

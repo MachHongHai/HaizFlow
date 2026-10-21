@@ -634,7 +634,7 @@ class ChannelImportCoordinator(QObject):
             ])
             self._notify(self.stateChanged, self.statusChanged, self.countsChanged, self.progressChanged)
 
-    def cancel_project(self, project_key: str) -> bool:
+    def cancel_project(self, project_key: str, *, timeout_seconds: float = 10.0) -> bool:
         self._prune_finished_runners()
         session_ids = [
             session_id
@@ -646,9 +646,13 @@ class ChannelImportCoordinator(QObject):
             if event:
                 event.set()
         project_threads = [self._runner_threads.get(session_id) for session_id in session_ids]
+        deadline = time.monotonic() + max(0.0, timeout_seconds)
         for thread in project_threads:
             if thread and thread.is_alive():
-                thread.join(timeout=10)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                thread.join(timeout=remaining)
         if any(thread and thread.is_alive() for thread in project_threads):
             return False
         for session_id in session_ids:

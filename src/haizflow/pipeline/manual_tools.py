@@ -18,6 +18,7 @@ from haizflow.core.storage_ownership import owned_path
 from haizflow.pipeline.timing_contract import TIMING_SOURCE
 from haizflow.pipeline.tts import voice_selection_identity
 from haizflow.services import editor_documents, manual_artifacts, result_segments, video_store
+from haizflow.services.subtitle_identity import voice_source_indices
 from haizflow.services.video_export import legacy_render_owned, preset_settings
 
 # Cache-contract versions are intentionally available without importing the
@@ -746,17 +747,16 @@ def _audible_manual_voice_sources(video, document, *, range_ms=None) -> dict[str
     # inspect the published manifest/cache when an asset is actually missing.
     published = published_voice_record(video, validate=True)
     published_segments = published_voice_source_segments(video, published, validate=True) if published else []
-    published_by_id = {
-        str(item.get("segment_id") or item.get("id") or ""): index
-        for index, item in enumerate(published_segments, start=1)
-    }
+    source_indices = voice_source_indices(video.video_id,
+        [{"segment_id": clip.segment_id, "text": clip.name, "start": clip.start_ms / 1000,
+          "end": (clip.start_ms + clip.duration_ms) / 1000} for clip in subtitles], published_segments)
     published_parts = Path(published["resolved_outputs"]["manifest"]).parent / "parts" if published else None
     signatures = None
     for index, subtitle in unresolved:
         source = ""
         dependency = ""
         if published_parts is not None:
-            source_index = published_by_id.get(subtitle.segment_id, 0)
+            source_index = source_indices.get(index, -1) + 1
             candidate = published_parts / f"voice_{source_index:04d}.mp3"
             if source_index and manual_artifacts.file_state(candidate):
                 source = str(candidate)
@@ -1895,19 +1895,14 @@ def _run_voice(video, reporter) -> None:
             source_segments = published_voice_source_segments(video, published, validate=False)
             source_signatures = _voice_clip_signatures(video, source_segments)
             published_signatures = _voice_manifest_payload(published).get("clips", [])
-            source_indices = {
-                str(item.get("segment_id") or item.get("id") or ""): index
-                for index, item in enumerate(source_segments)
-                if item.get("segment_id") or item.get("id")
-            }
+            source_indices = voice_source_indices(video.video_id, segments, source_segments)
             for index, clip_signature in enumerate(clip_signatures, 1):
                 clip = manual_artifacts.resolve(video.video_id, "tts_clip", clip_signature)
                 if not clip:
                     # Reordering subtitles must not regenerate all multi-
                     # speaker speech. Reuse only a clip whose original inputs
                     # still match the currently requested configuration.
-                    source_index = source_indices.get(str(segments[index - 1].get("segment_id")
-                                                         or segments[index - 1].get("id") or ""))
+                    source_index = source_indices.get(index - 1)
                     if (source_index is not None and source_index < len(published_signatures)
                             and source_signatures[source_index] == published_signatures[source_index]
                             and preprocess_text_for_tts(str(source_segments[source_index].get("text") or ""))

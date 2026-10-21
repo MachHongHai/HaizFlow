@@ -220,6 +220,7 @@ class HaizFlowController(QObject):
     apiKeyGuideRequested = Signal(str)
     geminiKeyChanged = Signal()
     appConfirmationRequested = Signal(str, str)
+    projectDeletionDialogStateChanged = Signal(str)
     editorPreviewChanged = Signal()
     previewMediaChanged = Signal()
     manualToolStateChanged = Signal(str)
@@ -569,6 +570,9 @@ class HaizFlowController(QObject):
         self._audio_preview.drain_events()
 
     def _drain_background_events(self) -> None:
+        commands = getattr(self, "_project_commands", None)
+        if commands is not None:
+            commands.drain_deletion_events()
         self._drain_media_import_events()
         self._drain_tiktok_publish_events()
         self._drain_audio_preview_events()
@@ -639,6 +643,7 @@ class HaizFlowController(QObject):
 
     def _run_startup_maintenance(self) -> None:
         try:
+            project_store.recover_project_deletions()
             migrated = video_store.migrate_legacy_project_data()
             if self._background_shutdown_event.is_set():
                 return
@@ -4522,6 +4527,9 @@ class HaizFlowController(QObject):
     @Slot(str, result=bool)
     @Slot(str, bool, result=bool)
     def runManualTool(self, tool_id, force_rerun=False):
+        commands = getattr(self, "_project_commands", None)
+        if commands is not None and commands.is_deleting(str(self._selected_project_key or "")):
+            return False
         if getattr(getattr(self, "_resource_packs", None), "storageMoving", False):
             self.appAlertRequested.emit("Đang chuyển gói tài nguyên", "Hãy chờ chuyển vị trí hoàn tất trước khi xử lý.", "info")
             return False
@@ -5341,6 +5349,9 @@ class HaizFlowController(QObject):
         self.appAlertRequested.emit("Không phát được âm thanh xem trước", detail, "warning")
 
     def _editor_video(self):
+        commands = getattr(self, "_project_commands", None)
+        if commands is not None and commands.is_deleting(str(self._selected_project_key or "")):
+            return None
         video = self._selected_video()
         if not video or video.project_type != "manual":
             return None
@@ -6549,6 +6560,10 @@ class HaizFlowController(QObject):
 
     @Slot(str, str, int, str, result=bool)
     def saveManualSubtitleText(self, segment_id, text, expected_revision, request_id):
+        commands = getattr(self, "_project_commands", None)
+        if commands is not None and commands.is_deleting(str(self._selected_project_key or "")):
+            self.manualSubtitleSaveFailed.emit(segment_id, request_id, "Dự án đang được xóa.")
+            return False
         from haizflow.pipeline.manual_tools import ensure_narrator_anchor, published_voice_record
         video = video_store.get_video(self._selected_video_id)
         had_voice = bool(video and published_voice_record(video, validate=False))
@@ -6679,6 +6694,10 @@ class HaizFlowController(QObject):
         )
 
     def _select_project_summary(self, project) -> bool:
+        commands = getattr(self, "_project_commands", None)
+        if commands is not None and commands.is_deleting(project["key"]):
+            self.appAlertRequested.emit("Đang xóa dự án", "Chờ dọn tệp hoàn tất.", "info")
+            return False
         if project["project_type"] == "publish" and not self._tiktok_publisher.can_switch_project(project["key"]):
             self.appAlertRequested.emit(
                 "Social publishing",

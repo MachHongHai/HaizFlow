@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import shutil
 import stat
 import tempfile
@@ -25,6 +26,7 @@ PROJECT_SCHEMA_VERSION = 4
 PROJECT_METADATA_TYPE = "haizflow.project"
 
 _INDEX_LOCK = threading.RLock()
+_DELETION_LOCK = threading.RLock()
 _WINDOWS_INVALID_NAME_CHARACTERS = frozenset('<>:"/\\|?*')
 _WINDOWS_RESERVED_NAMES = {
     "CON",
@@ -899,7 +901,9 @@ def save_batch_settings(key: str, settings: dict[str, Any]) -> None:
         _write_project_record(records, record)
 
 
-def _validated_deletion_record(records: list[dict[str, Any]], key: str) -> tuple[dict[str, Any], str] | None:
+def _validated_deletion_record(
+    records: list[dict[str, Any]], key: str, *, inspect_tree: bool = True,
+) -> tuple[dict[str, Any], str] | None:
     record = next((item for item in records if item.get("key") == key), None)
     if not record:
         return None
@@ -920,7 +924,8 @@ def _validated_deletion_record(records: list[dict[str, Any]], key: str) -> tuple
         return record, root
 
     owned_path(root, root, allow_root=True)
-    safe_tree(root)
+    if inspect_tree:
+        safe_tree(root)
     from haizflow.services import manual_artifacts
 
     manual_artifacts.assert_root_idle(root)
@@ -966,17 +971,123 @@ def delete_project(project_name: str, project_directory: str, project_type: str)
     return delete_project_by_key(key)
 
 
-def delete_project_by_key(project_key_value: str) -> bool:
-    """Remove exactly one project and all data it owns."""
+def _deletion_identity(path: str) -> list:
+    info = os.stat(path, follow_symlinks=False)
+    return [info.st_dev, info.st_ino, getattr(info, "st_birthtime_ns", None)]
+
+
+def _deletion_journal_dir() -> Path:
+    return Path(PROJECT_INDEX_PATH).parent / "project-deletions"
+
+
+def _purge_detached_project(receipt: dict, journal: Path) -> None:
+    """Never hold catalog/pin locks while visiting or unlinking media files."""
+    root = str(receipt["retired_root"])
+    original = str(receipt["original_root"])
+    expected_name = f".haizflow-project-delete-{journal.stem}"
+    if (not re.fullmatch(r"[0-9a-f]{32}", journal.stem)
+            or Path(root).name != expected_name or Path(root).parent != Path(original).parent):
+        raise ValueError("Invalid project deletion receipt.")
+    _validate_project_root(original, str(Path(original).parent))
+    _validate_project_root(root, str(Path(original).parent))
+    owned_path(root, root, allow_root=True)
+    if os.path.lexists(root):
+        if _deletion_identity(root) != receipt["identity"]:
+            raise ValueError("Project deletion folder identity changed; cleanup blocked.")
+        _remove_project_root(root)
+    journal.unlink(missing_ok=True)
+
+
+def recover_project_deletions() -> None:
+    """Resume only exact journalled deletions, or roll back an uncommitted move."""
+    with _DELETION_LOCK:
+        _recover_project_deletions()
+
+
+def _recover_project_deletions() -> None:
+    for journal in _deletion_journal_dir().glob("*.json"):
+        try:
+            receipt = _read_json(str(journal))
+            key, original, retired = receipt["key"], receipt["original_root"], receipt["retired_root"]
+            if not re.fullmatch(r"[0-9a-f]{32}", journal.stem):
+                raise ValueError("Invalid project deletion journal.")
+            if (Path(retired).name != f".haizflow-project-delete-{journal.stem}"
+                    or Path(retired).parent != Path(original).parent):
+                raise ValueError("Invalid project deletion paths.")
+            with managed_storage_guard, _index_guard():
+                registered = next((row for row in _load_index() if row.get("key") == key), None)
+                if registered:
+                    if _record_root(registered) != original:
+                        raise ValueError("Project ownership changed during deletion recovery.")
+                    _validate_project_root(retired, str(Path(original).parent))
+                    owned_path(retired, retired, allow_root=True)
+                    if os.path.lexists(retired):
+                        if os.path.lexists(original) or _deletion_identity(retired) != receipt["identity"]:
+                            raise ValueError("Cannot safely restore interrupted project deletion.")
+                        os.replace(retired, original)
+                    journal.unlink(missing_ok=True)
+                    continue
+            _purge_detached_project(receipt, journal)
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+            logging.getLogger(__name__).exception("Pending project cleanup retained for retry: %s", journal)
+
+
+def delete_project_by_key(project_key_value: str, *, on_detached=None) -> bool:
+    """Atomically detach one owned project, then purge it outside shared locks.
+
+    The write-ahead receipt makes both phases recoverable after app shutdown:
+    an uncommitted move is restored; a committed deletion is finished later.
+    """
+    with _DELETION_LOCK:
+        return _delete_project_by_key(project_key_value, on_detached=on_detached)
+
+
+def _delete_project_by_key(project_key_value: str, *, on_detached=None) -> bool:
     key = str(project_key_value or "").strip()
+    journal = None
+    receipt = None
     with managed_storage_guard, _index_guard():
         records = _load_index()
-        validated = _validated_deletion_record(records, key)
+        validated = _validated_deletion_record(records, key, inspect_tree=False)
         if not validated:
             return False
         _record, root = validated
-
         if os.path.isdir(root):
-            _remove_project_root(root)
-        _save_index([item for item in records if item.get("key") != key])
-        return True
+            token = uuid.uuid4().hex
+            retired = str(Path(root).with_name(f".haizflow-project-delete-{token}"))
+            owned_path(retired, str(Path(root).parent))
+            journal = _deletion_journal_dir() / f"{token}.json"
+            receipt = {"key": key, "original_root": root, "retired_root": retired,
+                       "identity": _deletion_identity(root)}
+            _write_json_atomic(str(journal), receipt)
+            try:
+                os.replace(root, retired)
+            except OSError:
+                journal.unlink(missing_ok=True)
+                raise
+        else:
+            _save_index([item for item in records if item.get("key") != key])
+    if receipt is not None:
+        try:
+            # Renaming a directory never follows its child links. Validate the
+            # complete tree here, before deletion, without freezing the GUI's
+            # index reads or other projects' pin acquisition.
+            safe_tree(receipt["retired_root"])
+            with managed_storage_guard, _index_guard():
+                records = _load_index()
+                current = next((row for row in records if row.get("key") == key), None)
+                if not current or _record_root(current) != root or os.path.lexists(root):
+                    raise RuntimeError("Project storage changed while preparing deletion.")
+                _save_index([item for item in records if item.get("key") != key])
+        except Exception:
+            with managed_storage_guard, _index_guard():
+                if (not os.path.lexists(root) and os.path.lexists(receipt["retired_root"])
+                        and _deletion_identity(receipt["retired_root"]) == receipt["identity"]):
+                    os.replace(receipt["retired_root"], root)
+                    journal.unlink(missing_ok=True)
+            raise
+    if on_detached is not None:
+        on_detached()
+    if receipt is not None:
+        _purge_detached_project(receipt, journal)
+    return True

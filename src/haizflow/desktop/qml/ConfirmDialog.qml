@@ -7,7 +7,11 @@ AppDialog {
     property string message: ""
     property string confirmText: qsTr("Xác nhận")
     property string confirmTone: "primary"
+    property bool closeOnConfirm: true
+    property bool busy: false
     signal confirmed()
+
+    dismissible: !busy
 
     preferredWidth: 440
     maximumWidth: 520
@@ -24,16 +28,24 @@ AppDialog {
 
     footerActions: [
         StudioButton {
+            objectName: "confirmationCancelButton"
             text: qsTr("Hủy")
             variant: "ghost"
+            enabled: !root.busy
             onClicked: root.reject()
         },
         StudioButton {
-            text: root.confirmText
+            objectName: "confirmationConfirmButton"
+            text: root.busy ? qsTr("Đang xóa…") : root.confirmText
             variant: root.confirmTone
+            enabled: !root.busy
             onClicked: {
+                const shouldClose = root.closeOnConfirm;
+                if (!shouldClose)
+                    root.busy = true;
                 root.confirmed()
-                root.accept()
+                if (shouldClose)
+                    root.accept()
             }
         }
     ]

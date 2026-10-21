@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import itertools
 import json
 import logging
 import os
@@ -150,6 +151,36 @@ class EditorPreviewController:
         return {}
 
     @staticmethod
+    def _crop_cache_payload(crop: dict) -> dict:
+        """A JSON round trip must not turn unchanged pixels into a new key.
+
+        Pydantic's default crop edges used integer zeros, but loading those
+        same defaults from disk produces float zeros. Preserve the original
+        integer spelling for whole edges without rounding fractional edits.
+        """
+        return {
+            key: int(value) if isinstance(value, float) and value.is_integer() else value
+            for key, value in crop.items()
+        }
+
+    @staticmethod
+    def _crop_cache_variants(payload: dict):
+        """Read pre-fix keys too; only numeric spelling may differ.
+
+        At most four float-typed edges can have int/float spellings. Never
+        relax source identity, geometry, timing or the encoding contract.
+        """
+        crop = payload["crop"]
+        keys = [key for key in ("left_percent", "right_percent", "top_percent", "bottom_percent")
+                if key in crop and isinstance(crop[key], (int, float))
+                and not isinstance(crop[key], bool) and float(crop[key]).is_integer()]
+        for floats in itertools.product((False, True), repeat=len(keys)):
+            variant = dict(crop)
+            variant.update({key: float(crop[key]) if floating else int(crop[key])
+                            for key, floating in zip(keys, floats)})
+            yield {**payload, "crop": variant}
+
+    @staticmethod
     def _file_identity(path_value: object) -> dict:
         """Return a small cache fingerprint without reading large media files."""
         raw_path = str(path_value or "").strip()
@@ -261,7 +292,7 @@ class EditorPreviewController:
                 for item in settings["segments"]
             ],
             "subtitle_style": settings["subtitle_style"],
-            "crop": settings["crop"],
+            "crop": EditorPreviewController._crop_cache_payload(settings["crop"]),
             "output_format": settings["output_format"],
             "subtitle_layout_override": settings["subtitle_layout_override"],
             "remove_original_subtitles": removes_source_text,
@@ -285,7 +316,7 @@ class EditorPreviewController:
             "video_id": settings["video_id"],
             "source_identity": settings["source_identity"],
             "editor_sequence": settings.get("editor_sequence", {}),
-            "crop": settings["crop"],
+            "crop": EditorPreviewController._crop_cache_payload(settings["crop"]),
             "output_format": settings["output_format"],
             "remove_original_subtitles": removes_source_text,
             "removal_mode": settings["removal_mode"] if removes_source_text else "keep",
@@ -380,7 +411,7 @@ class EditorPreviewController:
         return windows
 
     @classmethod
-    def _legacy_primary_ocr_fingerprint(cls, settings: dict) -> str:
+    def _legacy_primary_ocr_fingerprint(cls, settings: dict, *, crop: dict | None = None) -> str:
         """Match the pre-layer cache only for an unchanged full-source OCR box."""
         if not settings.get("independent_manual_preview") or not settings.get("remove_original_subtitles"):
             return ""
@@ -414,39 +445,58 @@ class EditorPreviewController:
         except (KeyError, TypeError, ValueError):
             return ""
         legacy = cls._base_visual_cache_payload({**settings, "ocr_region": legacy_region})
+        if crop is not None:
+            legacy["crop"] = crop
         return hashlib.sha256(json.dumps(legacy, ensure_ascii=False, sort_keys=True,
                                         separators=(",", ":")).encode("utf-8")).hexdigest()
 
+    @classmethod
+    def _manual_base_cache_candidates(cls, fingerprint: str, settings: dict | None):
+        """The normal hit is O(1); enumerate old spellings only on a miss."""
+        seen = {fingerprint[:20]}
+        yield fingerprint[:20], "exact"
+        if settings:
+            payload = cls._base_visual_cache_payload(settings)
+            for variant in cls._crop_cache_variants(payload):
+                key = hashlib.sha256(json.dumps(variant, ensure_ascii=False, sort_keys=True,
+                                               separators=(",", ":")).encode("utf-8")).hexdigest()[:20]
+                if key not in seen:
+                    seen.add(key)
+                    yield key, "numeric_crop"
+                legacy = cls._legacy_primary_ocr_fingerprint(settings, crop=variant["crop"])
+                if legacy and legacy[:20] not in seen:
+                    seen.add(legacy[:20])
+                    yield legacy[:20], "legacy_primary_ocr"
+
     def _restore_manual_disk_cache(self, preview_dir: Path, fingerprint: str, settings: dict | None = None) -> None:
-        """Hydrate an exact completed base without FFprobe, encoding or AI work."""
+        """Hydrate a completed base without FFprobe, encoding or AI work."""
         if fingerprint in self._completed_requests:
             return
-        output = preview_dir / f"base-{fingerprint[:20]}" / "preview.mp4"
-        visual_signature = fingerprint[:20]
-        if not output.is_file() and settings:
-            legacy = self._legacy_primary_ocr_fingerprint(settings)
-            if legacy:
-                output = preview_dir / f"base-{legacy[:20]}" / "preview.mp4"
-                visual_signature = legacy[:20]
-        try:
-            marker = json.loads(output.with_name("preview.complete.json").read_text(encoding="utf-8"))
-            duration = float(marker.get("duration", 0))
-            identity = self._file_identity(str(output))
-            if (int(marker.get("version", 0)) != 1 or not 0 < duration < float("inf")
-                    or int(marker.get("size", -1)) != identity.get("size")
-                    or not output.is_file() or int(identity.get("size", 0)) <= 0):
-                return
-            if settings and visual_signature != fingerprint[:20]:
-                expected = self._contiguous_source_window(settings.get("editor_sequence") or {})
-                if expected is None or duration < expected[1] - 0.25:
-                    return
-        except (OSError, TypeError, ValueError, AttributeError):
+        for visual_signature, compatibility in self._manual_base_cache_candidates(fingerprint, settings):
+            output = preview_dir / f"base-{visual_signature}" / "preview.mp4"
+            try:
+                marker = json.loads(output.with_name("preview.complete.json").read_text(encoding="utf-8"))
+                duration = float(marker.get("duration", 0))
+                identity = self._file_identity(str(output))
+                if (int(marker.get("version", 0)) != 1 or not 0 < duration < float("inf")
+                        or int(marker.get("size", -1)) != identity.get("size")
+                        or not output.is_file() or int(identity.get("size", 0)) <= 0):
+                    continue
+                if settings and compatibility == "legacy_primary_ocr":
+                    expected = self._contiguous_source_window(settings.get("editor_sequence") or {})
+                    if expected is None or duration < expected[1] - 0.25:
+                        continue
+            except (OSError, TypeError, ValueError, AttributeError):
+                continue
+            break
+        else:
             return
         path = str(output.resolve())
         self._completed_requests[fingerprint] = (path, "", 0, duration, identity, visual_signature)
         self._completed_base_sources[fingerprint] = (path, identity)
         if visual_signature != fingerprint[:20]:
-            logging.getLogger(__name__).info("preview legacy_primary_ocr_cache_reused duration=%.3f", duration)
+            logging.getLogger(__name__).info("preview %s_cache_reused video=%s duration=%.3f",
+                                             compatibility, (settings or {}).get("video_id", ""), duration)
         while len(self._completed_requests) > 12:
             evicted = next(iter(self._completed_requests))
             self._completed_requests.pop(evicted)
@@ -494,7 +544,7 @@ class EditorPreviewController:
             "source_identity": self._file_identity(source_path),
             "segments": segments,
             "subtitle_style": self._model_dict(getattr(video, "subtitle_style", None)),
-            "crop": self._model_dict(getattr(video, "crop", None)),
+            "crop": self._crop_cache_payload(self._model_dict(getattr(video, "crop", None))),
             "output_format": str(getattr(video, "output_format", "keep_ratio") or "keep_ratio"),
             "subtitle_layout_override": bool(getattr(video, "subtitle_layout_override", False)),
             "remove_original_subtitles": bool(getattr(video, "remove_original_subtitles", True)
@@ -1117,6 +1167,21 @@ class EditorPreviewController:
             signature = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"))
                                        .encode("utf-8")).hexdigest()[:20]
             folder = directory / f"mask-chunk-{signature}"
+            if not self._preview_cache_is_complete(folder / "preview.mp4", folder / "preview.complete.json", duration):
+                # A stopped first preview may have completed only some chunks
+                # before the crop's defaults were reloaded as floats. Keep
+                # those exact pictures too; never generate them a second time.
+                for variant in self._crop_cache_variants(payload):
+                    old_signature = hashlib.sha256(json.dumps(variant, sort_keys=True, separators=(",", ":"))
+                                                   .encode("utf-8")).hexdigest()[:20]
+                    if old_signature == signature:
+                        continue
+                    old_folder = directory / f"mask-chunk-{old_signature}"
+                    if self._preview_cache_is_complete(
+                        old_folder / "preview.mp4", old_folder / "preview.complete.json", duration,
+                    ):
+                        folder = old_folder
+                        break
             folder.mkdir(parents=True, exist_ok=True)
             specs.append((start, duration, folder / "preview.mp4", folder / "preview.complete.json", payload))
         missing = [spec for spec in specs if not self._preview_cache_is_complete(spec[2], spec[3], spec[1])]

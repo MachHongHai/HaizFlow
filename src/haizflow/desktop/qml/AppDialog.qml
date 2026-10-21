@@ -12,6 +12,7 @@ Dialog {
     property int maximumWidth: 760
     property int maximumHeight: 720
     property int bodySpacing: Theme.space16
+    property bool dismissible: true
     readonly property bool hasFooterActions: actionArea.children.length > 0
     readonly property int headerHeight: subtitle.length > 0 ? 64 : 56
     readonly property int footerHeight: hasFooterActions ? 60 : 0
@@ -31,7 +32,7 @@ Dialog {
     height: preferredHeight > 0
         ? Math.min(maximumHeight, preferredHeight, parent ? parent.height - 48 : preferredHeight)
         : implicitHeight
-    closePolicy: Popup.CloseOnEscape
+    closePolicy: dismissible ? Popup.CloseOnEscape : Popup.NoAutoClose
     parent: Overlay.overlay
     x: parent ? Math.round((parent.width - width) / 2) : 0
     y: parent ? Math.round((parent.height - height) / 2) : 0
@@ -91,6 +92,7 @@ Dialog {
                 controlSize: 32
                 glyph: IconCatalog.glyph("close")
                 toolTipText: qsTr("Đóng")
+                enabled: root.dismissible
                 onClicked: root.close()
             }
         }

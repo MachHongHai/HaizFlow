@@ -24,6 +24,7 @@ from haizflow.schemas.editor import (
 )
 from haizflow.schemas.video import SubtitleStyle
 from haizflow.services import manual_artifacts, video_store
+from haizflow.services.subtitle_identity import voice_source_indices
 from haizflow.utils.atomic_file import atomic_json
 from haizflow.utils.ffmpeg import get_video_duration
 
@@ -468,11 +469,6 @@ def _reconcile_media_assets(
         (subtitle_segments if subtitle_segments is not None else _legacy_segments(video))
         if source_segments and clip_outputs else []
     )
-    current_by_id = {
-        str(item.get("segment_id") or item.get("id") or ""): item
-        for item in current_segments
-        if str(item.get("segment_id") or item.get("id") or "")
-    }
     voice_by_segment = {
         clip.segment_id: clip
         for clip in changed.clips
@@ -486,22 +482,27 @@ def _reconcile_media_assets(
         current_segments,
         key=lambda item: (float(item.get("start") or 0), float(item.get("end") or 0)),
     )
+    current_by_order = [dict(item) for item in current_by_order]
+    for index, current in enumerate(current_by_order):
+        if not (current.get("segment_id") or current.get("id")) and index < len(subtitle_clips):
+            if _normalized_text(current.get("text")) == _normalized_text(subtitle_clips[index].name):
+                current["segment_id"] = subtitle_clips[index].segment_id
+    source_indices = voice_source_indices(video.video_id, current_by_order, source_segments)
+    subtitle_by_id = {clip.segment_id: clip for clip in subtitle_clips}
     matched_voice_segments: set[str] = set()
-    for index, source in enumerate(source_segments):
+    for current_index, index in source_indices.items():
         if index >= len(clip_outputs):
-            break
-        source_id = str(source.get("segment_id") or source.get("id") or "")
-        current = current_by_id.get(source_id)
-        if current is None and index < len(current_by_order):
-            current = current_by_order[index]
-        if current is None or _normalized_text(current.get("text")) != _normalized_text(source.get("text")):
             continue
-        current_id = str(current.get("segment_id") or current.get("id") or source_id)
-        if not current_id and index < len(subtitle_clips):
-            subtitle_clip = subtitle_clips[index]
-            if _normalized_text(subtitle_clip.name) == _normalized_text(source.get("text")):
-                current_id = subtitle_clip.segment_id
+        current = current_by_order[current_index]
+        current_id = str(current.get("segment_id") or current.get("id") or "")
         clip = voice_by_segment.get(current_id)
+        subtitle = subtitle_by_id.get(current_id)
+        if (subtitle is not None
+                and _normalized_text(subtitle.name) != _normalized_text(source_segments[index].get("text"))):
+            # Editor commands publish subtitles asynchronously. An older
+            # artifact must not re-enable a just-merged/edited timeline clip
+            # during the small window before that publication completes.
+            continue
         audio_path = str(clip_outputs[index] or "")
         if (
             clip is None

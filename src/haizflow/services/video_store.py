@@ -1337,6 +1337,15 @@ def delete_video(video_id: str, attempts: int = 8, delay_seconds: float = 0.35) 
         return True
 
 
+def forget_deleted_project_videos(video_ids) -> None:
+    """Drop catalog observations after the project root was removed once."""
+    for video_id in video_ids:
+        with _video_lock(video_id):
+            _VIDEO_DIR_CACHE.pop(video_id, None)
+            _VIDEO_METADATA_CACHE.pop(video_id, None)
+            _mark_metadata_changed(video_id)
+
+
 def cleanup_batch_project_orphans(project_key_value: str) -> list[str]:
     """Remove app-owned batch workspaces/exports that no video references.
 

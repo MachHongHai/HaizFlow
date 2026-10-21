@@ -433,7 +433,7 @@ FloatingToolDialog {
         if (!segment)
             return;
         const index = segments.indexOf(segment);
-        if (index >= 0 && index !== selectedIndex) {
+        if (index >= 0 && index !== selectedIndex && !editorWorkspace.textEditing) {
             commitPendingText();
             selectedIndex = index;
             loadSelectedText();

@@ -25,6 +25,7 @@ ColumnLayout {
     property bool canCommit: false
     property string primaryText: ""
     property alias videoOutput: editorPreview.videoOutput
+    readonly property bool textEditing: editorInspector.textEditing
 
     signal playbackToggled()
     signal scrubStarted(real position)
@@ -91,8 +92,8 @@ ColumnLayout {
             SubtitleEditorPreview {
                 id: editorPreview
                 SplitView.fillWidth: true
-                SplitView.preferredWidth: root.width * 0.78
-                SplitView.minimumWidth: 520
+                SplitView.preferredWidth: root.width * 0.66
+                SplitView.minimumWidth: 380
                 SplitView.fillHeight: true
                 thumbnailSource: root.thumbnailSource
                 previewReady: root.previewReady
@@ -112,16 +113,19 @@ ColumnLayout {
 
             SubtitleEditorInspector {
                 id: editorInspector
-                SplitView.preferredWidth: Math.max(280, Math.min(360, root.width * 0.22))
-                SplitView.minimumWidth: 280
-                SplitView.maximumWidth: 380
+                SplitView.preferredWidth: Math.max(320, Math.min(460, root.width * 0.34))
+                SplitView.minimumWidth: 300
+                SplitView.maximumWidth: 560
                 SplitView.fillHeight: true
                 segment: root.selectedSegment
+                segments: root.segments
                 selectedIndex: root.selectedIndex
+                position: root.position
                 segmentCount: root.segments.length
                 onPreviousRequested: root.previousRequested()
                 onNextRequested: root.nextRequested()
                 onTextCommitted: function(value) { root.textCommitted(value) }
+                onSegmentSelected: index => root.segmentSelected(index)
             }
         }
 

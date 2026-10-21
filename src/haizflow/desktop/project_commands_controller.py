@@ -6,8 +6,11 @@ import json
 import os
 import shutil
 import tempfile
+import threading
+import time
 from collections import Counter
 from pathlib import Path
+from queue import Empty, Queue
 
 from haizflow.core.hardware import runtime_profile
 from haizflow.desktop.localization import QFileDialog, QMessageBox, native_media_dialog_directory
@@ -107,7 +110,7 @@ class ProjectCommandsController:
             return False
         if importer:
             importer.cancel()
-            if not importer.shutdown(timeout_seconds=1.0):
+            if not importer.shutdown(timeout_seconds=0.0):
                 return False
             importer.begin("single")
         if registry is not None:
@@ -129,6 +132,139 @@ class ProjectCommandsController:
     def __init__(self, host, *, create_video=None):
         self._host = host
         self._create_video = create_video or create_desktop_video
+        self._deletion_events = Queue()
+        self._deletions: dict[str, threading.Thread] = {}
+        self._detached_deletions: set[str] = set()
+
+    def is_deleting(self, project_key: str) -> bool:
+        return project_key in self._deletions
+
+    def _deletion_dialog_state(self, state: str) -> None:
+        signal = getattr(self._host, "projectDeletionDialogStateChanged", None)
+        if signal is not None:
+            signal.emit(state)
+
+    def _project_videos_for_delete(self, project: dict) -> list:
+        if isinstance(project.get("videos"), list):
+            return list(project["videos"])
+        catalog = getattr(self._host, "_catalog_videos", None)
+        videos = list(catalog.values()) if isinstance(catalog, dict) else video_store.list_videos()
+        return [video for video in videos
+                if video.project_directory and self._host._video_project_key(video) == project["key"]]
+
+    def _delete_project_files(self, project: dict, videos: list, *, background: bool) -> None:
+        key = project["key"]
+        # Modern videos and batch exports are already below the owned root.
+        # Remove that tree once, not once per video plus once per project.
+        record = project_store.get_project(key)
+        root = Path(record["project_root"]).resolve() if record and record.get("project_root") else None
+        external = []
+        if root is not None:
+            for video in videos:
+                directory = Path(video_store.get_video_dir(video.video_id)).resolve()
+                if not directory.is_relative_to(root):
+                    external.append(video)
+        if external or not background:
+            project_store.validate_project_deletion_by_key(key)
+        for video in external:
+            video_store.delete_video(video.video_id)
+        if background:
+            detached = False
+
+            def committed():
+                nonlocal detached
+                detached = True
+                self._deletion_events.put(("detached", project, videos, ""))
+
+            for attempt in range(4):
+                try:
+                    project_store.delete_project_by_key(key, on_detached=committed)
+                    break
+                except PermissionError:
+                    # Windows may release QMediaPlayer's last handle one
+                    # event after preview teardown. Retry in this worker,
+                    # never while holding the catalog/storage lock.
+                    if detached or attempt == 3:
+                        raise
+                    time.sleep(.1 * (2 ** attempt))
+        else:
+            project_store.delete_project_by_key(key)
+
+    def _finish_project_delete(self, project: dict, videos: list) -> None:
+        host = self._host
+        for video in videos:
+            host._deleted_video_ids.add(video.video_id)
+        video_store.forget_deleted_project_videos(video.video_id for video in videos)
+        was_selected = host._selected_project_key == project["key"]
+        if was_selected:
+            host._selected_video_id = None
+            host._settings_owner_video_id = None
+            host._selected_project_key = ""
+            if project.get("project_type") == "download":
+                host._media_downloader.attach_project("", "")
+            elif project.get("project_type") == "publish":
+                host._tiktok_publisher.detach_project()
+            host._batch_video_ids = []
+            host._clear_logs()
+            host.videoPath = ""
+            host._refresh_batch_model()
+            host.selectedVideoChanged.emit()
+            host.projectSetupChanged.emit()
+            host.logsChanged.emit()
+            host.batchChanged.emit()
+        host.refreshVideos()
+        if was_selected:
+            host.videoDeleted.emit()
+
+    def drain_deletion_events(self) -> None:
+        while True:
+            try:
+                kind, project, videos, error = self._deletion_events.get_nowait()
+            except Empty:
+                return
+            if kind == "detached":
+                self._detached_deletions.add(project["key"])
+                self._finish_project_delete(project, videos)
+            elif kind == "done":
+                self._deletions.pop(project["key"], None)
+                self._detached_deletions.discard(project["key"])
+                self._deletion_dialog_state("finished")
+            elif kind == "error":
+                self._deletions.pop(project["key"], None)
+                committed = project["key"] in self._detached_deletions
+                if not committed:
+                    self._host._deleted_video_ids.difference_update(video.video_id for video in videos)
+                self._detached_deletions.discard(project["key"])
+                self._deletion_dialog_state("finished")
+                message = ("Dự án đã được gỡ khỏi danh sách. Một số tệp chưa dọn được; "
+                           "app sẽ dọn tiếp khi mở lại.\n" + error) if committed else error
+                self._host.appAlertRequested.emit("Xóa dự án chưa hoàn tất", message,
+                                                  "warning" if committed else "error")
+
+    def _queue_project_delete(self, project: dict, videos: list) -> bool:
+        host = self._host
+        if not hasattr(host, "_background_events_timer"):
+            self._delete_project_files(project, videos, background=False)
+            self._finish_project_delete(project, videos)
+            return True
+
+        def remove():
+            try:
+                self._delete_project_files(project, videos, background=True)
+                self._deletion_events.put(("done", project, videos, ""))
+            except Exception as exc:
+                self._deletion_events.put(("error", project, videos, str(exc)))
+
+        worker = threading.Thread(target=remove, name="project-delete", daemon=True)
+        self._deletions[project["key"]] = worker
+        host._deleted_video_ids.update(video.video_id for video in videos)
+        try:
+            worker.start()
+        except Exception:
+            self._deletions.pop(project["key"], None)
+            host._deleted_video_ids.difference_update(video.video_id for video in videos)
+            raise
+        return True
 
     def _srt_busy(self, *, editing=False) -> bool:
         host = self._host
@@ -1192,6 +1328,8 @@ class ProjectCommandsController:
 
     def _persist_selected_video_settings(self, *, log_change: bool, expected_video_id: str = "") -> bool:
         host = self._host
+        if self.is_deleting(str(getattr(host, "_selected_project_key", "") or "")):
+            return False
         selected_video_id = str(host._selected_video_id or "")
         if expected_video_id and expected_video_id != selected_video_id:
             return False
@@ -1273,89 +1411,7 @@ class ProjectCommandsController:
         host.batchChanged.emit()
 
     def delete_current_batch(self) -> None:
-        host = self._host
-        batch_ids = list(host._batch_video_ids)
-        if not host.hasOpenProject:
-            return
-        if not batch_ids:
-            host.deleteCurrentProject()
-            return
-        message = (
-            "Delete this batch project and all of its videos?\n\n"
-            f"{host._project_name or 'this batch'}\n{len(batch_ids)} video(s)\n\n"
-            "This removes processing logs, temporary data, copied inputs, and generated videos. "
-            "If processing is active, it will be stopped first."
-        )
-        if (
-            QMessageBox.question(
-                None,
-                "Delete project",
-                message,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            != QMessageBox.StandardButton.Yes
-        ):
-            return
-        current_key = host._selected_project_key
-        try:
-            self._release_project_preview(current_key, [])
-            project_store.validate_project_deletion_by_key(current_key)
-        except Exception as exc:
-            QMessageBox.warning(None, "Delete project", str(exc))
-            return
-        if not host._channel_importer.cancel_project(current_key):
-            QMessageBox.information(
-                None, "Channel import", "Channel import is still stopping. Try deleting the project again in a moment."
-            )
-            return
-        for session_id, target in tuple(host._channel_import_targets.items()):
-            if target.get("project_key") == current_key:
-                host._channel_import_targets.pop(session_id, None)
-        host._batch_stop_requested = True
-        if host._processing_queue.active_video_id in batch_ids:
-            cancel_video(host._processing_queue.active_video_id)
-        failures, remaining_ids = [], []
-        for video_id in batch_ids:
-            video = video_store.get_video(video_id)
-            if not video:
-                continue
-            host._deleted_video_ids.add(video_id)
-            host._processing_queue.discard(video_id)
-            if video.status == "processing":
-                cancel_video(video_id)
-            try:
-                video_store.delete_video(video_id)
-                host._remove_empty_batch_output_parents(video)
-            except Exception as exc:
-                failures.append(f"{video.original_filename}: {exc}")
-                remaining_ids.append(video_id)
-        host._batch_video_ids = remaining_ids
-        host._refresh_batch_model()
-        host.batchChanged.emit()
-        host._selected_video_id = None
-        host._settings_owner_video_id = None
-        host._clear_logs()
-        host.selectedVideoChanged.emit()
-        host.logsChanged.emit()
-        host.refreshVideos()
-        if failures:
-            QMessageBox.warning(
-                None,
-                "Batch delete incomplete",
-                "Some videos could not be deleted. You can retry after closing any program using them.\n\n"
-                + "\n".join(failures[:5]),
-            )
-            return
-        try:
-            project_store.delete_project_by_key(current_key)
-        except Exception as exc:
-            QMessageBox.warning(None, "Delete project", str(exc))
-            return
-        host._selected_project_key = ""
-        host._project_name = ""
-        host.projectSetupChanged.emit()
-        host.batchDeleted.emit()
+        self.delete_current_project()
 
     def start_video(self) -> None:
         host = self._host
@@ -1769,91 +1825,17 @@ class ProjectCommandsController:
         if not host.hasOpenProject:
             QMessageBox.information(None, "Delete project", "Select a project first.")
             return
-        current_key = host._selected_project_key
-        if host._project_type == "download" and host._media_downloader.has_project_work(current_key):
-            QMessageBox.information(
-                None,
-                "Delete project",
-                "Finish or cancel this project's downloads before deleting it.",
-            )
-            return
-        if host._project_type == "publish" and host._tiktok_publisher.has_project_work(current_key):
-            QMessageBox.information(
-                None,
-                "Delete project",
-                "Wait for this project's Zernio or video import task to finish before deleting it.",
-            )
-            return
-        project_videos = [
-            video
-            for video in video_store.list_videos()
-            if video.project_directory and host._video_project_key(video) == current_key
-        ]
-        suffix = (
-            ""
-            if not project_videos
-            else f"\n\nThis also removes {len(project_videos)} video(s) and their generated files."
-        )
-        if (
-            QMessageBox.question(
-                None,
-                "Delete project",
-                f"Delete project '{host._project_name}' and all files inside its project folder?{suffix}",
-            )
-            != QMessageBox.StandardButton.Yes
-        ):
-            return
-        if not self._stop_project_processing(project_videos):
-            return
-        try:
-            self._release_project_preview(current_key, project_videos)
-            project_store.validate_project_deletion_by_key(current_key)
-        except Exception as exc:
-            QMessageBox.critical(None, "Delete project", str(exc))
-            return
-        if not self._stop_project_url_download(current_key):
-            host.appAlertRequested.emit("Chưa thể xóa dự án", "Đang dừng tải hoặc nhập video. Hãy thử lại sau ít giây.", "info")
-            return
-        if not host._channel_importer.cancel_project(current_key):
-            QMessageBox.information(
-                None, "Channel import", "Channel import is still stopping. Try deleting the project again in a moment."
-            )
-            return
-        for session_id, target in tuple(host._channel_import_targets.items()):
-            if target.get("project_key") == current_key:
-                host._channel_import_targets.pop(session_id, None)
-        try:
-            for video in project_videos:
-                host._processing_queue.discard(video.video_id)
-                if video.status == "processing" or host._processing_queue.active_video_id == video.video_id:
-                    cancel_video(video.video_id)
-                    video_store.update_video(video.video_id, status="cancelled", error=None, step="cancelled")
-                host._deleted_video_ids.add(video.video_id)
-                video_store.delete_video(video.video_id)
-            project_store.delete_project_by_key(current_key)
-        except Exception as exc:
-            QMessageBox.critical(None, "Delete project", str(exc))
-            return
-        host._selected_video_id = None
-        host._settings_owner_video_id = None
-        host._selected_project_key = ""
-        if host._project_type == "download":
-            host._media_downloader.attach_project("", "")
-        elif host._project_type == "publish":
-            host._tiktok_publisher.detach_project()
-        host._batch_video_ids = []
-        host._clear_logs()
-        host.videoPath = ""
-        host._refresh_batch_model()
-        host.selectedVideoChanged.emit()
-        host.projectSetupChanged.emit()
-        host.logsChanged.emit()
-        host.batchChanged.emit()
-        host.refreshVideos()
-        host.videoDeleted.emit()
+        key = host._selected_project_key
+        project = dict(getattr(host, "_project_summaries_by_key", {}).get(key) or {
+            "key": key, "project_name": host._project_name,
+            "project_type": host._project_type,
+        })
+        self.delete_project_summary(project)
 
     def rename_project(self, key: str, name: str) -> bool:
         host = self._host
+        if self.is_deleting(key):
+            return False
         project = project_store.get_project(str(key or ""))
         if not project:
             return False
@@ -1900,7 +1882,7 @@ class ProjectCommandsController:
         project_key = str(project.get("key") or "")
         project_name = str(project.get("project_name") or "")
         project_type = str(project.get("project_type") or "single")
-        if not project_key:
+        if not project_key or self.is_deleting(project_key):
             return False
         if project_type == "download" and host._media_downloader.has_project_work(project_key):
             host.appAlertRequested.emit(
@@ -1917,33 +1899,37 @@ class ProjectCommandsController:
             )
             return False
 
-        project_videos = [
-            video
-            for video in video_store.list_videos()
-            if video.project_directory and host._video_project_key(video) == project_key
-        ]
+        project_videos = self._project_videos_for_delete(project)
         suffix = "" if not project_videos else f"\n\nDự án có {len(project_videos)} video và các tệp đã tạo."
-        if (
-            QMessageBox.question(
+        queued = False
+        self._deletion_dialog_state("confirming")
+        try:
+            if QMessageBox.question(
                 None,
                 "Xóa dự án",
-                f"Xóa dự án '{project_name}'?{suffix}",
-            )
-            != QMessageBox.StandardButton.Yes
-        ):
-            return False
+                f"Xóa dự án '{project_name}' và toàn bộ tệp trong thư mục dự án?{suffix}",
+            ) != QMessageBox.StandardButton.Yes:
+                return False
+            queued = self._delete_confirmed_project(project, project_videos)
+            return queued
+        finally:
+            if not queued or not self.is_deleting(project_key):
+                self._deletion_dialog_state("finished")
+
+    def _delete_confirmed_project(self, project: dict, project_videos: list) -> bool:
+        host = self._host
+        project_key = project["key"]
         if not self._stop_project_processing(project_videos):
             return False
-        try:
-            self._release_project_preview(project_key, project_videos)
-            project_store.validate_project_deletion_by_key(project_key)
-        except Exception as exc:
-            host.appAlertRequested.emit("Không thể xóa dự án", str(exc), "error")
+        subtitle_model = getattr(host, "_manual_subtitles", None)
+        if (getattr(subtitle_model, "video_id", "") in {video.video_id for video in project_videos}
+                and "saving" in getattr(subtitle_model, "_states", {}).values()):
+            host.appAlertRequested.emit("Chưa thể xóa dự án", "Chờ lưu phụ đề hoàn tất rồi thử lại.", "info")
             return False
         if not self._stop_project_url_download(project_key):
             host.appAlertRequested.emit("Chưa thể xóa dự án", "Đang dừng tải hoặc nhập video. Hãy thử lại sau ít giây.", "info")
             return False
-        if not host._channel_importer.cancel_project(project_key):
+        if not host._channel_importer.cancel_project(project_key, timeout_seconds=0.0):
             host.appAlertRequested.emit(
                 "Chưa thể xóa dự án",
                 "Tác vụ tải kênh đang dừng. Hãy thử lại sau ít giây.",
@@ -1954,36 +1940,8 @@ class ProjectCommandsController:
             if target.get("project_key") == project_key:
                 host._channel_import_targets.pop(session_id, None)
         try:
-            for video in project_videos:
-                host._processing_queue.discard(video.video_id)
-                if video.status == "processing" or host._processing_queue.active_video_id == video.video_id:
-                    cancel_video(video.video_id)
-                    video_store.update_video(video.video_id, status="cancelled", error=None, step="cancelled")
-                host._deleted_video_ids.add(video.video_id)
-                video_store.delete_video(video.video_id)
-            project_store.delete_project_by_key(project_key)
+            self._release_project_preview(project_key, project_videos)
+            return self._queue_project_delete(project, project_videos)
         except Exception as exc:
             host.appAlertRequested.emit("Xóa dự án thất bại", str(exc), "error")
             return False
-
-        was_selected = host._selected_project_key == project_key
-        if was_selected:
-            host._selected_video_id = None
-            host._settings_owner_video_id = None
-            host._selected_project_key = ""
-            if project_type == "download":
-                host._media_downloader.attach_project("", "")
-            elif project_type == "publish":
-                host._tiktok_publisher.detach_project()
-            host._batch_video_ids = []
-            host._clear_logs()
-            host.videoPath = ""
-            host._refresh_batch_model()
-            host.selectedVideoChanged.emit()
-            host.projectSetupChanged.emit()
-            host.logsChanged.emit()
-            host.batchChanged.emit()
-        host.refreshVideos()
-        if was_selected:
-            host.videoDeleted.emit()
-        return True

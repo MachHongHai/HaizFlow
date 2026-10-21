@@ -13,6 +13,7 @@ InspectorPanel {
     property string pendingSettingsVideoId: ""
     property var subtitleSegments: []
     property int selectedSubtitleIndex: -1
+    property real playheadSeconds: 0
     property var selectedEditorClip: ({})
     property var subtitleDrafts: ({})
     property var ocrRegionDraft: null
@@ -46,6 +47,8 @@ InspectorPanel {
         ? subtitleSegments[selectedSubtitleIndex] : null
     readonly property ManualSubtitleEditorDialog subtitleEditorDialog:
         subtitleEditorDialogLoader.item as ManualSubtitleEditorDialog
+    readonly property bool expandedSubtitleEditorVisible: subtitleEditorDialog !== null
+        && subtitleEditorDialog.visible
     readonly property real panelBodyHeight: inspectorScroll.height
 
     signal subtitleSelected(int index)
@@ -81,13 +84,29 @@ InspectorPanel {
     }
 
     function dismissTextEditor() {
+        if (stageLoader.status === Loader.Ready && root.toolId === "subtitle")
+            (stageLoader.item as ManualSubtitleToolPanel).dismissEditor();
         if (subtitleEditorDialogLoader.status === Loader.Ready
                 && root.subtitleEditorDialog !== null)
             root.subtitleEditorDialog.closeEditor();
     }
     function focusTextEditor() {
-        if (root.toolId === "subtitle" && root.selectedSubtitle)
-            subtitleEditorDialogLoader.invoke("openForSelection", []);
+        if (root.toolId === "subtitle" && root.selectedSubtitle && stageLoader.status === Loader.Ready)
+            (stageLoader.item as ManualSubtitleToolPanel).focusEditor();
+    }
+    function openExpandedTextEditor(findReplace) {
+        if (root.toolId === "subtitle" && root.selectedSubtitle) {
+            const segmentId = String(root.selectedSubtitle.segment_id || "");
+            if (stageLoader.status === Loader.Ready)
+                (stageLoader.item as ManualSubtitleToolPanel).dismissEditor();
+            Qt.callLater(function() {
+                if (root.toolId !== "subtitle" || !root.selectedSubtitle
+                        || String(root.selectedSubtitle.segment_id || "") !== segmentId)
+                    return;
+                subtitleEditorDialogLoader.invoke("openForSelection", []);
+                subtitleEditorDialogLoader.invoke("showFindReplace", [findReplace]);
+            });
+        }
     }
 
     function rememberSubtitleDraft(segmentId, text, revision) {
@@ -475,7 +494,11 @@ InspectorPanel {
                 onDeleteRequested: function(id) {
                     AppController.deleteSubtitleSegment(id);
                 }
-                onEditingClosed: root.subtitleEditorClosed()
+                onEditingClosed: {
+                    if (root.toolId === "subtitle" && stageLoader.status === Loader.Ready)
+                        (stageLoader.item as ManualSubtitleToolPanel).reloadText();
+                    root.subtitleEditorClosed();
+                }
                 onClosed: subtitleEditorDialogLoader.release()
             }
         }

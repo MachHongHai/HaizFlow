@@ -21,6 +21,7 @@ from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtMultimedia import QAudioFormat, QAudioOutput, QAudioSink, QMediaDevices, QMediaPlayer
 
 from haizflow.config import TMP_DIR
+from haizflow.services.subtitle_identity import voice_source_indices
 from haizflow.utils.ffmpeg import _binary
 
 RATE = 48000
@@ -712,10 +713,7 @@ class ManualPreviewAudioController(QObject):
                     for clip in document.clips
                     if clip.track_id == "voice" and clip.segment_id
                 } if document else {}
-                source_by_id = {
-                    str(item.get("segment_id") or item.get("id") or ""): index
-                    for index, item in enumerate(source_segments)
-                }
+                source_indices = voice_source_indices(video.video_id, segments, source_segments)
                 voice_starts = sorted({clip.start_ms for clip in voice_by_segment.values() if clip.enabled})
                 video_end = (document.sequence.duration_ms if document
                              else int(max((s["end"] for s in segments), default=0) * 1000))
@@ -727,8 +725,8 @@ class ManualPreviewAudioController(QObject):
                         not audible("voice") or not voice_clip or not voice_clip.enabled or voice_clip.muted
                     ):
                         continue
-                    source_index = source_by_id.get(str(segment.get("segment_id") or ""), index)
-                    if source_index >= len(source_segments) or not voice_segment_is_compatible(
+                    source_index = source_indices.get(index)
+                    if source_index is None or not voice_segment_is_compatible(
                         segment, source_segments[source_index], multiple
                     ):
                         continue

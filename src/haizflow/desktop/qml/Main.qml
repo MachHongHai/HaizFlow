@@ -342,6 +342,8 @@ ApplicationWindow {
         id: appConfirmationDialog
         objectName: "appConfirmationDialog"
         property bool responseSent: false
+        property bool deletionConfirmation: false
+        closeOnConfirm: !deletionConfirmation
         confirmText: qsTr("Xác nhận")
         onAboutToShow: responseSent = false
         onConfirmed: {
@@ -359,6 +361,8 @@ ApplicationWindow {
                 responseSent = true;
                 AppController.respondToAppConfirmation(false);
             }
+            busy = false;
+            deletionConfirmation = false;
         }
     }
 
@@ -413,6 +417,15 @@ ApplicationWindow {
             appConfirmationDialog.title = title;
             appConfirmationDialog.message = message;
             appConfirmationDialog.open();
+        }
+
+        function onProjectDeletionDialogStateChanged(state) {
+            if (state === "confirming") {
+                appConfirmationDialog.deletionConfirmation = true;
+                appConfirmationDialog.busy = false;
+            } else if (appConfirmationDialog.deletionConfirmation) {
+                appConfirmationDialog.close();
+            }
         }
 
 

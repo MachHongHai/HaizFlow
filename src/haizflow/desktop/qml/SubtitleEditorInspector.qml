@@ -7,13 +7,33 @@ Rectangle {
     id: root
 
     property var segment: null
+    property var segments: []
     property int selectedIndex: -1
+    property real position: -1
     property int segmentCount: 0
     property alias editorText: subtitleText.text
+    readonly property bool textEditing: subtitleText.activeFocus || subtitleText.inputMethodComposing
 
     signal previousRequested()
     signal nextRequested()
     signal textCommitted(string value)
+    signal segmentSelected(int index)
+
+    Shortcut {
+        sequence: "Ctrl+F"
+        enabled: root.visible
+        onActivated: cueList.focusSearch()
+    }
+    Shortcut {
+        sequence: "Alt+Up"
+        enabled: root.visible && root.selectedIndex > 0
+        onActivated: root.previousRequested()
+    }
+    Shortcut {
+        sequence: "Alt+Down"
+        enabled: root.visible && root.selectedIndex + 1 < root.segmentCount
+        onActivated: root.nextRequested()
+    }
 
     function formatTime(secondsValue) {
         const totalMs = Math.max(0, Math.round((Number(secondsValue) || 0) * 1000));
@@ -66,6 +86,20 @@ Rectangle {
         anchors.margins: Theme.space12
         spacing: Theme.space8
 
+        SubtitleCueList {
+            id: cueList
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            segments: root.segments
+            selectedIndex: root.selectedIndex
+            position: root.position
+            onSegmentSelected: index => root.segmentSelected(index)
+            onSegmentActivated: index => {
+                root.segmentSelected(index);
+                Qt.callLater(subtitleText.forceActiveFocus);
+            }
+        }
+
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.space4
@@ -84,15 +118,6 @@ Rectangle {
                     font.weight: Font.DemiBold
                 }
 
-                Text {
-                    Layout.fillWidth: true
-                    text: root.segment
-                        ? root.formatTime(root.segment.start) + "  —  " + root.formatTime(root.segment.end)
-                        : ""
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.caption
-                    font.family: "Cascadia Mono"
-                }
             }
 
             StudioIconButton {
@@ -110,18 +135,13 @@ Rectangle {
             }
         }
 
-        Text {
-            Layout.fillWidth: true
-            text: qsTr("Nội dung phụ đề")
-            color: Theme.textMuted
-            font.pixelSize: Theme.caption
-        }
-
         AppTextArea {
             id: subtitleText
             objectName: "autoSubtitleTextInput"
             Layout.fillWidth: true
-            Layout.fillHeight: true
+            Layout.preferredHeight: 96
+            Layout.minimumHeight: 72
+            Layout.maximumHeight: 104
             enabled: root.segment !== null
             placeholderText: qsTr("Nội dung phụ đề")
             accessibleName: qsTr("Nội dung phụ đề")

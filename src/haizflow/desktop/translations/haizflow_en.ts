@@ -1402,6 +1402,10 @@
 <context>
     <name>ConfirmDialog</name>
     <message>
+        <source>Đang xóa…</source>
+        <translation>Deleting…</translation>
+    </message>
+    <message>
         <location filename="../qml/ConfirmDialog.qml" line="+8"/>
         <source>Xác nhận</source>
         <translation>Confirm</translation>
@@ -2249,6 +2253,8 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ManualSubtitleEditorDialog</name>
+    <message><source>Trước</source><translation>Previous</translation></message>
+    <message><source>Sau</source><translation>Next</translation></message>
     <message>
         <location filename="../qml/ManualSubtitleEditorDialog.qml" line="+105"/>
         <source>Đoạn %1 / %2</source>
@@ -2369,6 +2375,21 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ManualSubtitleToolPanel</name>
+    <message><source>Mở rộng</source><translation>Expand editor</translation></message>
+    <message><source>Nội dung</source><translation>Content</translation></message>
+    <message><source>Kiểu chữ</source><translation>Style</translation></message>
+    <message><source>Đoạn %1 / %2</source><translation>Caption %1 / %2</translation></message>
+    <message><source>Chọn phụ đề để chỉnh sửa</source><translation>Select a caption to edit</translation></message>
+    <message><source>Tìm và thay thế</source><translation>Find and replace</translation></message>
+    <message><source>Mở rộng trình sửa phụ đề</source><translation>Expand caption editor</translation></message>
+    <message><source>Đang lưu…</source><translation>Saving…</translation></message>
+    <message><source>Thao tác phụ đề</source><translation>Caption actions</translation></message>
+    <message><source>Tách tại con trỏ phát</source><translation>Split at playhead</translation></message>
+    <message><source>Gộp với câu sau</source><translation>Merge with next caption</translation></message>
+    <message><source>Xóa phụ đề</source><translation>Delete caption</translation></message>
+    <message><source>Bỏ thay đổi</source><translation>Discard changes</translation></message>
+    <message><source>Thử lưu</source><translation>Retry save</translation></message>
+    <message><source>Lưu</source><translation>Save</translation></message>
     <message>
         <location filename="../qml/ManualSubtitleToolPanel.qml" line="+22"/>
         <source>%1 / %2</source>
@@ -5452,5 +5473,23 @@ Author and owner of HaizFlow.</translation>
 <context>
     <name>ManualTranslationToolPanel</name>
     <message><source>Nguồn nhận dạng: SRT đã nhập</source><translation>Recognition source: imported SRT</translation></message>
+</context>
+<context>
+    <name>SubtitleCueList</name>
+    <message><source>Tại con trỏ</source><translation>At playhead</translation></message>
+    <message><source>Không tìm thấy</source><translation>No matches</translation></message>
+    <message><source>Tìm phụ đề…</source><translation>Find captions…</translation></message>
+    <message><source>Tìm trong phụ đề</source><translation>Search captions</translation></message>
+    <message><source>Kết quả trước</source><translation>Previous match</translation></message>
+    <message><source>Kết quả sau</source><translation>Next match</translation></message>
+    <message><source>Phụ đề %1: %2</source><translation>Caption %1: %2</translation></message>
+    <message><source>Phụ đề trống</source><translation>Empty caption</translation></message>
+    <message><source>Chưa có phụ đề</source><translation>No captions yet</translation></message>
+</context>
+<context>
+    <name>ManualSubtitleStyleControls</name>
+    <message><source>Toàn bộ</source><translation>All captions</translation></message>
+    <message><source>Câu này</source><translation>This caption</translation></message>
+    <message><source>Dùng kiểu chung</source><translation>Use shared style</translation></message>
 </context>
 </TS>

@@ -11,13 +11,13 @@ from pathlib import Path
 from PySide6.QtCore import Property, QAbstractListModel, QModelIndex, Qt, Signal, Slot
 
 from haizflow.services import video_store
+from haizflow.services.subtitle_identity import legacy_segment_id
 
 
 def identify_segments(video_id: str, segments: list[dict]) -> list[dict]:
     result = copy.deepcopy(segments)
     for index, item in enumerate(result):
-        item.setdefault("segment_id", uuid.uuid5(uuid.NAMESPACE_URL,
-            f"haizflow:{video_id}:{index}:{item.get('start', 0)}:{item.get('end', 0)}").hex)
+        item.setdefault("segment_id", legacy_segment_id(video_id, index, item))
         item.setdefault("revision", 0)
     return result
 

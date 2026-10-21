@@ -215,6 +215,10 @@ class ProjectWorkspaceController:
 
     def open_project_summary(self, project) -> None:
         host = self._host
+        commands = getattr(host, "_project_commands", None)
+        if commands is not None and commands.is_deleting(project["key"]):
+            host.appAlertRequested.emit("Đang xóa dự án", "Chờ dọn tệp hoàn tất.", "info")
+            return
         try:
             root = project_store.project_root_for_key(project["key"])
             if not os.path.isdir(root):
