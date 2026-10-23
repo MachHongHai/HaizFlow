@@ -16,6 +16,10 @@ class CoreStillRunningError(UpdateError):
     """Startup could not stop safely; leave activation unchanged."""
 
 
+class CoreValidationError(UpdateError):
+    """The selected payload failed verification, before any Core was spawned."""
+
+
 def acknowledge_ready() -> bool:
     """Called only after Python, PySide and the QML main window are ready."""
     root_text = os.getenv("HAIZFLOW_BOOTSTRAP_ROOT")
@@ -40,7 +44,13 @@ def acknowledge_ready() -> bool:
 
 def start_core(layout: Layout, value: str, *, timeout: float = 90, popen=subprocess.Popen,
                command_for=None, clock=time.monotonic, sleep=time.sleep):
-    layout.validate_core(value)
+    try:
+        # Verify exactly at the execution boundary. The launcher must not hash
+        # the same immutable tree once in preflight and again here. No trusted
+        # cache or caller-controlled skip flag: direct callers verify too.
+        layout.validate_core(value)
+    except (OSError, ValueError) as exc:
+        raise CoreValidationError(str(exc)) from exc
     attempt = secrets.token_hex(16)
     token = secrets.token_hex(32)
     request_path = child(layout.ipc, attempt + ".request.json")
@@ -105,22 +115,6 @@ def launch(root: Path, *, timeout: float = 90, popen=subprocess.Popen, command_f
                 pointer = layout.active()
             journal = layout.journal()
             pending = journal if journal and journal["state"] == "pending_health" else None
-            try:
-                layout.validate_core(pointer["active"])
-            except (OSError, ValueError) as exc:
-                if pending:
-                    layout.rollback(pending, "Core mới không còn hợp lệ: " + str(exc))
-                    pointer = layout.active()
-                    pending = None
-                    fallback = pointer["active"]
-                else:
-                    fallback = pointer.get("previous")
-                if not fallback or fallback not in pointer["known_good"]:
-                    raise UpdateError("Không có Core hợp lệ để mở. Cần sửa bản cài; dữ liệu runtime vẫn được giữ.") from exc
-                layout.validate_core(fallback)
-                pointer = {"schema": 1, "active": fallback, "previous": None, "known_good": [fallback]}
-                atomic_json(layout.active_path, pointer)
-                pending = None
             if pending:
                 pending = layout.transition(pending, "pending_health", attempts=1)
         try:
@@ -131,11 +125,24 @@ def launch(root: Path, *, timeout: float = 90, popen=subprocess.Popen, command_f
             raise
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             if not pending:
-                raise UpdateError("Không thể khởi động Core đã chọn: " + str(exc)) from exc
-            with layout.lock():
-                layout.rollback(pending, str(exc))
-            # Exactly one fallback, never recursive restart/rollback loops.
-            process = start_core(layout, pending["base"], timeout=timeout, popen=popen, command_for=command_for)
+                if not isinstance(exc, CoreValidationError):
+                    raise UpdateError("Không thể khởi động Core đã chọn: " + str(exc)) from exc
+                # Only payload corruption permits falling back from a known-
+                # good Core. A health timeout/crash is not a verification
+                # failure and must not silently change the selected version.
+                fallback = pointer.get("previous")
+                if not fallback or fallback not in pointer["known_good"]:
+                    raise UpdateError("Không có Core hợp lệ để mở. Cần sửa bản cài; dữ liệu runtime vẫn được giữ.") from exc
+                with layout.lock():
+                    layout.validate_core(fallback)
+                    pointer = {"schema": 1, "active": fallback, "previous": None, "known_good": [fallback]}
+                    atomic_json(layout.active_path, pointer)
+                process = start_core(layout, fallback, timeout=timeout, popen=popen, command_for=command_for)
+            else:
+                with layout.lock():
+                    layout.rollback(pending, str(exc))
+                # Exactly one fallback, never recursive restart/rollback loops.
+                process = start_core(layout, pending["base"], timeout=timeout, popen=popen, command_for=command_for)
         else:
             if pending:
                 with layout.lock():

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,11 +13,16 @@ MAX_FILES = 40000
 MAX_BYTES = 8 * 1024**3
 
 
-def inventory(root: Path) -> list[dict]:
+def _hash_inventory_file(item: tuple[Path, str]) -> dict:
+    path, name = item
+    return {"path": name, "size": path.stat().st_size, "sha256": sha256(path)}
+
+
+def inventory(root: Path, *, hash_workers: int = 1) -> list[dict]:
     no_links(root)
     if not root.is_dir():
         raise UpdateError("Không tìm thấy thư mục Core.")
-    result = []
+    files = []
     for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
         no_links(path)
         if path.is_dir():
@@ -26,7 +32,20 @@ def inventory(root: Path) -> list[dict]:
             continue
         if not path.is_file():
             raise UpdateError("Core chứa mục không phải tệp thông thường.")
-        result.append({"path": name, "size": path.stat().st_size, "sha256": sha256(path)})
+        files.append((path, name))
+        if len(files) > MAX_FILES:
+            raise UpdateError("Danh sách tệp Core không hợp lệ.")
+    if hash_workers <= 1:
+        result = [_hash_inventory_file(item) for item in files]
+    else:
+        # Windows can block each open while scanning DLLs. Overlap a bounded
+        # number of reads, still hashing EVERY byte and checking reparse points
+        # in sha256(). Keep deterministic order and at most 16 queued files,
+        # not tens of thousands of Futures or a persistent integrity cache.
+        result = []
+        with ThreadPoolExecutor(max_workers=min(4, hash_workers), thread_name_prefix="core-verify") as pool:
+            for offset in range(0, len(files), 16):
+                result.extend(pool.map(_hash_inventory_file, files[offset:offset + 16]))
     validate_files(result)
     return result
 
@@ -119,7 +138,7 @@ class Manifest:
 
     def verify_tree(self, root: Path, *, base: bool = False) -> None:
         expected = self.data["base_files" if base else "target_files"]
-        if inventory(root) != sorted(expected, key=lambda e: e["path"]):
+        if inventory(root, hash_workers=4) != sorted(expected, key=lambda e: e["path"]):
             raise UpdateError("Tệp Core bị thiếu, thay đổi hoặc không khớp SHA-256.")
         for entry in expected:
             child(root, entry["path"])

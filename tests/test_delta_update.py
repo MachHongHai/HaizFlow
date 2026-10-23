@@ -336,6 +336,44 @@ class DeltaUpdateTests(unittest.TestCase):
             launch(self.install, command_for=self.fake_command)
         self.assertEqual(self.before, self.user_data())
 
+    def test_normal_start_verifies_entire_core_exactly_once(self):
+        verify = Manifest.verify_tree
+        with patch.object(Manifest, "verify_tree", autospec=True, side_effect=verify) as checked:
+            self.assertEqual(launch(self.install, command_for=self.fake_command, timeout=3), 0)
+        self.assertEqual(checked.call_count, 1)
+        self.assertEqual(checked.call_args.args[1], self.layout.core("0.1.0"))
+        self.assertEqual(self.before, self.user_data())
+
+    def test_same_size_corruption_is_rejected_before_spawning(self):
+        core = self.layout.core("0.1.0") / "HaizFlowCore.exe"
+        core.write_bytes(b"X" * core.stat().st_size)
+        with patch("haizflow.update.launcher.subprocess.Popen") as spawned:
+            with self.assertRaisesRegex(UpdateError, "Không có Core hợp lệ"):
+                launch(self.install, popen=spawned)
+        spawned.assert_not_called()
+        self.assertEqual(self.before, self.user_data())
+
+    def test_corrupt_confirmed_core_falls_back_to_verified_previous(self):
+        self.prepare()
+        self.activate()
+        self.assertEqual(launch(self.install, command_for=self.fake_command, timeout=3), 0)
+        core = self.layout.core("0.2.0") / "HaizFlowCore.exe"
+        core.write_bytes(b"X" * core.stat().st_size)
+        self.assertEqual(launch(self.install, command_for=self.fake_command, timeout=3), 0)
+        self.assertEqual(self.layout.active()["active"], "0.1.0")
+        self.assertEqual(self.before, self.user_data())
+
+    def test_known_good_health_failure_does_not_switch_to_previous(self):
+        self.prepare()
+        self.activate()
+        self.assertEqual(launch(self.install, command_for=self.fake_command, timeout=3), 0)
+        with patch("haizflow.update.launcher.start_core", side_effect=UpdateError("health timeout")) as started:
+            with self.assertRaisesRegex(UpdateError, "health timeout"):
+                launch(self.install, command_for=self.fake_command)
+        started.assert_called_once()
+        self.assertEqual(self.layout.active()["active"], "0.2.0")
+        self.assertEqual(self.layout.journal()["state"], "confirmed")
+
     def test_wrong_base_version_and_malformed_journal_do_not_change_active(self):
         data = dict(self.delta.data, base_version="0.0.9", package_name="HaizFlow-Core-0.2.0-windows-x64-from-0.0.9.zip")
         with self.assertRaisesRegex(UpdateError, "Delta không hỗ trợ"):
