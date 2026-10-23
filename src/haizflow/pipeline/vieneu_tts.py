@@ -100,9 +100,9 @@ def worker_command(request_path: Path, device: str) -> list[str]:
 
 def synthesize_batch_to_mp3(items, video_id, *, device="cpu", language_id="vi",
                             process_registry_id=None, progress_callback=None, **_unused):
-    from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS, MODELS_DIR, TMP_DIR
+    from haizflow.config import MODELS_DIR, TMP_DIR
     from haizflow.core.model_integrity import observe_verification
-    from haizflow.pipeline.omnivoice_tts import _encode_mp3
+    from haizflow.pipeline.omnivoice_tts import _encode_mp3, _synthesis_stall_timeout
     from haizflow.pipeline.process_registry import check_cancellation, communicate_process
     from haizflow.services.video_store import log_to_video
 
@@ -170,36 +170,53 @@ def synthesize_batch_to_mp3(items, video_id, *, device="cpu", language_id="vi",
         stop = threading.Event()
         monitor_errors = []
         published = []
+        stall_timeout = _synthesis_stall_timeout({"device": "cuda:0" if device == "gpu" else "cpu"})
 
         def publish_status():
             last = None
+            last_activity = time.monotonic()
             while not stop.wait(.3):
                 try:
                     status = json.loads(status_path.read_text(encoding="utf-8"))
                 except (OSError, ValueError):
-                    continue
+                    status = None
+                if not isinstance(status, dict):
+                    status = None
                 try:
                     check_cancellation(cancellation_id)
-                    if status.get("policy") != CACHE_VERSION or status.get("device") != device:
-                        raise RuntimeError("Bộ xử lý VieNeu không tương thích với yêu cầu hiện tại.")
-                    while len(published) < int(status.get("completed", 0)):
-                        item = entries[len(published)]
-                        _encode_mp3(Path(item["wav"]), Path(item["output_path"]), cancellation_id)
-                        published.append(item)
-                    state = (len(published), status.get("stage"))
-                    if state != last and progress_callback:
-                        progress_callback(len(published), len(items), str(state[1] or "synthesizing"))
-                    last = state
+                    if status is not None:
+                        if status.get("policy") != CACHE_VERSION or status.get("device") != device:
+                            raise RuntimeError("Bộ xử lý VieNeu không tương thích với yêu cầu hiện tại.")
+                        completed = int(status.get("completed", 0))
+                        if not 0 <= completed <= len(entries):
+                            raise RuntimeError("VieNeu báo số câu hoàn tất không hợp lệ.")
+                        state = (completed, status.get("stage"))
+                        if state != last:
+                            last_activity = time.monotonic()
+                        while len(published) < completed:
+                            item = entries[len(published)]
+                            _encode_mp3(Path(item["wav"]), Path(item["output_path"]), cancellation_id)
+                            published.append(item)
+                            last_activity = time.monotonic()
+                        if state != last and progress_callback:
+                            progress_callback(len(published), len(items), str(state[1] or "synthesizing"))
+                        last = state
+                    if time.monotonic() - last_activity >= stall_timeout:
+                        raise RuntimeError(f"VieNeu không có tiến triển trong {stall_timeout:g} giây "
+                                           f"(device={device}, đã tạo {len(published)}/{len(items)} câu).")
                 except Exception as exc:
                     monitor_errors.append(exc)
-                    process.kill()
+                    try:
+                        process.kill()
+                    except OSError:
+                        pass
                     return
 
         thread = threading.Thread(target=publish_status, name="vieneu-progress", daemon=True)
         thread.start()
         try:
             _, stderr = communicate_process(cancellation_id, process, label="VieNeu synthesis",
-                                             timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS)
+                                             timeout_seconds=None)
         finally:
             stop.set()
             thread.join()
@@ -265,7 +282,7 @@ def _worker(request):
     import soundfile as sf
 
     from haizflow.engine.main import _write_atomic
-    from haizflow.pipeline.tts_quality import SpeechQualityError, validate_short_phrase_audio, validate_speech_waveform
+    from haizflow.pipeline.tts_quality import SpeechQualityError, validate_speech_waveform
 
     root, device = Path(request["root"]), request["device"]
     verify_assets(root, device)
@@ -291,20 +308,34 @@ def _worker(request):
             voice_options = {"ref_audio": str(reference), "denoise": True}
         else:
             voice_options = {"voice": native_voice(item["voice"])}
-        wav = np.asarray(model.infer(item["text"], **voice_options,
-                                   apply_watermark=False, batch_size=1, max_chars=160), dtype=np.float32).reshape(-1)
-        if not len(wav) or not np.isfinite(wav).all():
-            raise RuntimeError("VieNeu trả về audio trống/không hợp lệ.")
-        try:
-            validate_speech_waveform(wav, 48000)
-            validate_short_phrase_audio(wav, item["text"], "vi", 48000)
-        except SpeechQualityError as exc:
-            raise RuntimeError(str(exc).replace("OmniVoice", "VieNeu")) from exc
+        for attempt in range(2):
+            wav = np.asarray(model.infer(item["text"], **voice_options,
+                                       apply_watermark=False, batch_size=1, max_chars=160),
+                             dtype=np.float32).reshape(-1)
+            try:
+                if not len(wav) or not np.isfinite(wav).all():
+                    raise SpeechQualityError("VieNeu trả về audio trống/không hợp lệ.")
+                validate_speech_waveform(wav, 48000)
+                # Native single-syllable speech can be shorter than the old
+                # 160 ms text-derived floor. Duration alone cannot establish
+                # a missing final phoneme. Keep measured silence/tone/codec
+                # validation, without padding, slowing or rewriting the words.
+                break
+            except SpeechQualityError as exc:
+                if attempt == 0:
+                    status["stage"] = "retrying_short_utterance"
+                    status["quality_retries"] = int(status.get("quality_retries", 0)) + 1
+                    _write_atomic(path, status)
+                    continue
+                detail = str(exc).replace("OmniVoice", "VieNeu")
+                raise RuntimeError(f"VieNeu không tạo được audio hợp lệ cho câu "
+                                   f"{status['completed'] + 1}/{status['total']} sau 2 lần thử: {detail}") from exc
         peak = float(np.max(np.abs(wav)))
         if peak > .89:
             wav = wav * (.89 / peak)  # Encoding headroom; never amplify quiet speech here.
         sf.write(item["wav"], wav, 48000, subtype="PCM_16")
         status["completed"] += 1
+        status["stage"] = "synthesizing"
         _write_atomic(path, status)
     status["stage"] = "completed"
     status["torch_loaded"] = "torch" in sys.modules

@@ -944,6 +944,9 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
             elif stage == 'retrying_short_utterance':
                 reporter.update(65 + round(17 * current / max(1,total)), 'creating_voice',
                     'Regenerating an invalid speech clip', current, total)
+            elif stage == "retrying_voice_on_cpu":
+                reporter.update(65 + round(17 * current / max(1, total)), "creating_voice",
+                                "Retrying voice synthesis on CPU", current, total)
             else:
                 reporter.update(65, "creating_voice", f"Preparing voice: {stage}")
 

@@ -229,7 +229,7 @@ def communicate_process(
     process: subprocess.Popen,
     *,
     label: str,
-    timeout_seconds: float = MEDIA_PROCESS_TIMEOUT_SECONDS,
+    timeout_seconds: float | None = MEDIA_PROCESS_TIMEOUT_SECONDS,
 ) -> tuple[str, str]:
     """Wait for a registered media process with cancellation-safe cleanup."""
     registered = False

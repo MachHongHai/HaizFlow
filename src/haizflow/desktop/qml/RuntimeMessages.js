@@ -2,6 +2,7 @@
 
 // Backend status messages; static UI text uses the Qt translation catalog.
 var vietnamese = {
+        "Retrying voice synthesis on CPU": "Đang tạo tiếp các câu còn thiếu bằng CPU",
         "Install the Douyin browser in Resource Packs before creating a session.": "Hãy cài Trình duyệt Douyin (Chromium) trong Gói tài nguyên trước khi tạo phiên.",
         "Wait for the Douyin browser resource operation to finish.": "Hãy chờ thao tác với gói trình duyệt Douyin hoàn tất.",
         "Reddit downloads are temporarily unavailable.": "Tải từ Reddit đang tạm khóa.",

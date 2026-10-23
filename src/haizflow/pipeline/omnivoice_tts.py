@@ -559,6 +559,22 @@ def _preflight_cpu_request(request: dict[str, Any], *, allow_resident: bool = Fa
     require_cpu_memory("voice", resident=resident)
 
 
+def _synthesis_stall_timeout(request: dict[str, Any]) -> float:
+    # A request contains the whole video's pending sentences. Total wall time
+    # is not evidence of a hang: slow hardware/CPU recovery can legitimately
+    # exceed the general media-process limit while publishing useful clips.
+    # Keep the configured limit as an inactivity ceiling, not a video deadline.
+    device_limit = (_GPU_STALL_TIMEOUT_SECONDS if str(request.get("device") or "").startswith("cuda")
+                    else _CPU_STALL_TIMEOUT_SECONDS)
+    return min(float(device_limit), float(MEDIA_PROCESS_TIMEOUT_SECONDS))
+
+
+def _synthesis_stall_detail(request: dict[str, Any], timeout: float, stage: str, completed: int) -> str:
+    return (f"OmniVoice stopped making progress for {timeout:g} seconds while running on "
+            f"{request.get('device') or 'cpu'} (stage={stage or 'starting'}, "
+            f"completed={max(0, completed)}/{len(request.get('items') or [])}).")
+
+
 def _run_worker_process(
     request_path: Path,
     request: dict[str, Any],
@@ -596,11 +612,7 @@ def _run_worker_process(
         last_stage = ""
         last_current = -1
         last_forwards = -1
-        stall_timeout = (
-            _GPU_STALL_TIMEOUT_SECONDS
-            if str(request.get("device") or "").startswith("cuda")
-            else _CPU_STALL_TIMEOUT_SECONDS
-        )
+        stall_timeout = _synthesis_stall_timeout(request)
         # Status changes only at model/segment boundaries. A sub-second poll is
         # responsive enough without repeatedly opening the same file while the
         # worker is publishing it on Windows.
@@ -608,6 +620,8 @@ def _run_worker_process(
             now = time.monotonic()
             try:
                 status = json.loads(status_path.read_text(encoding="utf-8"))
+                if not isinstance(status, dict):
+                    raise ValueError("Invalid worker status")
                 completed = int(status.get("completed", 0))
                 total = int(status.get("total", len(request.get("items") or [])))
                 stage = str(status.get("stage") or "synthesizing")
@@ -640,11 +654,8 @@ def _run_worker_process(
                         return
                 continue
             if now - float(monitor_state["last_activity"]) >= stall_timeout:
-                monitor_state["abort_reason"] = (
-                    "OmniVoice stopped making progress for "
-                    f"{stall_timeout // 60} minutes while running on "
-                    f"{request.get('device') or 'cpu'}."
-                )
+                monitor_state["abort_reason"] = _synthesis_stall_detail(
+                    request, stall_timeout, last_stage, last_completed)
                 _log_monitor_event(
                     video_id,
                     f"[TTS][ERROR] {monitor_state['abort_reason']}",
@@ -673,7 +684,10 @@ def _run_worker_process(
             process_key,
             process,
             label="OmniVoice synthesis",
-            timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS,
+            # The progress monitor enforces inactivity and the registry still
+            # owns cancellation/child cleanup. Do not also impose a fixed
+            # whole-video deadline which kills a healthy long generation.
+            timeout_seconds=None,
         )
     finally:
         stop_progress.set()
@@ -716,11 +730,7 @@ def _run_persistent_worker_process(
     request["response_path"] = str(response_path)
     request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
     status_path = Path(str(request["status_path"]))
-    stall_timeout = (
-        _GPU_STALL_TIMEOUT_SECONDS
-        if str(request.get("device") or "").startswith("cuda")
-        else _CPU_STALL_TIMEOUT_SECONDS
-    )
+    stall_timeout = _synthesis_stall_timeout(request)
 
     process_key = cancellation_id or video_id
     with _cancellable_voice_operation(process_key):
@@ -756,7 +766,6 @@ def _run_persistent_worker_process(
         last_forwards = -1
         last_activity = time.monotonic()
         last_heartbeat = last_activity
-        started = last_activity
         try:
             while True:
                 check_cancellation(cancellation_id or video_id)
@@ -784,6 +793,8 @@ def _run_persistent_worker_process(
                 now = time.monotonic()
                 try:
                     status = json.loads(status_path.read_text(encoding="utf-8"))
+                    if not isinstance(status, dict):
+                        raise ValueError("Invalid worker status")
                     completed = int(status.get("completed", 0))
                     total = int(status.get("total", len(request.get("items") or [])))
                     stage = str(status.get("stage") or "synthesizing")
@@ -810,11 +821,7 @@ def _run_persistent_worker_process(
                     if progress_callback is not None:
                         progress_callback(completed, total, stage)
                 elif now - last_activity >= stall_timeout:
-                    detail = (
-                        "OmniVoice stopped making progress for "
-                        f"{stall_timeout // 60} minutes while running on "
-                        f"{request.get('device') or 'cpu'}."
-                    )
+                    detail = _synthesis_stall_detail(request, stall_timeout, last_stage, last_completed)
                     log_to_video(video_id, f"[TTS][ERROR] {detail}")
                     with _PERSISTENT_WORKER_LOCK:
                         if _PERSISTENT_WORKER_PROCESS is process:
@@ -827,12 +834,6 @@ def _run_persistent_worker_process(
                         "[TTS][WAIT] OmniVoice is still working "
                         f"(stage={last_stage or 'starting'}, item={last_current or '-'}).",
                     )
-                if now - started >= MEDIA_PROCESS_TIMEOUT_SECONDS:
-                    detail = "OmniVoice synthesis exceeded the configured processing timeout."
-                    with _PERSISTENT_WORKER_LOCK:
-                        if _PERSISTENT_WORKER_PROCESS is process:
-                            _stop_persistent_worker_unlocked()
-                    return 1, detail
                 time.sleep(0.15)
         except BaseException:
             # A cancelled editor generation must not leave an old request
@@ -1092,12 +1093,12 @@ def synthesize_batch_to_mp3(
         encoded: set[int] = set()
         encoding_errors: list[Exception] = []
 
-        def publish_completed(completed, total, stage):
+        def publish_indices(indices, stage):
             # A worker status is emitted only after sf.write has closed a WAV.
             # Commit each MP3 before reporting it; pause can retain these clips.
             if not encoding_errors:
                 try:
-                    for index in range(min(max(0, int(completed)), len(output_pairs))):
+                    for index in indices:
                         if index not in encoded:
                             wav, output = output_pairs[index]
                             if wav.is_file() and wav.stat().st_size > 44:
@@ -1107,7 +1108,10 @@ def synthesize_batch_to_mp3(
                     encoding_errors.append(exc)
                     raise
             if progress_callback is not None:
-                progress_callback(len(encoded), total, stage)
+                progress_callback(len(encoded), len(output_pairs), stage)
+
+        def publish_completed(completed, total, stage):
+            publish_indices(range(min(max(0, int(completed)), len(output_pairs))), stage)
 
         worker_runner = _run_persistent_worker_process if keep_worker_warm else _run_worker_process
         worker_kwargs = ({"cancellation_id": cancellation_id}
@@ -1166,20 +1170,34 @@ def synthesize_batch_to_mp3(
             )
             check_cancellation(cancellation_id)
         if return_code != 0 and not recovered_invalid_batch and str(request["device"]).startswith("cuda") and _is_cuda_resource_failure(stderr):
+            # The failed worker has exited. Flush closed WAVs that were written
+            # after its last status poll, then retry only unpublished sentences.
+            publish_completed(len(output_pairs), len(output_pairs), "synthesizing")
+            remaining = [index for index in range(len(output_pairs)) if index not in encoded]
+            if not remaining:
+                return
             log_to_video(
                 video_id,
-                "[TTS][WARN] OmniVoice ran out of GPU resources; retrying this video on CPU.",
+                "[TTS][WARN] OmniVoice GPU resource failure; retrying missing sentences on CPU. "
+                f"completed={len(encoded)}/{len(output_pairs)} remaining={len(remaining)} "
+                f"reason={str(stderr).strip()[-500:]}",
             )
-            for wav, _output in output_pairs:
-                wav.unlink(missing_ok=True)
+            for index in remaining:
+                output_pairs[index][0].unlink(missing_ok=True)
             Path(str(request["status_path"])).unlink(missing_ok=True)
-            request["device"] = "cpu"
-            request["cpu_threads"] = _cpu_voice_threads()
-            request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
+            cpu_request = {**request, "device": "cpu", "cpu_threads": _cpu_voice_threads(),
+                           "items": [request_items[index] for index in remaining]}
+            request_path.write_text(json.dumps(cpu_request, ensure_ascii=False), encoding="utf-8")
+
+            def publish_cpu(completed, _total, stage):
+                publish_indices(remaining[:max(0, int(completed))], stage)
+
+            publish_cpu(0, len(remaining), "retrying_voice_on_cpu")
             if keep_worker_warm:
                 with _PERSISTENT_WORKER_LOCK:
                     _stop_persistent_worker_unlocked()
-            return_code, stderr = worker_runner(request_path, request, video_id, publish_completed, **worker_kwargs)
+            return_code, stderr = worker_runner(request_path, cpu_request, video_id, publish_cpu, **worker_kwargs)
+            check_cancellation(cancellation_id)
         if encoding_errors:
             raise encoding_errors[0]
         if return_code != 0:

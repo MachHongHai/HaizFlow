@@ -110,6 +110,9 @@ class GpuRecoveryTests(unittest.TestCase):
             mock.patch.object(process_video, "log_to_video"),
             mock.patch("haizflow.pipeline.transcribe.release_warm_whisperx_model"),
             mock.patch.object(process_video, "shutdown_hymt2_worker"),
+            # Recovery routing is deterministic; real Torch/CPU engine probes
+            # have separate coverage and must not run on the test host here.
+            mock.patch.object(process_video, "probe_runtime", return_value=SimpleNamespace(ok=True)),
             mock.patch.object(process_video, "configure_processing_device") as configure,
         ):
             recovered = process_video._recover_gpu_to_cpu(
