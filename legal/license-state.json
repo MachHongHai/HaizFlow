@@ -10,14 +10,14 @@
     "basis": "Explicit owner approval and request to clarify redistribution and commercial software restrictions",
     "language_precedence": "vi"
   },
-  "effective_release": "1.0.3 reviewed Windows CPU metadata, flat engine root and SciPy packaging patch; publication tracked by GitHub release state",
+  "effective_release": "1.0.4 reviewed Douyin transport, TTS, subtitle editing, cache and startup patch; publication tracked by GitHub release state",
   "public_release_review": {
     "approved_by": "Codex (scoped technical packaging review, not independent legal certification)",
-    "approved_at": "2026-10-20",
-    "source_commit": "f40a7e350b3a1f413bdb329e1dc25d4bd7f3b7f5 (review baseline; final release commit is bound by BUILD-INFO)",
-    "release_version": "1.0.3",
-    "owner_release_authorization": "Direct owner request to publish the runtime patch with updates from 1.0.1. Also support current stable 1.0.2 and preserve earlier releases/assets.",
-    "publication_condition": "Retain unchanged ThirdPartySources 1.0.0 and all earlier release assets. Rebuild CPU 16/CUDA 18/vision 8 with reviewed locks, including the CPU/CUDA aiohttp 3.14.5 and required yarl 1.25.1 security update matching Core. Pin only measured new archive sizes/hashes at immutable 1.0.3 URLs; replace only this task's unpublished draft candidates. Verify real engine smoke and app roots, installer, frozen Full/Delta upgrades from 1.0.1 and 1.0.2, rollback, data preservation and public download/part/hash checks. No new library family, model, preview, font, artwork or media recipe. Keep existing license restrictions and notices. Scoped technical packaging review, not independent legal certification or an all-machine benchmark claim.",
+    "approved_at": "2026-10-24",
+    "source_commit": "2541f77 (review baseline including f9a4a7e; final release commit is bound by BUILD-INFO)",
+    "release_version": "1.0.4",
+    "owner_release_authorization": "Direct owner request to build and publish 1.0.4 with updates from 1.0.1. Also support 1.0.2/1.0.3 and preserve earlier releases/assets.",
+    "publication_condition": "Retain unchanged ThirdPartySources 1.0.0 and all earlier assets. Rebuild CPU 17/CUDA 19 with unchanged reviewed dependency locks and retain vision 8. Pin measured archive sizes/hashes at new immutable 1.0.4 URLs. Build Core and new bootstrap from the same clean final commit. Verify full source/QML gates, native engine and packaged Douyin transport smoke, installer, frozen Full/Delta upgrades from 1.0.1 onward, health, rollback, data preservation and public asset digest/download checks. No new library, model, voice preview, font, artwork or media recipe. Preserve unsigned-build caveats and existing license restrictions. Scoped technical review, not independent legal certification or an all-machine claim.",
     "clearances": {
       "owned-code-and-contributor-scope": {
         "path": "legal/reviews/application-scope-2026-10-06.md",
@@ -28,8 +28,8 @@
         "sha256": "fd3764dcb816168e9ec62737823ecf9eca79655e39999b5073779ac927cd7702"
       },
       "ffmpeg-complete-corresponding-source": {
-        "path": "legal/reviews/media-source-1.0.3.md",
-        "sha256": "2220fe5a8509fd16450847bc76f798f05dbb8f7476f8a64d2411de16c09071a5"
+        "path": "legal/reviews/media-source-1.0.4.md",
+        "sha256": "8221d88f37ddff6d604510835350e4499351aa8e46cb10ed41623aae3785a958"
       },
       "qt-lgpl-module-and-relinking-evidence": {
         "path": "legal/reviews/qt-replacement-2026-10-06.md",
