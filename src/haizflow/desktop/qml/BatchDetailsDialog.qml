@@ -21,6 +21,9 @@ AppDialog {
         case "targetLanguage": return qsTr("Ngôn ngữ đích");
         case "speechRecognitionModel": return qsTr("Model nhận dạng");
         case "translationModel": return qsTr("Model dịch");
+        case "geminiTranslationInstructions": return qsTr("Hướng dẫn dịch");
+        case "geminiTranslationGlossary": return qsTr("Tên nhân vật và xưng hô");
+        case "geminiTranslationStyle": return qsTr("Văn phong dịch");
         case "ttsProvider": return qsTr("Model giọng đọc");
         case "ttsVoice": case "voice": return qsTr("Giọng đọc");
         case "speakerMode": case "speakers": return qsTr("Người nói");

@@ -446,6 +446,180 @@ def test_supported_import_does_not_change_vieneu_choice(project, language, text)
     assert video.tts_provider == "vieneu-gpu" and video.tts_voice == "vieneu:Hải Đăng"
 
 
+@pytest.mark.parametrize("provider", ["vieneu", "vieneu-gpu"])
+@pytest.mark.parametrize("text", [
+    "Tôi cảm ơn bạn đã đến thăm gia đình tôi hôm nay.",
+    "Tôi cảm ơn bạn 王 đã đến thăm gia đình tôi hôm nay.",
+    "Tôi cảm ơn bạn ユキ đã đến thăm gia đình tôi hôm nay.",
+    "Tôi cảm ơn bạn 민 đã đến thăm gia đình tôi hôm nay.",
+])
+def test_vietnamese_srt_on_chinese_source_keeps_supported_vieneu(project, provider, text):
+    from haizflow.services.subtitle_language import manual_subtitle_language
+
+    video, path = project
+    video.source_language = "zh"
+    video.target_language = "zh"  # The next translation is not the imported captions.
+    video.tts_provider, video.tts_voice = provider, "vieneu:Trúc Ly"
+    path.write_text(f"1\n00:00:01,000 --> 00:00:02,000\n{text}\n", encoding="utf-8")
+    subtitle_import.import_srt(video.video_id, str(path), language="vi")
+    segments = manual_tools._load_segments(video)
+    assert manual_subtitle_language(video, segments) == "vi"
+    assert bool(subtitle_import.voice_notice(video, provider, segments)) == ("王" in text)
+    assert video.tts_provider == provider and video.tts_voice == "vieneu:Trúc Ly"
+    assert video.source_language == "zh" and video.target_language == "zh"
+
+
+def test_decomposed_vietnamese_srt_is_detected_without_using_source_language(project):
+    import unicodedata
+
+    video, path = project
+    video.source_language = "zh"
+    video.tts_provider, video.tts_voice = "vieneu-gpu", "vieneu:Trúc Ly"
+    text = unicodedata.normalize("NFD", "Người bạn trở về.")
+    path.write_text(f"1\n00:00:01,000 --> 00:00:02,000\n{text}\n", encoding="utf-8")
+    subtitle_import.import_srt(video.video_id, str(path))
+    assert video.subtitle_language == "vi"
+    assert subtitle_import.voice_notice(video, "vieneu-gpu", manual_tools._load_segments(video)) is None
+
+
+@pytest.mark.parametrize("provider", ["vieneu", "vieneu-gpu"])
+def test_imported_vietnamese_reaches_voice_worker_as_vietnamese_on_chinese_video(project, monkeypatch, provider):
+    video, path = project
+    video.source_language = video.target_language = "zh"
+    video.tts_provider, video.tts_voice = provider, "vieneu:Trúc Ly"
+    path.write_text("1\n00:00:01,000 --> 00:00:02,000\nTôi cảm ơn bạn Vương vì tất cả.\n", encoding="utf-8")
+    subtitle_import.import_srt(video.video_id, str(path), language="vi")
+    monkeypatch.setattr(manual_tools, "ensure_narrator_anchor", lambda _: "")
+    monkeypatch.setattr(manual_tools, "shutdown_hymt2_worker", Mock())
+    monkeypatch.setattr(manual_tools, "_release_recognition_runtime", Mock())
+    monkeypatch.setattr(manual_tools, "_is_valid_mp3", lambda value: Path(value).is_file() and Path(value).stat().st_size > 0)
+    monkeypatch.setattr(editor_documents, "mark_voice_clips_ready", Mock())
+    monkeypatch.setattr("haizflow.core.memory.cpu_memory_constrained", lambda: False)
+    requests = []
+
+    def synthesize(source, output, voice, _identifier, **kwargs):
+        requests.append((voice, kwargs["provider"], kwargs["target_language"]))
+        for index in kwargs["segment_indices"]:
+            Path(output, f"voice_{index:04d}.mp3").write_bytes(b"ID3 offline fixture")
+
+    monkeypatch.setattr(manual_tools, "generate_voice_parts", synthesize)
+    manual_tools._run_voice(video, SimpleNamespace(update=Mock()))
+    assert requests == [("vieneu:Trúc Ly", provider, "vi")]
+    assert manual_tools.published_voice_record(video, validate=True)
+    assert video.source_language == video.target_language == "zh"
+
+
+@pytest.mark.parametrize("language,text", [
+    ("zh", "你好世界，这是中文字幕。"), ("ja", "私は日本語の字幕です。"),
+    ("ko", "이것은 한국어 자막입니다"), ("ru", "Это русские субтитры"),
+    ("ar", "هذه ترجمة باللغة العربية"), ("th", "นี่คือคำบรรยายภาษาไทย"),
+    ("hi", "यह हिंदी उपशीर्षक है"),
+])
+def test_predominant_foreign_script_stays_detected_and_blocked_for_vieneu(project, language, text):
+    video, path = project
+    assert subtitle_import.detect_language([{"text": text}]) == language
+    path.write_text(f"1\n00:00:01,000 --> 00:00:02,000\n{text}\n", encoding="utf-8")
+    subtitle_import.import_srt(video.video_id, str(path), language="vi")
+    assert subtitle_import.voice_notice(video, "vieneu-gpu", manual_tools._load_segments(video))
+
+
+@pytest.mark.parametrize("provider", ["vieneu", "vieneu-gpu"])
+@pytest.mark.parametrize("ui_language", ["vi", "en"])
+def test_blocking_chinese_notice_identifies_srt_and_actionable_cue(project, provider, ui_language):
+    video, path = project
+    path.write_text("1\n00:00:01,000 --> 00:00:02,000\n你好世界\n", encoding="utf-8")
+    subtitle_import.import_srt(video.video_id, str(path), language="vi")
+    title, message = subtitle_import.voice_notice(video, provider, manual_tools._load_segments(video), ui_language)
+    assert "SRT" in title and "SRT" in message
+    assert "1: “你好世界”" in message
+    assert "OmniVoice/Edge TTS" in message
+    assert "không hỗ trợ giọng đọc tiếng Việt" not in message
+    if ui_language == "vi":
+        assert "VieNeu hỗ trợ tiếng Việt" in message
+        assert "không tự dịch nội dung SRT" in message
+    else:
+        assert "VieNeu supports Vietnamese" in message
+        assert "does not translate the SRT" in message
+
+
+def test_mixed_srt_blocks_vieneu_until_all_han_characters_are_removed(project):
+    video, path = project
+    path.write_text("1\n00:00:01,000 --> 00:00:02,000\nTôi cảm ơn bạn đã giúp đỡ.\n\n"
+                    "2\n00:00:03,000 --> 00:00:04,000\nChào bạn 王明.\n", encoding="utf-8")
+    subtitle_import.import_srt(video.video_id, str(path), language="vi")
+    segments = manual_tools._load_segments(video)
+    assert subtitle_import.voice_notice(video, "vieneu-gpu", segments)
+    assert subtitle_import.voice_notice(video, "vieneu", segments)
+    assert subtitle_import.voice_notice(video, "omnivoice", segments) is None
+    assert subtitle_import.voice_notice(video, "edge", segments) is None
+    _title, message = subtitle_import.chinese_text_notice(video, segments)
+    assert "2: “王明”" in message
+    assert "Không thể tạo giọng VieNeu" in message and "phiên âm" in message
+    assert subtitle_import.chinese_text_notice(video, [{"text": "Đã dịch hết sang tiếng Việt."}]) is None
+    assert subtitle_import.voice_notice(video, "vieneu-gpu", [{"text": "Đã dịch hết sang tiếng Việt."}]) is None
+
+
+def test_srt_script_notice_is_bounded_and_does_not_blame_chinese_source_video():
+    video = SimpleNamespace(files={"imported_source_srt": {}}, source_language="zh")
+    assert subtitle_import.chinese_text_notice(video, [{"text": "你好"}]) is None
+    video.files["imported_source_srt"] = {"name": "captions.srt"}
+    assert subtitle_import.chinese_text_notice(video, [{"text": "Phụ đề tiếng Việt."}]) is None
+    title, message = subtitle_import.chinese_text_notice(video, [{"text": "王" * 1000}] * 50000)
+    assert len(message) < 800
+    assert "1: “" in message and "3: “" in message and "4: “" not in message
+    assert "SRT" in title
+
+
+def test_declared_chinese_without_han_explains_srt_language_setting():
+    video = SimpleNamespace(files={"imported_source_srt": {"name": "captions.srt"}}, subtitle_language="zh")
+    title, message = subtitle_import.voice_notice(video, "vieneu", [{"text": "Xin chào bạn."}])
+    assert "SRT" in title and "được gán ngôn ngữ tiếng Trung" in message
+    assert "nhập lại SRT" in message
+    assert "còn chữ Hán" not in message
+
+
+def test_chinese_srt_ui_and_worker_use_same_reason_before_loading_tts(project, monkeypatch):
+    from haizflow.desktop.qml_controller import HaizFlowController
+
+    video, path = project
+    path.write_text("1\n00:00:01,000 --> 00:00:02,000\n你好世界\n", encoding="utf-8")
+    subtitle_import.import_srt(video.video_id, str(path), language="vi")
+    video.tts_provider = "vieneu-gpu"
+    host = SimpleNamespace(_selected_video=lambda: video, _settings_language="vi", appAlertRequested=Mock())
+    assert not HaizFlowController.validateTtsProviderForLanguage(host, "vi", "vieneu-gpu")
+    title, message, severity = host.appAlertRequested.emit.call_args.args
+    assert "SRT" in title and "你好世界" in message and severity == "warning"
+    anchor = Mock(side_effect=AssertionError("TTS preparation must not start"))
+    monkeypatch.setattr(manual_tools, "ensure_narrator_anchor", anchor)
+    with pytest.raises(ValueError) as failure:
+        manual_tools._run_voice(video, SimpleNamespace(update=Mock()))
+    assert str(failure.value) == message
+    anchor.assert_not_called()
+
+
+@pytest.mark.parametrize("provider,han,warning", [("vieneu-gpu", True, True), ("vieneu", False, False),
+                                                 ("omnivoice", True, False)])
+def test_import_success_warns_once_about_mixed_srt_without_rejecting_it(project, monkeypatch, provider, han, warning):
+    video, path = project
+    video.tts_provider = provider
+    text = "Tôi cảm ơn bạn 王明 đã giúp đỡ gia đình." if han else "Tôi cảm ơn bạn đã giúp đỡ gia đình."
+    path.write_text(f"1\n00:00:01,000 --> 00:00:02,000\n{text}\n", encoding="utf-8")
+    host = SimpleNamespace(_selected_video=lambda: video, _settings_language="vi",
+                           appAlertRequested=SimpleNamespace(emit=Mock()))
+    controller = ProjectCommandsController(host)
+    monkeypatch.setattr(controller, "_srt_busy", lambda **_: False)
+    monkeypatch.setattr(controller, "_srt_duration", lambda _: 6000)
+    monkeypatch.setattr(controller, "_refresh_srt_workspace", Mock())
+    assert controller.import_selected_srt(str(path), "vi", video.video_id)
+    assert subtitle_import.has_import(video)
+    host.appAlertRequested.emit.assert_called_once()
+    title, message, severity = host.appAlertRequested.emit.call_args.args
+    assert title.startswith("Đã nhập SRT")
+    assert severity == ("warning" if warning else "info")
+    if warning:
+        assert "王明" in message and "SRT" in message
+
+
 def test_srt_refresh_synchronizes_fallback_voice_without_discarding_other_drafts(project):
     video, path = project
     video.tts_provider = "omnivoice-gpu"

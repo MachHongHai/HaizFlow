@@ -1710,6 +1710,19 @@ Module {
         Signal { name: "targetLanguageChanged" }
         Signal { name: "speechRecognitionModelChanged" }
         Signal { name: "translationModelChanged" }
+        Signal { name: "geminiGuidanceChanged" }
+        Property { name: "geminiTranslationInstructions"; type: "QString"; read: "geminiTranslationInstructions"; notify: "geminiGuidanceChanged"; isReadonly: true }
+        Property { name: "geminiTranslationGlossary"; type: "QString"; read: "geminiTranslationGlossary"; notify: "geminiGuidanceChanged"; isReadonly: true }
+        Property { name: "geminiTranslationStyle"; type: "QString"; read: "geminiTranslationStyle"; notify: "geminiGuidanceChanged"; isReadonly: true }
+        Method {
+            name: "saveGeminiTranslationGuidance"
+            type: "bool"
+            Parameter { name: "project_key"; type: "QString" }
+            Parameter { name: "video_id"; type: "QString" }
+            Parameter { name: "instructions"; type: "QString" }
+            Parameter { name: "glossary"; type: "QString" }
+            Parameter { name: "style"; type: "QString" }
+        }
         Signal { name: "speechRecognitionModelOptionsChanged" }
         Signal { name: "ttsVoiceChanged" }
         Signal { name: "ttsVoiceOptionsChanged" }

@@ -89,9 +89,14 @@ class ProcessingLifecycleController:
         if video_id in host._deleted_video_ids:
             return
         video = video_store.get_video(video_id)
-        if not video or video.status == "cancelled":
+        if (not video or video.status in {"paused", "cancelled"}
+                or is_cancelled(video_id) or is_paused(video_id)):
             return
         host._activate_pending_device_for_next_video(video_id)
+        video = video_store.get_video(video_id)
+        if (not video or video.status not in {"pending", "processing"}
+                or is_cancelled(video_id) or is_paused(video_id)):
+            return
         manual_tool = (
             str(getattr(video, "manual_target_tool", "") or "")
             if getattr(video, "project_type", "single") == "manual"
@@ -106,6 +111,12 @@ class ProcessingLifecycleController:
             step="starting",
             step_detail="Đang chuẩn bị công cụ" if manual_tool else "Processing started",
         )
+        if is_cancelled(video_id) or is_paused(video_id):
+            current = video_store.get_video(video_id)
+            if current and current.status in {"pending", "processing"}:
+                state = "paused" if is_paused(video_id) else "cancelled"
+                video_store.update_video(video_id, status=state, step=state, error=None)
+            return
         video_store.log_to_video(video_id, "Processing started from the shared queue.")
         self.update_queue_positions()
         host._log_queue.put(f"__QUEUE_STARTED__:{video_id}")

@@ -129,7 +129,7 @@ def test_gemini_json_contains_soft_budget_but_does_not_reduce_generation_token_c
         assert entry == {"id": 1, "text": "Go now", "speech_seconds": 1.0,
                          "target_spoken_units": 5, "spoken_unit": "space-separated spoken syllables"}
         assert payload["generationConfig"]["maxOutputTokens"] >= 1024
-        assert "Accuracy takes priority" in payload["systemInstruction"]["parts"][0]["text"]
+        assert "meaning, grammar and spelling take priority" in payload["systemInstruction"]["parts"][0]["text"]
         return Response()
 
     with patch.object(gemini_translation.request, "urlopen", side_effect=send):

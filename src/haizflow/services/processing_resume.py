@@ -26,6 +26,12 @@ def configuration_snapshot(video, device: str, config=None) -> dict:
     fields = set(defaults) - _IDENTITY
     if getattr(video, "project_type", "single") == "manual":
         fields = _MANUAL_FIELDS.get(tool, fields)
+    guidance_fields = {"gemini_translation_instructions", "gemini_translation_glossary", "gemini_translation_style"}
+    model = getattr(config, "translation_model", getattr(video, "translation_model", ""))
+    if str(model).startswith("gemini-") and (not tool or tool in {"translation", "export"}):
+        fields = fields | guidance_fields
+    else:
+        fields = fields - guidance_fields
     settings = {}
     for field in sorted(fields):
         value = getattr(config, field, getattr(video, field, defaults[field])) if config is not None else getattr(video, field, defaults[field])

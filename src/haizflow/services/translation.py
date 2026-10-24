@@ -77,6 +77,9 @@ def translate_segments(
     validation_mode: str = "auto",
     retain_checkpoint: bool = False,
     checkpoint_key: str = "",
+    translation_instructions: str = "",
+    translation_glossary: str = "",
+    translation_style: str = "balanced",
 ):
     from haizflow.services.gemini_translation import MODELS as GEMINI_MODELS
     from haizflow.services.gemini_translation import translate_texts
@@ -86,6 +89,14 @@ def translate_segments(
 
     requested_model = str(translation_model or "auto").lower()
     using_gemini = requested_model in GEMINI_MODELS
+    from haizflow.services.gemini_context import MAX_GUIDANCE, STYLE_PROMPTS, VERSION
+
+    if using_gemini and translation_style not in STYLE_PROMPTS:
+        raise ValueError("Văn phong dịch Gemini không hợp lệ.")
+    translation_instructions = str(translation_instructions or "").strip()
+    translation_glossary = str(translation_glossary or "").strip()
+    if using_gemini and max(len(translation_instructions), len(translation_glossary)) > MAX_GUIDANCE:
+        raise ValueError("Hướng dẫn dịch và quy ước tên/xưng hô chỉ được dài tối đa 4000 ký tự mỗi ô.")
     if provider not in {"hymt2", "gemini"} or (provider == "gemini") != using_gemini:
         raise ValueError("Translation provider does not match the selected model.")
     from haizflow.core.hardware import configure_translation_model
@@ -131,6 +142,7 @@ def translate_segments(
         "format": "sentence-translation-v1",
         "speech_length_policy": POLICY_VERSION,
         "generation": checkpoint_key,
+        **({"gemini_context": [VERSION, translation_instructions, translation_glossary, translation_style]} if using_gemini else {}),
     }, len(segments))
     def save_valid_batch(indices, values):
         valid = [(index, value) for index, value in zip(indices, values)
@@ -154,6 +166,8 @@ def translate_segments(
             video_id=video_id, progress_callback=progress_callback,
             initial_translations=checkpoint.values, result_callback=save_valid_batch,
             speech_durations=speech_durations,
+            translation_instructions=translation_instructions, translation_glossary=translation_glossary,
+            translation_style=translation_style,
         )
     else:
         _release_translation_competitors(video_id)
@@ -202,6 +216,9 @@ def translate_segments(
                     model=requested_model, source_language="auto",
                     target_language=target_language_name, video_id=video_id,
                     speech_durations=[speech_durations[index] for index in retry_indexes],
+                    translation_instructions=translation_instructions, translation_glossary=translation_glossary,
+                    translation_style=translation_style,
+                    context_texts=source_texts, context_translations=translations, context_indices=retry_indexes,
                 )
                 if len(retry_values) != len(retry_indexes):
                     raise ValueError("Recovery returned an incomplete translation batch.")

@@ -18,6 +18,9 @@ FloatingToolDialog {
     property string draftTargetLanguage: "vi"
     property string draftSpeechRecognitionModel: "small"
     property string draftTranslationModel: "auto"
+    property string draftGeminiInstructions: ""
+    property string draftGeminiGlossary: ""
+    property string draftGeminiStyle: "balanced"
     property string draftTtsProvider: "omnivoice"
     property string draftTtsVoice: ""
     property string draftSpeakerMode: "single"
@@ -141,6 +144,9 @@ FloatingToolDialog {
         draftTargetLanguage = settings.targetLanguage || "vi"
         draftSpeechRecognitionModel = settings.speechRecognitionModel || "small"
         draftTranslationModel = settings.translationModel || "q4"
+        draftGeminiInstructions = settings.geminiTranslationInstructions || "";
+        draftGeminiGlossary = settings.geminiTranslationGlossary || "";
+        draftGeminiStyle = settings.geminiTranslationStyle || "balanced";
         draftTtsProvider = settings.ttsProvider || "omnivoice"
         draftTtsVoice = normalizedDraftVoice(draftTargetLanguage, draftTtsProvider, settings.ttsVoice || "")
         draftSpeakerMode = (draftTtsProvider.indexOf("omnivoice") === 0 || draftTtsProvider.indexOf("vieneu") === 0) && settings.speakerMode === "multiple"
@@ -176,6 +182,9 @@ FloatingToolDialog {
             "targetLanguage": draftTargetLanguage,
             "speechRecognitionModel": draftSpeechRecognitionModel,
             "translationModel": draftTranslationModel,
+            "geminiTranslationInstructions": draftGeminiInstructions,
+            "geminiTranslationGlossary": draftGeminiGlossary,
+            "geminiTranslationStyle": draftGeminiStyle,
             "ttsProvider": draftTtsProvider,
             "ttsVoice": draftTtsVoice,
             "speakerMode": draftSpeakerMode,
@@ -332,6 +341,14 @@ FloatingToolDialog {
                 showMusicPlaybackSettings: true
                 speechRecognitionModel: root.draftSpeechRecognitionModel
                 translationModel: root.draftTranslationModel
+                geminiInstructions: root.draftGeminiInstructions
+                geminiGlossary: root.draftGeminiGlossary
+                geminiStyle: root.draftGeminiStyle
+                onGeminiGuidanceEdited: function(instructions, glossary, style) {
+                    root.draftGeminiInstructions = instructions;
+                    root.draftGeminiGlossary = glossary;
+                    root.draftGeminiStyle = style;
+                }
                 speechRecognitionOptions: AppController.speechRecognitionModelOptions
                 speechRecognitionIndex: root.draftSpeechRecognitionIndex
                 targetLanguage: root.draftTargetLanguage

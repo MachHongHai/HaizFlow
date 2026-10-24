@@ -79,6 +79,12 @@ class ProjectWorkspaceController:
         )
         host._translation_model = project_translation_choice(
             str(getattr(video, "translation_model", "auto") or "auto"), device, total_vram_bytes=vram)
+        host._gemini_translation_instructions = str(getattr(video, "gemini_translation_instructions", "") or "")
+        host._gemini_translation_glossary = str(getattr(video, "gemini_translation_glossary", "") or "")
+        host._gemini_translation_style = str(getattr(video, "gemini_translation_style", "balanced") or "balanced")
+        signal = getattr(host, "geminiGuidanceChanged", None)
+        if signal is not None:
+            signal.emit()
         host._tts_provider = host._normalized_tts_provider(
             host._target_language, getattr(video, "tts_provider", "omnivoice")
         )

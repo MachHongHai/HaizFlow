@@ -38,7 +38,11 @@ def extract_audio(video_path: str, output_wav_path: str, video_id: str):
         ]
 
         check_cancellation(video_id)
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        process = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            encoding="utf-8", errors="replace",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
         _stdout, stderr = communicate_process(
             video_id,
             process,

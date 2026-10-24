@@ -62,8 +62,16 @@ def render_revision(video) -> str:
         return export_signature(video, validate=False)
     from haizflow.schemas.video import VideoConfig
 
-    ignored = {"project_name", "project_directory", "project_id", "project_key", "background_music_path", "review_approved"}
+    ignored = {"project_name", "project_directory", "project_id", "project_key", "background_music_path", "review_approved",
+               "gemini_translation_instructions", "gemini_translation_glossary", "gemini_translation_style"}
     config = {key: getattr(video, key, None) for key in VideoConfig.model_fields if key not in ignored}
+    from haizflow.services.gemini_context import signature_parts
+
+    guidance = signature_parts(video)
+    if guidance and any(guidance[1:3]):
+        config["gemini_translation_guidance"] = guidance[1:3]
+    if guidance and guidance[3] != "balanced":
+        config["gemini_translation_style"] = guidance[3]
     if config.get("output_speed", 1.0) == 1.0:
         config.pop("output_speed", None)
     media = {key: manual_artifacts.file_state((video.files or {}).get(key)) for key in (

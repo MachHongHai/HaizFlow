@@ -15,7 +15,10 @@ def test_manual_replacement_clears_layers_assets_drafts_and_preserves_model_choi
     monkeypatch.setattr(video_store, "LEGACY_VIDEO_WORKSPACES_DIR", str(tmp_path / "legacy"))
     monkeypatch.setattr(editor_documents, "get_video_duration", lambda _: 10)
     config = VideoConfig(project_type="manual", project_name="Reset", project_directory=str(tmp_path),
-                         watermark_text="OLD", speech_recognition_model="small-cpu", translation_model="q4")
+                         watermark_text="OLD", speech_recognition_model="small-cpu", translation_model="q4",
+                         gemini_translation_instructions="Bối cảnh của video cũ",
+                         gemini_translation_glossary="Hai nhân vật là vợ chồng",
+                         gemini_translation_style="literal")
     video = video_store.create_video(f"reset-{tmp_path.name}", "old.mp4", config)
     Path(video.files["video_input"]).write_bytes(b"old input")
     video.files["background_music"] = str(tmp_path / "old.mp3")
@@ -34,6 +37,8 @@ def test_manual_replacement_clears_layers_assets_drafts_and_preserves_model_choi
     assert clean.sequence.duration_ms == 10000
     assert replaced.speech_recognition_model == "small-cpu"
     assert replaced.translation_model == "q4"
+    assert replaced.gemini_translation_instructions == replaced.gemini_translation_glossary == ""
+    assert replaced.gemini_translation_style == "literal"
     assert replaced.manual_tool_generations == {"source": 1}
     # A rollback copy exists, but is never used as the new editor document.
     assert list((editor_documents.document_path(video.video_id).parent / "source-replacements").glob("*.json"))

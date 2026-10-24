@@ -29,6 +29,7 @@ from haizflow.pipeline.timing_contract import AUDIO_TIMELINE_VERSION, TIMING_SOU
 from haizflow.pipeline.tts import generate_voice_parts, resolve_tts_provider, voice_selection_identity
 from haizflow.schemas.video import SubtitleStyle
 from haizflow.services.video_store import get_video, log_to_video, update_video
+from haizflow.services.gemini_context import guidance as gemini_guidance
 from haizflow.services.translation import (
     is_hymt2_worker_warm,
     shutdown_hymt2_worker,
@@ -477,6 +478,7 @@ def _finish_recovered_translation(
         source_language="en",
         provider="gemini" if str(getattr(video, "translation_model", "")).startswith("gemini-") else "hymt2",
         translation_model=_execution_models(video)["translation_model"],
+        **gemini_guidance(video),
         progress_callback=report_translation_progress,
     )
     _mark_checkpoint(video, "translation", translation_signature)
@@ -503,6 +505,8 @@ MANUAL_PIPELINE_STAGES = ("translation", "subtitles", "voice", "timeline", "rend
 
 
 def _translation_signature(video, video_input: str) -> str:
+    from haizflow.services.gemini_context import signature_parts
+
     using_gemini = str(getattr(video, "translation_model", "")).startswith("gemini-")
     return _signature(
         _file_state(video_input), TIMING_SOURCE,
@@ -512,6 +516,7 @@ def _translation_signature(video, video_input: str) -> str:
         "gemini" if using_gemini else "hymt2",
         "gemini-segment-json-v1" if using_gemini else HYMT2_MODEL_REVISION,
         *translation_model_signature_parts(getattr(video, "translation_model", "auto")),
+        *signature_parts(video),
     )
 
 
@@ -676,18 +681,36 @@ def process_video_sync(
             warm_hymt2_worker(report_model_warmup)
 
         check_cancellation(video_id)
-        reporter.update(5, "extracting_audio", "Extracting source audio")
-        extract_audio(video_input, temp_audio_wav, video_id)
+        extraction_signature = _signature(_file_state(video_input), "stereo-48k-s24-master-v1")
+        if (_checkpoint_valid(video, "audio_extraction", extraction_signature, [temp_audio_wav])
+                or _recovery_checkpoint_valid(video, "audio_extraction", extraction_signature, [temp_audio_wav])):
+            reporter.update(5, "extracting_audio", "Reusing extracted source audio")
+        else:
+            reporter.update(5, "extracting_audio", "Extracting source audio")
+            extract_audio(video_input, temp_audio_wav, video_id)
+            _mark_checkpoint(video, "audio_extraction", extraction_signature)
         reporter.update(12, "extracting_audio", "Source audio ready")
 
         transcribe_audio_target = temp_audio_wav
         original_audio_target = temp_audio_wav
         if video.enable_audio_separation:
             check_cancellation(video_id)
-            _ensure_gpu_available("audio separation")
-            reporter.update(14, "separating_audio", "Separating speech from background audio")
-            separation_dir = os.path.join(video_dir, "temp", "separation")
-            vocals_path, no_vocals_path = separate_audio(temp_audio_wav, separation_dir, video_id)
+            from haizflow.core.model_integrity import DEMUCS_MODEL_SIGNATURE
+
+            separation_signature = _signature(
+                extraction_signature, _file_state(temp_audio_wav), DEMUCS_MODEL_SIGNATURE, "separated-stems-v1",
+            )
+            saved_stems = [str(video.files.get(key) or "") for key in ("speech_audio", "background_audio")]
+            if (_checkpoint_valid(video, "audio_separation", separation_signature, saved_stems)
+                    or _recovery_checkpoint_valid(video, "audio_separation", separation_signature, saved_stems)):
+                reporter.update(14, "separating_audio", "Reusing separated speech and background audio")
+                vocals_path, no_vocals_path = saved_stems
+            else:
+                _ensure_gpu_available("audio separation")
+                reporter.update(14, "separating_audio", "Separating speech from background audio")
+                separation_dir = os.path.join(video_dir, "temp", "separation")
+                vocals_path, no_vocals_path = separate_audio(temp_audio_wav, separation_dir, video_id)
+                _mark_checkpoint(video, "audio_separation", separation_signature)
             transcribe_audio_target = vocals_path
             original_audio_target = no_vocals_path
             files = dict(video.files)
@@ -737,6 +760,7 @@ def process_video_sync(
             source_language=detected_language or "en",
             provider="gemini" if using_gemini else "hymt2",
             translation_model=_execution_models(video)["translation_model"],
+            **gemini_guidance(video),
             progress_callback=report_translation_progress,
         )
         _mark_checkpoint(video, "translation", translation_signature)
@@ -901,6 +925,12 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
     for index, segment in enumerate(transcript_segments, 1):
         if not isinstance(segment, dict) or not str(segment.get("text") or "").strip():
             raise RuntimeError(f"Translated subtitle segment {index} is missing text.")
+    if effective_tts_provider == "vieneu":
+        from haizflow.core.vieneu_voices import han_text_notice
+
+        notice = han_text_notice(transcript_segments)
+        if notice:
+            raise ValueError(notice[1])
     expected_parts = len(transcript_segments)
     voice_outputs = [os.path.join(voice_parts_dir, f"voice_{index:04d}.mp3") for index in range(1, expected_parts + 1)]
     if _checkpoint_valid(video, "voice", voice_signature, voice_outputs) or _recovery_checkpoint_valid(
@@ -986,6 +1016,9 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
     )
     timeline_signature = _signature(
         voice_signature,
+        # A missing clip can be regenerated with the same synthesis inputs
+        # but different audio. Never reuse a mix/render of the previous clips.
+        [_file_state(path) for path in voice_outputs],
         _file_state(video_input),
         _file_state(mix_audio_path),
         video.enable_audio_separation,

@@ -16,6 +16,9 @@ FIELDS = {
     "outputSpeed": "output_speed",
     "workflowMode": "mode", "targetLanguage": "target_language",
     "speechRecognitionModel": "speech_recognition_model", "translationModel": "translation_model",
+    "geminiTranslationInstructions": "gemini_translation_instructions",
+    "geminiTranslationGlossary": "gemini_translation_glossary",
+    "geminiTranslationStyle": "gemini_translation_style",
     "ttsProvider": "tts_provider", "ttsVoice": "tts_voice", "speakerMode": "speaker_mode",
     "enableAudioSeparation": "enable_audio_separation", "originalVolume": "original_video_volume",
     "backgroundMusicVolume": "background_music_volume", "ttsVolume": "tts_volume",
@@ -33,7 +36,7 @@ ASSETS = {"backgroundMusicPath": "background_music", "voiceReferencePath": "voic
 
 
 def values_for(video) -> dict:
-    result = {key: getattr(video, field) for key, field in FIELDS.items()}
+    result = {key: getattr(video, field, "balanced" if field == "gemini_translation_style" else "") for key, field in FIELDS.items()}
     result["workflowMode"] = "A"
     result["subtitleStyle"] = {**video.subtitle_style.model_dump(), "manual": video.subtitle_layout_override}
     result.update({key: str((video.files or {}).get(field) or "") for key, field in ASSETS.items()})
@@ -122,7 +125,8 @@ def stable_values(project_key: str, initial: dict, videos: list) -> dict:
     if isinstance(saved, dict):
         # Older shared defaults predate hand-drawn cover regions. An individual
         # video's region must not silently become the shared batch default.
-        return {**initial, "originalSubtitleRegion": {}, **saved}
+        return {**initial, "originalSubtitleRegion": {}, "geminiTranslationInstructions": "",
+                "geminiTranslationGlossary": "", "geminiTranslationStyle": "balanced", **saved}
     if videos:
         maps = [values_for(video) for video in videos]
         signatures = [json.dumps({key: asset_identity(value) if key in ASSETS else value

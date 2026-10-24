@@ -8,6 +8,7 @@ SUBTITLE_FONT_FAMILY = "Bangers"
 WorkflowMode = Literal["A", "review"]
 TranslatorProvider = Literal["hymt2", "gemini"]
 TranslationModel = Literal["auto", "q4", "full", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
+GeminiTranslationStyle = Literal["balanced", "literal", "natural", "adaptive"]
 TTSProvider = Literal["omnivoice", "omnivoice-gpu", "edge", "vieneu", "vieneu-gpu"]
 SpeechRecognitionModel = Literal["small", "small-cpu", "small-gpu", "large-v3-turbo"]
 OutputFormat = Literal["keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"]
@@ -84,6 +85,9 @@ class VideoConfig(BaseModel):
     translator_provider: TranslatorProvider = "hymt2"
     speech_recognition_model: SpeechRecognitionModel = "small"
     translation_model: TranslationModel = "q4"
+    gemini_translation_instructions: str = Field(default="", max_length=4000)
+    gemini_translation_glossary: str = Field(default="", max_length=4000)
+    gemini_translation_style: GeminiTranslationStyle = "balanced"
     tts_provider: TTSProvider = "omnivoice"
     tts_voice: str = "omnivoice:female"
     speaker_mode: SpeakerMode = "single"
@@ -145,6 +149,9 @@ class VideoInfo(BaseModel):
     translator_provider: TranslatorProvider = "hymt2"
     speech_recognition_model: SpeechRecognitionModel = "small"
     translation_model: TranslationModel = "q4"
+    gemini_translation_instructions: str = Field(default="", max_length=4000)
+    gemini_translation_glossary: str = Field(default="", max_length=4000)
+    gemini_translation_style: GeminiTranslationStyle = "balanced"
     tts_provider: TTSProvider = "omnivoice"
     tts_voice: str
     speaker_mode: SpeakerMode = "single"

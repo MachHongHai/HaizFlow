@@ -18,6 +18,7 @@ from haizflow.core.storage_ownership import owned_path
 from haizflow.pipeline.timing_contract import TIMING_SOURCE
 from haizflow.pipeline.tts import voice_selection_identity
 from haizflow.services import editor_documents, manual_artifacts, result_segments, video_store
+from haizflow.services.gemini_context import guidance as gemini_guidance
 from haizflow.services.subtitle_identity import voice_source_indices
 from haizflow.services.video_export import legacy_render_owned, preset_settings
 
@@ -331,6 +332,8 @@ def recognition_signature(video) -> str:
 
 
 def translation_signature(video) -> str:
+    from haizflow.services.gemini_context import signature_parts
+
     model = str(getattr(video, "translation_model", "auto") or "auto")
     using_gemini = model.startswith("gemini-")
     return manual_artifacts.signature(
@@ -339,6 +342,7 @@ def translation_signature(video) -> str:
         "gemini" if using_gemini else "hymt2",
         "gemini-segment-json-v1" if using_gemini else HYMT2_MODEL_REVISION,
         *translation_model_signature_parts(model),
+        *signature_parts(video),
         "gemini-batched-segments-v1" if using_gemini else "hymt2-semantic-source-context-retry-v21",
         *_generation_token(video, "translation"),
         "manual-translation-v1",
@@ -1772,6 +1776,7 @@ def _run_translation(video, reporter) -> None:
                 source_language="auto",
                 provider="gemini" if str(getattr(video, "translation_model", "")).startswith("gemini-") else "hymt2",
                 translation_model=getattr(video, "translation_model", "auto"),
+                **gemini_guidance(video),
                 checkpoint_path=str(manual_progress_path(video.video_id)),
                 checkpoint_key=expected,
                 validation_mode="manual",

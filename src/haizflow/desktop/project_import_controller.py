@@ -1199,6 +1199,9 @@ class ProjectImportController:
         host._settings_owner_video_id = None
         defaults = {
             "_workflow_mode": "A",
+            "_gemini_translation_instructions": "",
+            "_gemini_translation_glossary": "",
+            "_gemini_translation_style": "balanced",
             "_target_language": "vi",
             **project_model_defaults(
                 getattr(host, "_settings_processing_device", "cpu"),
@@ -1236,6 +1239,9 @@ class ProjectImportController:
         }
         changed_signals = {
             "_workflow_mode": "workflowModeChanged",
+            "_gemini_translation_instructions": "geminiGuidanceChanged",
+            "_gemini_translation_glossary": "geminiGuidanceChanged",
+            "_gemini_translation_style": "geminiGuidanceChanged",
             "_target_language": "targetLanguageChanged",
             "_speech_recognition_model": "speechRecognitionModelChanged",
               "_translation_model": "translationModelChanged",

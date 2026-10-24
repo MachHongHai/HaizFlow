@@ -106,8 +106,11 @@ def synthesize_batch_to_mp3(items, video_id, *, device="cpu", language_id="vi",
     from haizflow.pipeline.process_registry import check_cancellation, communicate_process
     from haizflow.services.video_store import log_to_video
 
-    from haizflow.core.vieneu_voices import unsupported_language_notice
+    from haizflow.core.vieneu_voices import han_text_notice, unsupported_language_notice
 
+    notice = han_text_notice(items)
+    if notice:
+        raise ValueError(notice[1])
     notice = unsupported_language_notice("vieneu", language_id)
     if notice:
         raise ValueError(notice[1])
@@ -278,6 +281,11 @@ def _load_model(root: Path, device: str):
 
 
 def _worker(request):
+    from haizflow.core.vieneu_voices import han_text_notice
+
+    notice = han_text_notice(request["items"])
+    if notice:
+        raise ValueError(notice[1])
     import numpy as np
     import soundfile as sf
 

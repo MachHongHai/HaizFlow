@@ -4,6 +4,7 @@ import hashlib
 import json
 import html
 import re
+import unicodedata
 import uuid
 from copy import deepcopy
 from pathlib import Path
@@ -20,15 +21,27 @@ TEXT_FILES = {"source_segments", "transcript_json", "srt_output", "voice_output"
 
 
 def detect_language(segments) -> str:
-    """Only identify distinctive scripts; Latin text needs user confirmation."""
-    text = " ".join(str(item.get("text") or "") for item in segments)
+    """Identify a predominant script, not a lone foreign name in captions."""
+    text = unicodedata.normalize("NFC", " ".join(str(item.get("text") or "") for item in segments))
+    letters = sum(character.isalpha() for character in text)
+    if not letters:
+        return "und"
+    han = len(re.findall(r"[\u3400-\u9fff]", text))
+    kana = len(re.findall(r"[\u3040-\u30ff]", text))
+    if kana and (han + kana) / letters >= .5:
+        return "ja"  # Japanese captions commonly mix kana and kanji.
     for code, pattern in (("ja", r"[\u3040-\u30ff]"), ("ko", r"[\uac00-\ud7af]"),
                           ("ar", r"[\u0600-\u06ff]"), ("ru", r"[\u0400-\u04ff]"),
                           ("th", r"[\u0e00-\u0e7f]"), ("hi", r"[\u0900-\u097f]"),
-                          ("zh", r"[\u3400-\u9fff]"),
-                          ("vi", r"[đĐăĂơƠưƯạảấầẩẫậắằẳẵặẹẻẽếềểễệỉĩịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]")):
-        if re.search(pattern, text):
+                          ("zh", r"[\u3400-\u9fff]")):
+        count = sum(character.isalpha() for character in re.findall(pattern, text))
+        if count / letters >= .5:
             return code
+    latin = sum("LATIN" in unicodedata.name(character, "") for character in text if character.isalpha())
+    if latin / letters >= .5 and re.search(
+        r"[đĐăĂơƠưƯạảấầẩẫậắằẳẵặẹẻẽếềểễệỉĩịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]", text,
+    ):
+        return "vi"
     return "und"
 
 
@@ -39,7 +52,22 @@ def inspect_srt(path, *, duration_ms=0):
     return data, segments
 
 
+def chinese_text_notice(video, segments, ui_language="vi"):
+    """Explain actual imported-caption content, not the source video's language."""
+    if not has_import(video):
+        return None
+    from haizflow.core.vieneu_voices import han_text_notice
+
+    return han_text_notice(segments, ui_language, imported=True)
+
+
 def voice_notice(video, provider, segments, ui_language="vi"):
+    if str(provider).startswith("vieneu"):
+        from haizflow.core.vieneu_voices import han_text_notice
+
+        notice = han_text_notice(segments, ui_language, imported=has_import(video))
+        if notice:
+            return notice
     if not has_import(video):
         return None
     language = str(getattr(video, "subtitle_language", "") or "und")
@@ -48,9 +76,18 @@ def voice_notice(video, provider, segments, ui_language="vi"):
         return ("Ngôn ngữ SRT chưa được cấu hình", "Chọn ngôn ngữ SRT phù hợp khi nhập hoặc dịch sang ngôn ngữ được hỗ trợ trước khi tạo giọng.") if ui_language == "vi" else (
             "SRT language is not configured", "Choose a supported SRT language when importing, or translate before generating speech.")
     if str(provider).startswith("vieneu") and (language == "zh" or script == "zh"):
-        from haizflow.core.vieneu_voices import unsupported_language_notice
-
-        return unsupported_language_notice(provider, "zh", ui_language)
+        notice = chinese_text_notice(video, segments, ui_language)
+        if notice:
+            return notice
+        return ("Ngôn ngữ SRT là tiếng Trung", (
+            "SRT đã nhập đang được gán ngôn ngữ tiếng Trung. VieNeu không hỗ trợ đọc tiếng Trung. "
+            "Nếu nội dung thực tế là tiếng Việt, hãy nhập lại SRT và chọn đúng ngôn ngữ; "
+            "nếu là tiếng Trung, hãy dịch SRT sang tiếng Việt hoặc chọn OmniVoice/Edge TTS."
+        )) if ui_language == "vi" else ("SRT language is Chinese", (
+            "The imported SRT is marked as Chinese, which VieNeu does not support. "
+            "If its actual content is Vietnamese, reimport it with the correct language; otherwise translate "
+            "the captions into Vietnamese or choose OmniVoice/Edge TTS."
+        ))
     return None
 
 

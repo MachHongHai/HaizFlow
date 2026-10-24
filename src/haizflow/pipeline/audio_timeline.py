@@ -276,6 +276,8 @@ def fit_tempo_to_duration(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         _stdout, stderr = communicate_process(

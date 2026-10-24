@@ -123,6 +123,9 @@ class HaizFlowController(QObject):
         "target_language",
         "speech_recognition_model",
         "translation_model",
+        "gemini_translation_instructions",
+        "gemini_translation_glossary",
+        "gemini_translation_style",
         "tts_provider",
         "tts_voice",
         "speaker_mode",
@@ -158,6 +161,7 @@ class HaizFlowController(QObject):
     targetLanguageChanged = Signal()
     speechRecognitionModelChanged = Signal()
     translationModelChanged = Signal()
+    geminiGuidanceChanged = Signal()
     speechRecognitionModelOptionsChanged = Signal()
     ttsProviderChanged = Signal()
     ttsProviderOptionsChanged = Signal()
@@ -266,6 +270,9 @@ class HaizFlowController(QObject):
         self._target_language = "vi"
         self._speech_recognition_model = "small"
         self._translation_model = "q4"
+        self._gemini_translation_instructions = ""
+        self._gemini_translation_glossary = ""
+        self._gemini_translation_style = "balanced"
         self._tts_provider = "vieneu-gpu"
         self._tts_voice = "vieneu:Hải Đăng"
         self._speaker_mode = "single"
@@ -1561,10 +1568,22 @@ class HaizFlowController(QObject):
         from haizflow.services.subtitle_import import has_import, voice_notice
 
         video = self._selected_video() if callable(getattr(self, "_selected_video", None)) else None
-        if has_import(video):
+        if video and (has_import(video) or (
+            str(provider).startswith("vieneu") and getattr(video, "project_type", "") == "manual"
+        )):
             from haizflow.pipeline.manual_tools import _load_segments
 
-            notice = voice_notice(video, provider, _load_segments(video, validate=False), getattr(self, "_settings_language", "vi"))
+            model = getattr(self, "_manual_subtitles", None)
+            if model is not None and model.video_id == video.video_id:
+                segments = model.segments
+            else:
+                try:
+                    segments = _load_segments(video, validate=False)
+                except FileNotFoundError:
+                    # A new project may not have a source/document yet. Its
+                    # ordinary readiness checks still prevent starting a job.
+                    segments = []
+            notice = voice_notice(video, provider, segments, getattr(self, "_settings_language", "vi"))
             if notice:
                 HaizFlowController._show_app_alert(self, *notice, "warning")
                 return False
@@ -3194,6 +3213,49 @@ class HaizFlowController(QObject):
     def translationModel(self):
         return self._translation_model
 
+    @Property(str, notify=geminiGuidanceChanged)
+    def geminiTranslationInstructions(self):
+        return str(getattr(self, "_gemini_translation_instructions", "") or "")
+
+    @Property(str, notify=geminiGuidanceChanged)
+    def geminiTranslationGlossary(self):
+        return str(getattr(self, "_gemini_translation_glossary", "") or "")
+
+    @Property(str, notify=geminiGuidanceChanged)
+    def geminiTranslationStyle(self):
+        return str(getattr(self, "_gemini_translation_style", "balanced") or "balanced")
+
+    @Slot(str, str, str, str, result=bool)
+    @Slot(str, str, str, str, str, result=bool)
+    def saveGeminiTranslationGuidance(self, project_key, video_id, instructions, glossary, style=""):
+        if (str(project_key or "") != str(self._selected_project_key or "")
+                or str(video_id or "") != str(self._selected_video_id or "")
+                or video_id and self._processing_queue.contains(video_id)):
+            return False
+        if max(len(instructions), len(glossary)) > 4000:
+            self._show_app_alert("Hướng dẫn dịch", "Mỗi ô chỉ được dài tối đa 4000 ký tự.", "warning")
+            return False
+        from haizflow.services.gemini_context import STYLE_PROMPTS
+
+        previous_style = str(getattr(self, "_gemini_translation_style", "balanced") or "balanced")
+        style = str(style or previous_style)
+        if style not in STYLE_PROMPTS:
+            self._show_app_alert("Hướng dẫn dịch", "Văn phong dịch không hợp lệ.", "warning")
+            return False
+        before = (self.geminiTranslationInstructions, self.geminiTranslationGlossary, previous_style)
+        self._gemini_translation_instructions, self._gemini_translation_glossary = instructions.strip(), glossary.strip()
+        self._gemini_translation_style = style
+        try:
+            if video_id and not self.persistVideoSettingsFor(video_id):
+                raise RuntimeError("Không thể lưu hướng dẫn cho video này.")
+        except (OSError, ValueError, RuntimeError) as exc:
+            self._gemini_translation_instructions, self._gemini_translation_glossary, self._gemini_translation_style = before
+            self.geminiGuidanceChanged.emit()
+            self._show_app_alert("Hướng dẫn dịch", str(exc), "warning")
+            return False
+        self.geminiGuidanceChanged.emit()
+        return True
+
     @translationModel.setter
     def translationModel(self, value):
         normalized = str(value or "").lower()
@@ -4553,11 +4615,15 @@ class HaizFlowController(QObject):
         if tool_id == "voice":
             from haizflow.services.subtitle_import import has_import, voice_notice
 
-            if has_import(video):
+            provider = getattr(effective_config, "tts_provider", "omnivoice")
+            if has_import(video) or str(provider).startswith("vieneu"):
                 from haizflow.pipeline.manual_tools import _load_segments
 
-                notice = voice_notice(video, getattr(effective_config, "tts_provider", "omnivoice"),
-                                      _load_segments(video, validate=False), self._settings_language)
+                try:
+                    segments = _load_segments(video, validate=False)
+                except FileNotFoundError:
+                    segments = []
+                notice = voice_notice(video, provider, segments, self._settings_language)
                 if notice:
                     self.appAlertRequested.emit(*notice, "warning")
                     return False
@@ -7290,10 +7356,35 @@ class HaizFlowController(QObject):
     ) -> bool:
         if str(self._selected_project_key or "") != str(project_key or ""):
             return False
-        if not all(self._restore_video_asset_snapshot(video_id, snapshot) for video_id, snapshot in snapshots.items()):
+        videos = [video_store.get_video(video_id) for video_id in snapshots]
+        if any(not video or video.status == "processing" or self._processing_queue.contains(video.video_id)
+               for video in videos):
             return False
-        if defaults is not None:
-            project_store.save_batch_settings(project_key, defaults)
+        before = {}
+        attempted = []
+        try:
+            before = {video.video_id: self._capture_video_asset_snapshot(video, preserve=True) for video in videos}
+            for video_id, snapshot in snapshots.items():
+                attempted.append(video_id)
+                if not self._restore_video_asset_snapshot(video_id, snapshot):
+                    raise RuntimeError("Không thể khôi phục cài đặt hàng loạt.")
+            if defaults is not None:
+                project_store.save_batch_settings(project_key, defaults)
+        except (OSError, ValueError, RuntimeError) as exc:
+            rollback_errors = []
+            for video_id in attempted:
+                try:
+                    if not self._restore_video_asset_snapshot(video_id, before[video_id]):
+                        raise RuntimeError("Không thể khôi phục cài đặt video.")
+                except (OSError, ValueError, RuntimeError) as rollback_exc:
+                    rollback_errors.append(f"{video_id}: {rollback_exc}")
+            show_alert = getattr(self, "_show_app_alert", None)
+            if callable(show_alert):
+                detail = str(exc)
+                if rollback_errors:
+                    detail += "\nKhông thể hoàn tất khôi phục: " + "\n".join(rollback_errors)
+                show_alert("Cài đặt hàng loạt", detail, "warning")
+            return False
         HaizFlowController._project_commands_for(self).load_batch_settings()
         self.refreshVideos()
         self.batchChanged.emit()
@@ -7341,6 +7432,9 @@ class HaizFlowController(QObject):
             speech_recognition_model=self._speech_recognition_model,
             translation_model=translation_model,
             translator_provider="gemini" if translation_model in gemini_translation.MODELS else "hymt2",
+            gemini_translation_instructions=str(getattr(self, "_gemini_translation_instructions", "") or ""),
+            gemini_translation_glossary=str(getattr(self, "_gemini_translation_glossary", "") or ""),
+            gemini_translation_style=str(getattr(self, "_gemini_translation_style", "balanced") or "balanced"),
             tts_provider=self._tts_provider,
             tts_voice=self._tts_voice,
             speaker_mode=self._speaker_mode,
@@ -7504,6 +7598,9 @@ class HaizFlowController(QObject):
             "target_language": config.target_language,
             "speech_recognition_model": config.speech_recognition_model,
             "translation_model": config.translation_model,
+            "gemini_translation_instructions": config.gemini_translation_instructions,
+            "gemini_translation_glossary": config.gemini_translation_glossary,
+            "gemini_translation_style": config.gemini_translation_style,
             "translator_provider": config.translator_provider,
             "tts_provider": config.tts_provider,
             "tts_voice": config.tts_voice,
@@ -7551,6 +7648,11 @@ class HaizFlowController(QObject):
             )
             target_language_changed = changed("target_language", config.target_language)
             translation_model_changed = changed("translation_model", config.translation_model)
+            guidance_changed = str(config.translation_model).startswith("gemini-") and any((
+                    changed("gemini_translation_instructions", config.gemini_translation_instructions),
+                    changed("gemini_translation_glossary", config.gemini_translation_glossary),
+                    changed("gemini_translation_style", config.gemini_translation_style),
+                ))
             if recognition_changed or target_language_changed or translation_model_changed:
                 # Recognition and translation controls describe the next
                 # explicit translation request.  The current subtitle, voice,
@@ -7559,11 +7661,14 @@ class HaizFlowController(QObject):
                 # language/model made the preview lose sound before any work
                 # had been confirmed.
                 manual_artifacts_to_deactivate.update({"recognition", "translation"})
+            elif guidance_changed:
+                manual_artifacts_to_deactivate.add("translation")
             if any(
                 (
                     changed("source_language", config.source_language),
                     changed("target_language", config.target_language),
                     translation_model_changed,
+                    guidance_changed,
                     changed("speech_recognition_model", config.speech_recognition_model),
                     changed("enable_audio_separation", config.enable_audio_separation),
                 )

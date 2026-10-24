@@ -353,12 +353,30 @@ class ProjectCommandsController:
             path, _ = QFileDialog.getOpenFileName(None, "Nhập SRT", native_media_dialog_directory(), "SubRip (*.srt)")
         if not path or self._srt_busy(editing=True) or getattr(host._selected_video(), "video_id", "") != video.video_id:
             return False
+        selected_provider = str(getattr(host, "_tts_provider", getattr(video, "tts_provider", "")) or "")
         try:
             count = subtitle_import.import_srt(video.video_id, path, duration_ms=self._srt_duration(video), language=language)
         except (OSError, ValueError, RuntimeError) as exc:
             host.appAlertRequested.emit("Không thể nhập SRT", str(exc), "warning")
             return False
         self._refresh_srt_workspace(video.video_id)
+        if selected_provider.startswith("vieneu"):
+            current = video_store.get_video(video.video_id)
+            from haizflow.pipeline.manual_tools import _load_segments
+
+            ui_language = getattr(host, "_settings_language", "vi")
+            try:
+                notice = subtitle_import.chinese_text_notice(current, _load_segments(current, validate=False),
+                                                            ui_language) if current else None
+            except (OSError, ValueError, RuntimeError):
+                # The import has already committed. Optional diagnostics must
+                # not turn a successful import into a reported failure.
+                notice = None
+            if notice:
+                title = "Đã nhập SRT — có chữ Hán" if ui_language == "vi" else "SRT imported — Han characters found"
+                prefix = f"Đã nhập {count} đoạn phụ đề. " if ui_language == "vi" else f"Imported {count} subtitle cues. "
+                host.appAlertRequested.emit(title, prefix + notice[1], "warning")
+                return True
         host.appAlertRequested.emit("Đã nhập SRT", f"{count} đoạn phụ đề đã hiển thị. Có thể tạo giọng hoặc dịch tiếp.", "info")
         return True
 
@@ -703,6 +721,9 @@ class ProjectCommandsController:
                 "targetLanguage": host._target_language,
                 "speechRecognitionModel": getattr(host, "_speech_recognition_model", "small"),
                 "translationModel": getattr(host, "_translation_model", "auto"),
+                "geminiTranslationInstructions": str(getattr(host, "_gemini_translation_instructions", "") or ""),
+                "geminiTranslationGlossary": str(getattr(host, "_gemini_translation_glossary", "") or ""),
+                "geminiTranslationStyle": str(getattr(host, "_gemini_translation_style", "balanced") or "balanced"),
                 "ttsProvider": host._tts_provider,
                 "ttsVoice": host._tts_voice,
                 "speakerMode": getattr(host, "_speaker_mode", "single"),
@@ -796,6 +817,9 @@ class ProjectCommandsController:
             "targetLanguage": target_language,
             "speechRecognitionModel": str(speech_recognition_model or "small"),
             "translationModel": str(translation_model or "auto"),
+            "geminiTranslationInstructions": str(getattr(baseline_video, "gemini_translation_instructions", "") or ""),
+            "geminiTranslationGlossary": str(getattr(baseline_video, "gemini_translation_glossary", "") or ""),
+            "geminiTranslationStyle": str(getattr(baseline_video, "gemini_translation_style", "balanced") or "balanced"),
             "ttsProvider": tts_provider,
             "ttsVoice": host._normalized_voice_for_language(target_language, tts_voice, tts_provider),
             "speakerMode": "multiple" if speaker_mode == "multiple" else "single",
@@ -951,6 +975,9 @@ class ProjectCommandsController:
                                      str(getattr(host, "_settings_processing_device", "cpu")),
                                      total_vram_bytes=getattr(getattr(host, "_hardware_capabilities", None), "total_vram_bytes", None)), old_values)]
         before = {}
+        before_state = {}
+        changed_ids = []
+        after = {}
         try:
             config = batch_settings.config_for(normalized)
             from haizflow.core.model_choices import gpu_choice_blocked
@@ -971,11 +998,17 @@ class ProjectCommandsController:
                 normalized[key] = batch_settings.stage_asset(project_key, key, str(normalized.get(key) or ""))
             config = batch_settings.config_for(normalized)
             before = {video.video_id: host._capture_video_asset_snapshot(video, preserve=True) for video in selected}
+            before_state = {
+                video.video_id: {field: getattr(video, field) for field in
+                                ("status", "progress", "step", "resume_step", "error") if hasattr(video, field)}
+                for video in selected
+            }
             for video in selected:
                 actual = batch_settings.values_for(video)
                 changed = bool(batch_settings.differences(actual, normalized))
                 if not changed:
                     continue
+                changed_ids.append(video.video_id)
                 fields = {field: getattr(config, field) for field in batch_settings.FIELDS.values()}
                 fields.update(subtitle_style=config.subtitle_style, subtitle_layout_override=config.subtitle_layout_override,
                               source_language="auto", translator_provider=config.translator_provider)
@@ -989,15 +1022,23 @@ class ProjectCommandsController:
                 if changed and video.status == "done":
                     video_store.update_video(video.video_id, status="pending", progress=0, error=None,
                                              step="ready", resume_step=video.resume_step or "starting")
+            after = {video.video_id: host._capture_video_asset_snapshot(video_store.get_video(video.video_id), preserve=True)
+                     for video in selected}
             project_store.save_batch_settings(project_key, normalized)
         except (OSError, ValueError, RuntimeError) as exc:
-            for key, snapshot in before.items():
-                host._restore_video_asset_snapshot(key, snapshot)
+            rollback_errors = []
+            for key in changed_ids:
+                try:
+                    if not host._restore_video_asset_snapshot(key, before[key]):
+                        raise RuntimeError("Không thể khôi phục cài đặt video.")
+                    video_store.update_video(key, **before_state[key])
+                except (OSError, ValueError, RuntimeError) as rollback_exc:
+                    rollback_errors.append(f"{key}: {rollback_exc}")
+            if rollback_errors:
+                exc = RuntimeError(str(exc) + "\nKhông thể hoàn tất khôi phục: " + "\n".join(rollback_errors))
             host._show_app_alert("Cài đặt hàng loạt", str(exc), "warning")
             return False
         if before or old_values != normalized:
-            after = {video.video_id: host._capture_video_asset_snapshot(video_store.get_video(video.video_id), preserve=True)
-                     for video in selected}
             host._record_batch_asset_change(project_key, before, after,
                                             before_defaults=old_values, after_defaults=normalized)
         host.refreshVideos()
@@ -1272,6 +1313,12 @@ class ProjectCommandsController:
         host._target_language = values["targetLanguage"]
         host._speech_recognition_model = values["speechRecognitionModel"]
         host._translation_model = values["translationModel"]
+        host._gemini_translation_instructions = str(values.get("geminiTranslationInstructions") or "")
+        host._gemini_translation_glossary = str(values.get("geminiTranslationGlossary") or "")
+        host._gemini_translation_style = str(values.get("geminiTranslationStyle") or "balanced")
+        signal = getattr(host, "geminiGuidanceChanged", None)
+        if signal is not None:
+            signal.emit()
         host._tts_provider = values["ttsProvider"]
         host._tts_voice = values["ttsVoice"]
         host._speaker_mode = values["speakerMode"]
@@ -1388,17 +1435,22 @@ class ProjectCommandsController:
                 video_store.log_to_video(video_id, "Paused while waiting in the batch queue.")
         if active_video_id in host._batch_video_ids:
             active_video = video_store.get_video(active_video_id)
-            resume_step = active_video.step if active_video else ""
-            pause_video(active_video_id)
-            video_store.update_video(
-                active_video_id,
-                status="paused",
-                error=None,
-                step="paused",
-                resume_step=resume_step,
-                step_detail=f"Paused during {resume_step or 'startup'}",
-            )
-            video_store.log_to_video(active_video_id, "Batch pause requested. Active subprocesses were stopped safely.")
+            if active_video and active_video.status in {"pending", "processing"}:
+                resume_step = active_video.step
+                pause_video(active_video_id)
+                # The worker may have completed while its child processes
+                # were stopping. A successful/failed/review result wins.
+                current = video_store.get_video(active_video_id)
+                if current and current.status in {"pending", "processing", "paused"}:
+                    video_store.update_video(
+                        active_video_id,
+                        status="paused",
+                        error=None,
+                        step="paused",
+                        resume_step=(current.resume_step or resume_step) if current.status == "paused" else resume_step,
+                        step_detail=f"Paused during {resume_step or 'startup'}",
+                    )
+                    video_store.log_to_video(active_video_id, "Batch pause requested. Active subprocesses were stopped safely.")
         host._refresh_batch_model()
         host.batchChanged.emit()
 

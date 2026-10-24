@@ -75,6 +75,8 @@ Choose the interface language and CPU/GPU mode. The other tabs manage API keys a
 
 Whisper and HY-MT2 run on your computer after their resource packs are installed. They do not require API keys or per-call translation fees. Gemini is an additional option for online translation.
 
+Gemini also supports [translation styles, guidance and character/address conventions](docs/gemini-translation-guidance.md) in Manual, Auto and Batch, with bounded dialogue context shared between translation batches.
+
 Computers without an NVIDIA GPU can use supported CPU options. Compatible NVIDIA GPUs can use GPU models. Choose a processing mode in Settings and install the matching resources for the tools you want to use.
 
 Gemini, Zernio and other external services have their own terms, limits and charges. OmniVoice has the usage restriction described below.

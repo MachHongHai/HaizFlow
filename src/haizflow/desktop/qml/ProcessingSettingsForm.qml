@@ -20,6 +20,11 @@ GridLayout {
         3 + (availableHeight - 500) / 24))
     property string speechRecognitionModel: "small"
     property string translationModel: "q4"
+    property string geminiInstructions: ""
+    property string geminiGlossary: ""
+    property string geminiStyle: "balanced"
+    property var geminiGuidanceSaveHandler: null
+    signal geminiGuidanceEdited(string instructions, string glossary, string style)
     property var speechRecognitionOptions: []
     property int speechRecognitionIndex: 0
     property string targetLanguage: "vi"
@@ -133,6 +138,16 @@ GridLayout {
                 enabled: root.editable && !AppController.isSwitchingProcessingDevice
                 selectedModel: root.translationModel
                 onEdited: function(value) { root.translationModelEdited(value) }
+            }
+            GeminiGuidanceButton {
+                Layout.fillWidth: true
+                visible: root.translationModel.indexOf("gemini-") === 0
+                enabled: root.editable
+                instructions: root.geminiInstructions
+                glossary: root.geminiGlossary
+                translationStyle: root.geminiStyle
+                saveHandler: root.geminiGuidanceSaveHandler
+                onGuidanceEdited: function(instructions, glossary, style) { root.geminiGuidanceEdited(instructions, glossary, style); }
             }
 
             SettingLabel {

@@ -252,6 +252,13 @@ def generate_voice_parts(
     requested_segments = [(index, segments[index - 1]) for index in requested_indices]
     if not requested_segments:
         return
+    if backend == "vieneu":
+        from haizflow.core.vieneu_voices import han_text_notice
+
+        notice = han_text_notice([{**segment, "index": index} if isinstance(segment, dict) else {}
+                                  for index, segment in requested_segments])
+        if notice:
+            raise ValueError(notice[1])
     total = len(requested_segments)
     document_total = len(segments)
     os.makedirs(voice_parts_dir, exist_ok=True)

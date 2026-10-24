@@ -244,6 +244,9 @@ def create_video(video_id: str, original_filename: str, config: VideoConfig, vid
         speech_recognition_model=config.speech_recognition_model,
         translator_provider=config.translator_provider,
         translation_model=config.translation_model,
+        gemini_translation_instructions=config.gemini_translation_instructions,
+        gemini_translation_glossary=config.gemini_translation_glossary,
+        gemini_translation_style=config.gemini_translation_style,
         tts_provider=config.tts_provider,
         tts_voice=config.tts_voice,
         speaker_mode=config.speaker_mode,
@@ -891,6 +894,12 @@ def replace_video_input(
             video.video_height = 0
             video.original_subtitle_region_override = {}
             defaults = VideoConfig()
+            # Story context and character/addressing rules belong to this
+            # source, unlike reusable model/language/style preferences.
+            # Reset inside the replacement transaction so a failed import
+            # restores the original guidance along with the old input.
+            video.gemini_translation_instructions = defaults.gemini_translation_instructions
+            video.gemini_translation_glossary = defaults.gemini_translation_glossary
             for field in VideoConfig.model_fields:
                 if field.startswith("watermark_") and field in type(video).model_fields:
                     setattr(video, field, getattr(defaults, field))

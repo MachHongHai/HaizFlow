@@ -11,6 +11,7 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -896,9 +897,32 @@ def save_batch_settings(key: str, settings: dict[str, Any]) -> None:
         record = next((item for item in records if item.get("key") == key), None)
         if not record or record.get("project_type") != "batch":
             raise ValueError("The batch project is no longer available.")
-        record["batch_settings"] = {"version": 1, "values": settings}
+        previous = deepcopy(record)
+        record = deepcopy(record)
+        record["batch_settings"] = {"version": 1, "values": deepcopy(settings)}
         record["updated_at"] = _now()
-        _write_project_record(records, record)
+        try:
+            _write_project_record(records, record)
+        except (OSError, RuntimeError, ValueError) as exc:
+            # The project manifest is written before the shared index. A
+            # failed second write must not leave newer defaults in recovery
+            # metadata after the caller has rolled back its video settings.
+            try:
+                root = _record_root(previous)
+                owned_path(root, root, allow_root=True)
+                if not os.path.isdir(root):
+                    raise FileNotFoundError("The registered project storage is unavailable during recovery.")
+                manifest = owned_path(os.path.join(root, PROJECT_MANIFEST_NAME), root)
+                _write_json_atomic(str(manifest), previous)
+                # Keep the original ordering and recovery backup. Rewriting
+                # through _write_project_record would move this project and
+                # could back up the rejected settings after a late failure.
+                _save_index(records, backup_existing=False)
+            except (OSError, RuntimeError, ValueError) as rollback_exc:
+                raise ProjectMetadataError(
+                    f"Could not save Batch settings: {exc}. Could not complete metadata recovery: {rollback_exc}"
+                ) from exc
+            raise
 
 
 def _validated_deletion_record(

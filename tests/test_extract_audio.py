@@ -29,6 +29,8 @@ class ExtractAudioTests(unittest.TestCase):
         self.assertEqual(args[args.index("-ar") + 1], "48000")
         self.assertEqual(args[args.index("-ac") + 1], "2")
         self.assertEqual(args[args.index("-c:a") + 1], "pcm_s24le")
+        self.assertEqual(popen.call_args.kwargs["encoding"], "utf-8")
+        self.assertEqual(popen.call_args.kwargs["errors"], "replace")
 
     def test_video_without_audio_fails_before_ffmpeg_with_actionable_message(self):
         with (
