@@ -11,9 +11,27 @@ from haizflow.pipeline import audio_timeline
 
 
 class AudioTimelineIntegrityTests(unittest.TestCase):
-    def test_master_mix_preserves_stereo_at_48khz(self):
-        import wave
+    @staticmethod
+    def _read_wav_specs(path: Path | str) -> tuple[int, int, int]:
+        import struct
 
+        with open(path, "rb") as stream:
+            riff = stream.read(12)
+            if riff[:4] != b"RIFF" or riff[8:] != b"WAVE":
+                raise ValueError("Invalid WAV header")
+            while True:
+                chunk = stream.read(8)
+                if len(chunk) < 8:
+                    break
+                tag, size = struct.unpack("<4sI", chunk)
+                if tag == b"fmt ":
+                    data = stream.read(size)
+                    _, n_channels, sample_rate, _, _, bits_per_sample = struct.unpack("<HHIIHH", data[:16])
+                    return sample_rate, n_channels, bits_per_sample // 8
+                stream.seek(size, 1)
+        raise ValueError("fmt chunk not found in WAV")
+
+    def test_master_mix_preserves_stereo_at_48khz(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source = root / "stereo.wav"
@@ -27,10 +45,10 @@ class AudioTimelineIntegrityTests(unittest.TestCase):
                 audio_timeline.build_audio_timeline(str(segments), str(root / "voices"), "source.mp4", str(output), "v",
                                                     background_audio_path=str(source), original_video_volume=100,
                                                     require_voice_parts=False)
-            with wave.open(str(output), "rb") as master:
-                self.assertEqual(master.getframerate(), 48000)
-                self.assertEqual(master.getnchannels(), 2)
-                self.assertEqual(master.getsampwidth(), 3)
+            framerate, channels_count, sampwidth = self._read_wav_specs(output)
+            self.assertEqual(framerate, 48000)
+            self.assertEqual(channels_count, 2)
+            self.assertEqual(sampwidth, 3)
             channels = AudioSegment.from_file(output).split_to_mono()
             self.assertNotEqual(channels[0].raw_data, channels[1].raw_data)
 
