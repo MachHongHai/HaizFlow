@@ -39,6 +39,7 @@ def test_extractor_delegates_to_one_adapter():
     adapter.session.lock = threading.RLock()
     adapter.inspect.return_value = {"aweme_id": "768495470663049704", "video": {}}
     adapter.session.profile.ua = "stable UA"
+    adapter.session.profile.transport_major = 150
     ie = HaizFlowDouyinIE(adapter=adapter)
     ie._parse_aweme_video_app = Mock(return_value={"formats": [{"url": "https://example.com/public.mp4"}]})
     result = ie._real_extract("https://v.douyin.com/demo/")

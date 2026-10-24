@@ -17,6 +17,18 @@ ACCESS_MESSAGE = (
 )
 
 
+def media_impersonate_target(profile, downloader):
+    """Use the same supported TLS template as the metadata transport."""
+    from yt_dlp.networking.impersonate import ImpersonateTarget
+
+    target = ImpersonateTarget(client="chrome", version=str(profile.transport_major))
+    if downloader is not None and not downloader._impersonate_target_available(target):
+        raise ExtractorError(
+            f"Thành phần tải Douyin không hỗ trợ cấu hình Chrome {profile.transport_major}. "
+            "Hãy cập nhật hoặc cài lại HaizFlow.", expected=True)
+    return str(target)
+
+
 def video_id_from_url(url: str) -> str:
     parsed = urlparse(url)
     host = (parsed.hostname or "").lower().rstrip(".")
@@ -83,7 +95,6 @@ class HaizFlowDouyinIE(DouyinIE):
     def _extract_with_session(self, adapter, url):
         from copy import copy
         from haizflow.services.douyin_classification import DouyinError, Outcome
-        from yt_dlp.networking.impersonate import ImpersonateTarget
 
         try:
             detail = adapter.inspect(url, self.cancel_event)
@@ -94,9 +105,9 @@ class HaizFlowDouyinIE(DouyinIE):
         if not info.get("formats"):
             raise ExtractorError(str(DouyinError(Outcome.METADATA)), expected=True)
         profile = adapter.session.profile
+        target = media_impersonate_target(profile, self._downloader)
         headers = {"User-Agent": profile.ua, "Referer": "https://www.douyin.com/"}
         if self._downloader is not None:
-            self._downloader.params["impersonate"] = ImpersonateTarget.from_str(f"chrome-{profile.major}")
             # Domain-scoped cookies only; no raw Cookie header on CDN URLs.
             for cookie in adapter.session.transport.cookie_jar:
                 domain = cookie.domain.lstrip(".").lower()
@@ -104,6 +115,11 @@ class HaizFlowDouyinIE(DouyinIE):
                     self._downloader.cookiejar.set_cookie(copy(cookie))
         for item in info["formats"]:
             item["http_headers"] = headers
+            # yt-dlp resolves this format-level target into each media request.
+            # Changing downloader.params here is too late for cached handlers
+            # and an unsupported global target can trigger KeyError('impersonate')
+            # in yt-dlp's error formatter instead of a useful download error.
+            item["impersonate"] = target
         info.update(webpage_url=f"https://www.douyin.com/video/{video_id}", extractor="Douyin",
                     extractor_key="Douyin", http_headers=headers)
         return info

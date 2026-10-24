@@ -54,6 +54,19 @@ def run_release_smoke(
     _check(bool(getattr(sys, "frozen", False)), "Running from a frozen executable", failures, details)
     _check((bundle / "haizflow" / "desktop" / "qml" / "Main.qml").is_file(), "QML bundle", failures, details)
 
+    # Metadata can work even when the frozen yt-dlp media handler is absent or
+    # incompatible. Check the actual packaged handler without any network I/O.
+    try:
+        import yt_dlp
+        from haizflow.services.douyin_transport import BrowserProfile
+        from haizflow.services.douyin_video import media_impersonate_target
+
+        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as downloader:
+            target = media_impersonate_target(BrowserProfile(major=157, version="157.0.0.0"), downloader)
+        _check(target == "chrome-150", "Douyin media impersonation transport", failures, details)
+    except Exception as exc:
+        failures.append(f"Douyin media transport failed: {type(exc).__name__}: {exc}")
+
     for executable in ("ffmpeg.exe", "ffprobe.exe"):
         path = bundle / "bin" / executable
         _check(path.is_file(), f"Bundled {executable}", failures, details)

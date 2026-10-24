@@ -41,14 +41,18 @@ class BrowserProfile:
             f"(KHTML, like Gecko) Chrome/{self.version} Safari/537.36")
 
     @property
-    def transport_mode(self) -> str:
+    def transport_major(self) -> int:
         # Explicit, tested Chrome-family mapping for the shipped Chromium 157.
         # curl_cffi 0.16.3's newest TLS/H2 template is Chrome 150. Keep the
         # actual browser UA/cookies/fingerprint unchanged; do not rotate UAs
         # or silently select arbitrary profiles for unknown browser versions.
         if self.major == 157:
-            return "chrome150"
-        return f"chrome{self.major}"
+            return 150
+        return self.major
+
+    @property
+    def transport_mode(self) -> str:
+        return f"chrome{self.transport_major}"
 
     @classmethod
     def from_browser(cls, values: dict) -> BrowserProfile:

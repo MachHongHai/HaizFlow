@@ -484,6 +484,7 @@ def test_expired_media_refreshes_metadata_and_downloads_new_candidate(tmp_path, 
             self.cookiejar = http.cookiejar.CookieJar()
         def __enter__(self): return self
         def __exit__(self, *args): pass
+        def _impersonate_target_available(self, target): return True
         def add_info_extractor(self, ie):
             self.ie = ie
             ie.set_downloader(self)
