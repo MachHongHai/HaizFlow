@@ -19,7 +19,7 @@ class DiagnosticsTest(unittest.TestCase):
         source = (
             r"C:\Users\Alice\Videos\private.mp4 "
             "https://example.test/watch?v=secret "
-            "Authorization: bearer-value alice@example.test"
+            "alice@example.test Authorization: bearer-value"
         )
         redacted = redact_diagnostic_text(source)
 

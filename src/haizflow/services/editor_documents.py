@@ -296,7 +296,9 @@ def build_legacy_document(video) -> EditorDocument:
                     scale_y_percent=float(getattr(video, "watermark_scale_percent", 100)),
                     opacity_percent=float(getattr(video, "watermark_opacity_percent", 46)),
                 ),
-                metadata={"preset": "watermark", "legacy_motion": True},
+                metadata={"preset": "watermark", "legacy_motion": getattr(video, "watermark_moving", True),
+                          **({"watermark_position": video.watermark_position.model_dump()}
+                             if getattr(video, "watermark_position", None) else {})},
             )
         )
 

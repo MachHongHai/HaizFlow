@@ -13,8 +13,12 @@ Rectangle {
     readonly property bool selectedQueued: AppController.isSelectedVideoQueued
     readonly property bool selectedActive: root.selectedProcessing || root.selectedQueued
     readonly property bool pausePending: AppController.selectedStatus === "paused" && root.selectedQueued
+    readonly property bool selectedExportActive: (AppController.videoExportJobs || []).some(job =>
+        job.videoId === AppController.selectedVideoId &&
+        (["pending", "rendering", "exporting"].indexOf(job.status) >= 0
+         || AppController.videoExportBusy && ["paused", "awaiting_review"].indexOf(job.status) >= 0))
     readonly property bool canProcess: AppController.hasSelectedVideo && !root.selectedActive
-        && !AppController.videoExportBusy
+        && !root.selectedExportActive
     readonly property bool canReview: AppController.selectedStatus === "awaiting_review"
     readonly property string headline: AppController.selectedStatus === "failed"
         ? AppController.selectedFailureTitle
@@ -81,7 +85,7 @@ Rectangle {
                 readyText: qsTr("Tiếp tục")
                 iconGlyph: "\uE768"
                 variant: "secondary"
-                actionEnabled: !AppController.videoExportBusy
+                actionEnabled: !root.selectedActive
                 actionContext: ({videoId: AppController.selectedVideoId})
                 onExecute: context => {
                     if (context && context.videoId === AppController.selectedVideoId

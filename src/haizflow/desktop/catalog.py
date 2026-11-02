@@ -4,7 +4,12 @@ POPULAR_TARGET_LANGUAGES = [
     ("vi", "Vietnamese", "Tiếng Việt"),
     ("en", "English", "English"),
     ("zh", "Chinese", "中文"),
+    ("ko", "Korean", "한국어"),
+    ("ja", "Japanese", "日本語"),
+    ("es", "Spanish", "Español"),
 ]
+
+TARGET_LANGUAGE_CODES = frozenset(code for code, _english, _native in POPULAR_TARGET_LANGUAGES)
 
 
 OMNIVOICE_TTS_VOICES = [

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import re
+import stat
 from pathlib import Path
 
 from haizflow.services import video_store
@@ -151,8 +151,8 @@ class AudioPreviewController:
         if packaged:
             return packaged
 
-        selected = video_store.get_video(selected_video_id) if selected_video_id else None
         if voice in {"omnivoice:clone", "vieneu:clone"}:
+            selected = video_store.get_video(selected_video_id) if selected_video_id else None
             reference = str(((selected.files if selected else {}) or {}).get("voice_reference") or "")
             return reference if self._valid_media(reference) else ""
 
@@ -238,7 +238,13 @@ class AudioPreviewController:
 
     @staticmethod
     def _valid_media(path: str) -> bool:
-        return bool(path and os.path.isfile(path) and os.path.getsize(path) > 0)
+        try:
+            if not path:
+                return False
+            state = Path(path).stat()
+            return stat.S_ISREG(state.st_mode) and state.st_size > 0
+        except OSError:
+            return False
 
     @staticmethod
     def _remove_stale_preview_files(preview_dir: Path, keep: set[Path]) -> None:

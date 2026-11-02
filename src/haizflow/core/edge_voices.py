@@ -7,6 +7,12 @@ EDGE_VOICES = {
            ("en-US-GuyNeural", "Guy · Nam", "Guy · Male")),
     "zh": (("zh-CN-XiaoxiaoNeural", "Xiaoxiao · Nữ", "Xiaoxiao · Female"),
            ("zh-CN-YunxiNeural", "Yunxi · Nam", "Yunxi · Male")),
+    "ko": (("ko-KR-SunHiNeural", "Sun Hi · Nữ", "Sun Hi · Female"),
+           ("ko-KR-InJoonNeural", "In Joon · Nam", "In Joon · Male")),
+    "ja": (("ja-JP-NanamiNeural", "Nanami · Nữ", "Nanami · Female"),
+           ("ja-JP-KeitaNeural", "Keita · Nam", "Keita · Male")),
+    "es": (("es-ES-ElviraNeural", "Elvira · Nữ", "Elvira · Female"),
+           ("es-ES-AlvaroNeural", "Alvaro · Nam", "Alvaro · Male")),
 }
 
 

@@ -239,6 +239,11 @@ class ResourcePackController(QObject):
     def packModel(self):
         return self.model
 
+    def status_for_ui(self, pack_id: str) -> str:
+        """Advisory inventory only; inference still verifies the actual resources."""
+        operation = self.model._operation_state.get(pack_id, {})
+        return str(operation.get("status") or self.model._snapshots.get(pack_id, {}).get("status") or "inventory")
+
     def _display_context(self) -> dict:
         selected_video = None
         selected_video_getter = getattr(self._host, "_selected_video", None)

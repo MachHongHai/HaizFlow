@@ -14,17 +14,16 @@ import re
 import subprocess
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Callable
 
 from haizflow.config import MODELS_DIR
 from haizflow.core.model_integrity import verify_subtitle_ocr_models
 from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 from haizflow.services.video_store import log_to_video
 from haizflow.utils.ffmpeg import get_video_dimensions, get_video_duration
-
 
 # The detector only needs enough uniformly distributed observations to find
 # the largest reliable subtitle envelope. It deliberately does not build a
@@ -382,19 +381,10 @@ def select_subtitle_region(candidates: list[TextCandidate], sample_count: int = 
 
 @lru_cache(maxsize=1)
 def _ocr_engine():
-    try:
-        from rapidocr import RapidOCR
-    except ImportError as exc:  # pragma: no cover - caught before a release build
-        raise RuntimeError("Original subtitle detection is unavailable because RapidOCR is missing.") from exc
+    from haizflow.pipeline.ocr_runtime import SubtitleOCRRuntime
+
     model_dir = verify_subtitle_ocr_models(Path(MODELS_DIR) / "subtitle-ocr")
-    return RapidOCR(params={
-        "Global.model_root_dir": str(model_dir),
-        "Global.use_cls": False,
-        "Global.log_level": "error",
-        "Det.model_path": str(model_dir / "subtitle-det.onnx"),
-        "Rec.model_path": str(model_dir / "subtitle-rec.onnx"),
-        "Cls.model_path": str(model_dir / "subtitle-cls.onnx"),
-    })
+    return SubtitleOCRRuntime(model_dir)
 
 
 def _ocr_candidates(frame_path: Path, frame: int, source_width: int, source_height: int) -> list[TextCandidate]:
@@ -510,9 +500,15 @@ def detect_original_subtitle_region(
         if not frame_paths:
             raise RuntimeError("Original subtitle scan did not produce any video frames.")
         update_interval = max(1, len(frame_paths) // 20)
+        runtime_detail = ""
         for index, frame_path in enumerate(frame_paths, 1):
             check_cancellation(video_id)
             candidates.extend(_ocr_candidates(frame_path, index, ocr_width, ocr_height))
+            # Do not initialise a runtime just for status (or on a cache hit).
+            detail = getattr(_ocr_engine(), "detail", "") if _ocr_engine.cache_info().currsize else ""
+            if detail and detail != runtime_detail:
+                runtime_detail = detail
+                log_to_video(video_id, detail)
             if progress_callback and (index == len(frame_paths) or index % update_interval == 0):
                 progress_callback(index, len(frame_paths))
     region = select_subtitle_region(candidates, sample_count)

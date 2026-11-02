@@ -4,7 +4,7 @@ import re
 
 
 def compatible_manual_voice(language, provider, voice):
-    """Preserve the chosen device, replacing only unsupported VieNeu Chinese."""
+    """Preserve the chosen device when the published language needs OmniVoice."""
     from haizflow.core.vieneu_voices import unsupported_language_notice
 
     provider = str(provider or "omnivoice")
@@ -29,6 +29,11 @@ def manual_subtitle_language(video, segments=None):
     text = " ".join(str(item.get("text") or "") for item in segments)
     if not text.strip():
         return "vi"  # No published Chinese result yet.
+    from haizflow.services.subtitle_import import detect_language
+
+    script = detect_language(segments)
+    if script in {"ja", "ko"}:
+        return script
     han = len(re.findall(r"[\u3400-\u9fff]", text))
     letters = sum(character.isalpha() for character in text)
     if han >= 2 and han / max(1, letters) >= .2:

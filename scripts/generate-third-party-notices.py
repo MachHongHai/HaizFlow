@@ -15,7 +15,7 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
 ROOT = Path(__file__).resolve().parents[1]
-LICENSE_PREFIXES = ("license", "copying", "notice", "copyright")
+LICENSE_PREFIXES = ("license", "copying", "notice", "copyright", "thirdparty", "third-party")
 MAX_LICENSE_BYTES = 4 * 1024 * 1024
 
 

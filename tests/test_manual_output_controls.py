@@ -66,8 +66,9 @@ def test_every_invalid_vieneu_provider_attempt_warns_and_keeps_previous_choice(p
 
 
 @pytest.mark.parametrize("provider,fallback", [("vieneu", "omnivoice"), ("vieneu-gpu", "omnivoice-gpu")])
-def test_chinese_translation_falls_back_only_after_successful_publication(provider, fallback):
-    video = video_for(target_language="zh", subtitle_language="vi", tts_provider=provider,
+@pytest.mark.parametrize("language", ["zh", "ko", "ja", "es"])
+def test_unsupported_vieneu_translation_falls_back_only_after_successful_publication(provider, fallback, language):
+    video = video_for(target_language=language, subtitle_language="vi", tts_provider=provider,
         files={"voice_output": "old.wav", "manual_voice_overrides": {
             "old": {"provider": provider}, "edge": {"provider": "edge"}}})
     with (patch.object(manual_tools.video_store, "get_video", return_value=video),
@@ -77,7 +78,7 @@ def test_chinese_translation_falls_back_only_after_successful_publication(provid
           patch.object(manual_tools.video_store, "update_video") as update):
         manual_tools._replace_subtitles_from_translation(video.video_id, "translated.json")
     values = update.call_args.kwargs
-    assert values["subtitle_language"] == "zh" and values["tts_provider"] == fallback
+    assert values["subtitle_language"] == language and values["tts_provider"] == fallback
     assert "voice_output" not in values["files"]
     assert values["files"]["manual_voice_overrides"] == {"edge": {"provider": "edge"}}
 

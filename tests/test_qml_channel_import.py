@@ -1,4 +1,5 @@
 import os
+import json
 import sys
 import tempfile
 import threading
@@ -29,11 +30,18 @@ class ChannelImportQmlTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QGuiApplication.instance() or QGuiApplication([])
 
+    @staticmethod
+    def session_for(root, request):
+        # Modern project keys require the same ownership marker as real
+        # projects; an unowned directory must not gain checkpoint writes.
+        (Path(root) / ".haizflow-project.json").write_text(json.dumps({"key": "project:test"}), encoding="utf-8")
+        return new_session("project:test", root, request)
+
     def test_incomplete_scan_is_partial_and_results_survive_project_reopen(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             coordinator = ChannelImportCoordinator()
             request = ChannelImportRequest(url="https://www.douyin.com/user/creator", platform="douyin")
-            session = new_session("project:test", temp_dir, request)
+            session = self.session_for(temp_dir, request)
             coordinator._sessions[session.session_id] = session
             coordinator._active_session_id = session.session_id
             row = ChannelVideoCandidate(remote_video_id="one", source_url="https://www.douyin.com/video/one",
@@ -61,7 +69,7 @@ class ChannelImportQmlTests(unittest.TestCase):
                 coordinator = ChannelImportCoordinator()
                 request = ChannelImportRequest(url="https://www.douyin.com/user/creator", platform="douyin",
                                                limit=100, duration_filter="all")
-                session = new_session("project:test", temp_dir, request)
+                session = self.session_for(temp_dir, request)
                 coordinator._sessions[session.session_id] = session
                 coordinator._active_session_id = session.session_id
                 rows = [ChannelVideoCandidate(remote_video_id=str(index),
@@ -89,7 +97,7 @@ class ChannelImportQmlTests(unittest.TestCase):
                 coordinator = ChannelImportCoordinator()
                 request = ChannelImportRequest(url="https://www.douyin.com/user/creator", platform="douyin",
                                                ranking="popular", limit=20, duration_filter="all")
-                session = new_session("project:test", temp_dir, request)
+                session = self.session_for(temp_dir, request)
                 session.platform = "Douyin"
                 session.state = "ready"
                 session.candidates = [ChannelVideoCandidate(remote_video_id="one",
@@ -143,7 +151,7 @@ class ChannelImportQmlTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             coordinator = ChannelImportCoordinator()
             request = ChannelImportRequest(url="https://www.youtube.com/@creator")
-            session = new_session("project:test", temp_dir, request)
+            session = self.session_for(temp_dir, request)
             coordinator._sessions[session.session_id] = session
             coordinator._project_sessions[session.project_key] = session.session_id
             coordinator._active_session_id = session.session_id
@@ -185,7 +193,7 @@ class ChannelImportQmlTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             coordinator = ChannelImportCoordinator()
             request = ChannelImportRequest(url="https://www.youtube.com/@creator")
-            session = new_session("project:test", temp_dir, request)
+            session = self.session_for(temp_dir, request)
             session.candidates = [
                 ChannelVideoCandidate(
                     remote_video_id="video-1",

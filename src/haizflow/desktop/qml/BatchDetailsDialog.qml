@@ -24,6 +24,7 @@ AppDialog {
         case "geminiTranslationInstructions": return qsTr("Hướng dẫn dịch");
         case "geminiTranslationGlossary": return qsTr("Tên nhân vật và xưng hô");
         case "geminiTranslationStyle": return qsTr("Văn phong dịch");
+        case "translationReasoningEffort": return "reasoning.effort";
         case "ttsProvider": return qsTr("Model giọng đọc");
         case "ttsVoice": case "voice": return qsTr("Giọng đọc");
         case "speakerMode": case "speakers": return qsTr("Người nói");
@@ -51,6 +52,8 @@ AppDialog {
         case "watermarkTextColor": return qsTr("Màu watermark");
         case "watermarkBold": return qsTr("Watermark in đậm");
         case "watermarkItalic": return qsTr("Watermark in nghiêng");
+        case "watermarkMoving": return qsTr("Watermark di chuyển");
+        case "watermarkPosition": return qsTr("Vị trí watermark");
         case "watermark": return qsTr("Watermark");
         default: return key;
         }

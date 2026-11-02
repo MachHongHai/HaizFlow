@@ -65,6 +65,10 @@ def render_revision(video) -> str:
     ignored = {"project_name", "project_directory", "project_id", "project_key", "background_music_path", "review_approved",
                "gemini_translation_instructions", "gemini_translation_glossary", "gemini_translation_style"}
     config = {key: getattr(video, key, None) for key in VideoConfig.model_fields if key not in ignored}
+    if not config.get("watermark_position"):
+        config.pop("watermark_position", None)
+    if config.get("watermark_moving", True):
+        config.pop("watermark_moving", None)  # Preserve existing moving-watermark renders.
     from haizflow.services.gemini_context import signature_parts
 
     guidance = signature_parts(video)
@@ -427,7 +431,8 @@ def _render_range(source, output, range_ms, preset, token, progress, *, timeline
     """Frame-accurate cut of the immutable composed render; never run AI."""
     from haizflow.pipeline.render import _ffmpeg_progress_fraction
     from haizflow.utils.ffmpeg import (
-        _binary, get_video_dimensions, get_video_duration, preferred_export_encoder, validate_video_integrity,
+        _binary, get_video_dimensions, get_video_duration, mark_video_encoder_failed,
+        preferred_export_encoder, validate_video_integrity,
     )
 
     start, end = range_ms
@@ -482,6 +487,8 @@ def _render_range(source, output, range_ms, preset, token, progress, *, timeline
                         progress(value)
             if process.returncode == 0:
                 break
+            if not token.is_set():
+                mark_video_encoder_failed(encoder)
         if process.returncode:
             raise RuntimeError(f"Could not export result segment: {error[-900:]}")
         validate_video_integrity(str(output))

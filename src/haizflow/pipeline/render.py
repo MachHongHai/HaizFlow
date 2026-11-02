@@ -24,6 +24,7 @@ from haizflow.utils.ffmpeg import (
     get_video_dimensions,
     get_video_duration,
     preferred_video_encoder,
+    mark_video_encoder_failed,
 )
 
 
@@ -1438,8 +1439,10 @@ def _watermark_filter(
     text_color: str = "#FFFFFF",
     bold: bool = True,
     italic: bool = True,
+    moving: bool = True,
+    position: dict | None = None,
 ) -> str:
-    """Return a polished, continuously moving creator watermark filter."""
+    """Return a creator watermark, drifting or fixed at the initial position."""
     normalized = " ".join(str(text or "").split())[:80]
     if not normalized:
         return ""
@@ -1478,14 +1481,26 @@ def _watermark_filter(
     # Two unequal periods keep the mark drifting through the whole frame
     # instead of settling on a predictable diagonal or covering one subject.
     timeline = "t" if abs(time_offset_seconds) < 0.0005 else f"(t+{time_offset_seconds:.6f})"
+    if not moving:
+        timeline = "0"
     x = f"(W-text_w)*(0.08+0.84*(0.5+0.5*sin(2*PI*{timeline}/31)))"
     y = f"(H-text_h)*(0.10+0.80*(0.5+0.5*sin(2*PI*{timeline}/43+1.2)))"
+    if not moving and position:
+        x, y = _fixed_watermark_coordinates(position, "text_w", "text_h")
     return (
         f"drawtext=fontfile='{escaped_font_path}':text='{escaped}':"
         f"fontsize={font_size}:fontcolor={ffmpeg_text_color}@{fill_alpha:.2f}:borderw={border_width}:"
         f"bordercolor=black@{border_alpha:.2f}:shadowx=1:shadowy=1:shadowcolor=black@0.22:"
         f"x='{x}':y='{y}'"
     )
+
+
+def _fixed_watermark_coordinates(position, width: str, height: str) -> tuple[str, str]:
+    from haizflow.schemas.video import WatermarkPosition
+
+    point = WatermarkPosition.model_validate(position)
+    return (f"max(0,W-{width})*{point.x_percent / 100:.8f}",
+            f"max(0,H-{height})*{point.y_percent / 100:.8f}")
 
 
 def _image_watermark_filter(
@@ -1496,14 +1511,20 @@ def _image_watermark_filter(
     time_offset_seconds: float = 0.0,
     scale_percent: int = 100,
     opacity_percent: int = 46,
+    moving: bool = True,
+    position: dict | None = None,
 ) -> str:
     """Build the still-image watermark branch for a complex FFmpeg graph."""
     normalized_scale = max(25, min(300, int(scale_percent or 100)))
     normalized_opacity = max(0, min(100, int(opacity_percent)))
     target_width = max(24, min(round(output_width * 0.72), round(output_width * 0.16 * normalized_scale / 100)))
     timeline = "t" if abs(time_offset_seconds) < 0.0005 else f"(t+{time_offset_seconds:.6f})"
+    if not moving:
+        timeline = "0"
     x = f"(W-w)*(0.08+0.84*(0.5+0.5*sin(2*PI*{timeline}/31)))"
     y = f"(H-h)*(0.10+0.80*(0.5+0.5*sin(2*PI*{timeline}/43+1.2)))"
+    if not moving and position:
+        x, y = _fixed_watermark_coordinates(position, "w", "h")
     return (
         f"{input_label}format=rgba,scale={target_width}:-1:force_original_aspect_ratio=decrease"
         f",colorchannelmixer=aa={normalized_opacity / 100:.2f}[watermark_image];"
@@ -1573,6 +1594,8 @@ def render_video(
     subtitle_timeline_offset_seconds: float | None = None,
     export_preset: str = "source",
     output_speed: float = 1.0,
+    watermark_moving: bool = True,
+    watermark_position: dict | None = None,
 ):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
     subtitle_style = SubtitleStyle.model_validate(subtitle_style.model_dump())
@@ -1740,6 +1763,8 @@ def render_video(
         text_color=watermark_text_color,
         bold=watermark_bold,
         italic=watermark_italic,
+        moving=watermark_moving,
+        position=watermark_position,
     )
     filters = []
     crop_filter = _crop_filter(crop)
@@ -1823,6 +1848,8 @@ def render_video(
             time_offset_seconds=watermark_clock_offset,
             scale_percent=watermark_scale_percent,
             opacity_percent=watermark_opacity_percent,
+            moving=watermark_moving,
+            position=watermark_position,
         )
         vf_filter = f"{vf_filter};{image_filter}"
 
@@ -1976,6 +2003,7 @@ def render_video(
     try:
         return_code, stderr = run_render(video_encoder, video_encoder_args)
         if return_code != 0 and video_encoder != "libx264":
+            mark_video_encoder_failed(video_encoder)
             log_to_video(video_id, f"Hardware encoder {video_encoder} failed; retrying with libx264.")
             return_code, stderr = run_render("libx264", ["-preset", "veryfast", "-crf", str(encoding_quality if encoding_quality is not None else 23)])
         if return_code != 0:

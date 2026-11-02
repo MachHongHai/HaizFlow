@@ -31,6 +31,60 @@ def external_storage():
         yield
 
 
+def test_srt_no_overwrite_is_explicit_and_preserves_existing_file(tmp_path, external_storage):
+    target = tmp_path / "captions.srt"
+    target.write_text("old captions", encoding="utf-8")
+    with pytest.raises(FileExistsError):
+        subtitle_export.save_srt("new captions", target, overwrite=False)
+    assert target.read_text("utf-8") == "old captions"
+    assert subtitle_export.save_srt("new captions", target, overwrite=True) == target
+    assert target.read_text("utf-8") == "new captions"
+    assert not list(tmp_path.glob(".haizflow-srt-*"))
+
+
+def test_srt_pair_no_overwrite_cannot_partially_change_previous_results(tmp_path, external_storage):
+    old = tmp_path / "captions.result.srt"
+    old.write_text("previous result", encoding="utf-8")
+    with pytest.raises(FileExistsError):
+        subtitle_export.save_srt_pair("source", "result", tmp_path / "captions.srt", overwrite=False)
+    assert old.read_text("utf-8") == "previous result"
+    assert not (tmp_path / "captions.source.srt").exists()
+    assert not list(tmp_path.glob(".haizflow-srt-*"))
+
+
+def test_no_overwrite_srt_rejects_file_created_during_staging(tmp_path, external_storage, monkeypatch):
+    target = tmp_path / "captions.srt"
+    original = subtitle_export._publish_srt
+
+    def race(temporary, destination, **kwargs):
+        destination.write_text("created by another app", encoding="utf-8")
+        return original(temporary, destination, **kwargs)
+
+    monkeypatch.setattr(subtitle_export, "_publish_srt", race)
+    with pytest.raises(FileExistsError):
+        subtitle_export.save_srt("new result", target, overwrite=False)
+    assert target.read_text("utf-8") == "created by another app"
+    assert not list(tmp_path.glob(".haizflow-srt-*"))
+
+
+def test_srt_pair_rollback_does_not_delete_concurrent_editor_changes(tmp_path, external_storage, monkeypatch):
+    original = subtitle_export._publish_srt
+    source = tmp_path / "captions.source.srt"
+
+    def fail_second(temporary, destination, **kwargs):
+        if destination.name.endswith(".result.srt"):
+            source.write_text("edited in another app", encoding="utf-8")
+            raise OSError("second publication failed")
+        return original(temporary, destination, **kwargs)
+
+    monkeypatch.setattr(subtitle_export, "_publish_srt", fail_second)
+    with pytest.raises(OSError):
+        subtitle_export.save_srt_pair("source", "result", tmp_path / "captions.srt", overwrite=False)
+    assert source.read_text("utf-8") == "edited in another app"
+    assert not (tmp_path / "captions.result.srt").exists()
+    assert not list(tmp_path.glob(".haizflow-srt-*"))
+
+
 def test_export_preserves_edited_timeline_unicode_and_multiline_without_voice_probing():
     doc = document()
     before = doc.model_dump()

@@ -58,6 +58,16 @@ ApplicationWindow {{
         QMetaObject.invokeMethod(picker, "clicked", Qt.DirectConnection)
         QTest.qWait(10)
         assert confirm.property("enabled") and language.property("currentValue") == "vi"
+        assert language.property("count") == 7
+        for index, code in ((4, "ko"), (5, "ja"), (6, "es")):
+            language.setProperty("currentIndex", index)
+            QTest.qWait(10)
+            assert language.property("currentValue") == code
+            QMetaObject.invokeMethod(confirm, "clicked", Qt.DirectConnection)
+            QTest.qWait(90)
+            assert controller.property("importedLanguage") == code
+        language.setProperty("currentIndex", 1)
+        controller.setProperty("calls", 0)
         controller.setProperty("isProcessing", True)
         QTest.qWait(10)
         assert not confirm.property("enabled")

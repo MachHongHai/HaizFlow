@@ -366,21 +366,21 @@ class ProjectCommandsController:
 
             ui_language = getattr(host, "_settings_language", "vi")
             try:
-                notice = subtitle_import.chinese_text_notice(current, _load_segments(current, validate=False),
-                                                            ui_language) if current else None
+                notice = subtitle_import.voice_notice(current, selected_provider, _load_segments(current, validate=False),
+                                                       ui_language) if current else None
             except (OSError, ValueError, RuntimeError):
                 # The import has already committed. Optional diagnostics must
                 # not turn a successful import into a reported failure.
                 notice = None
             if notice:
-                title = "Đã nhập SRT — có chữ Hán" if ui_language == "vi" else "SRT imported — Han characters found"
+                title = "Đã nhập SRT — kiểm tra ngôn ngữ giọng đọc" if ui_language == "vi" else "SRT imported — check speech language"
                 prefix = f"Đã nhập {count} đoạn phụ đề. " if ui_language == "vi" else f"Imported {count} subtitle cues. "
                 host.appAlertRequested.emit(title, prefix + notice[1], "warning")
                 return True
         host.appAlertRequested.emit("Đã nhập SRT", f"{count} đoạn phụ đề đã hiển thị. Có thể tạo giọng hoặc dịch tiếp.", "info")
         return True
 
-    def remove_selected_srt(self, video_id="") -> bool:
+    def remove_selected_srt(self, video_id="", *, confirm=True) -> bool:
         from haizflow.services import subtitle_import
 
         host = self._host
@@ -390,7 +390,7 @@ class ProjectCommandsController:
         video = host._selected_video()
         if not video or video_id and video.video_id != video_id or not subtitle_import.has_import(video):
             return False
-        if QMessageBox.question(None, "Xóa SRT đã nhập?", "Xóa phụ đề và giọng đọc hiện tại? Video nguồn và các lớp khác được giữ nguyên.",
+        if confirm and QMessageBox.question(None, "Xóa SRT đã nhập?", "Xóa phụ đề và giọng đọc hiện tại? Video nguồn và các lớp khác được giữ nguyên.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return False
         if self._srt_busy(editing=True) or getattr(host._selected_video(), "video_id", "") != video.video_id:
@@ -589,6 +589,16 @@ class ProjectCommandsController:
                     host.appAlertRequested.emit(
                         "Chưa có mẫu giọng", "Nhập hoặc ghi mẫu giọng trong video cần nhân bản trước khi xử lý.", "warning")
                     return False
+        from haizflow.core.translation_models import is_api_model
+        from haizflow.services.translation_connections import resolve
+
+        for video in videos:
+            if video and is_api_model(str(getattr(video, "translation_model", ""))):
+                try:
+                    resolve(video.translation_model, with_key=True)
+                except (OSError, ValueError) as exc:
+                    host.appAlertRequested.emit("Kết nối dịch", str(exc), "warning")
+                    return False
         resource_controller = getattr(host, "_resource_packs", None)
         if resource_controller is None:
             return True
@@ -706,7 +716,8 @@ class ProjectCommandsController:
         if not videos:
             config = host._build_config() if hasattr(host, "_build_config") else None
             if config:
-                initial.update({key: getattr(config, field) for key, field in batch_settings.FIELDS.items()})
+                config_values = config.model_dump(mode="json")
+                initial.update({key: config_values[field] for key, field in batch_settings.FIELDS.items()})
                 initial.update({key: "" for key in batch_settings.ASSETS})
         values = batch_settings.stable_values(str(getattr(host, "_selected_project_key", "") or ""), initial, videos)
         return _batch_values_for_device(values, str(getattr(host, "_settings_processing_device", "cpu")),
@@ -724,6 +735,7 @@ class ProjectCommandsController:
                 "geminiTranslationInstructions": str(getattr(host, "_gemini_translation_instructions", "") or ""),
                 "geminiTranslationGlossary": str(getattr(host, "_gemini_translation_glossary", "") or ""),
                 "geminiTranslationStyle": str(getattr(host, "_gemini_translation_style", "balanced") or "balanced"),
+                "translationReasoningEffort": str(getattr(host, "_translation_reasoning_effort", "") or ""),
                 "ttsProvider": host._tts_provider,
                 "ttsVoice": host._tts_voice,
                 "speakerMode": getattr(host, "_speaker_mode", "single"),
@@ -734,6 +746,8 @@ class ProjectCommandsController:
                 "backgroundMusicVolume": host._background_music_volume,
                 "ttsVolume": host._tts_volume,
                 "watermarkText": host._watermark_text,
+                "watermarkMoving": getattr(host, "_watermark_moving", True),
+                "watermarkPosition": dict(getattr(host, "_watermark_position", {}) or {}),
                 "removeOriginalSubtitles": bool(getattr(host, "_remove_original_subtitles", True)),
                 "originalSubtitleRemovalMode": str(
                     getattr(host, "_original_subtitle_removal_mode", "patch") or "patch"
@@ -820,6 +834,7 @@ class ProjectCommandsController:
             "geminiTranslationInstructions": str(getattr(baseline_video, "gemini_translation_instructions", "") or ""),
             "geminiTranslationGlossary": str(getattr(baseline_video, "gemini_translation_glossary", "") or ""),
             "geminiTranslationStyle": str(getattr(baseline_video, "gemini_translation_style", "balanced") or "balanced"),
+            "translationReasoningEffort": str(getattr(baseline_video, "translation_reasoning_effort", "") or ""),
             "ttsProvider": tts_provider,
             "ttsVoice": host._normalized_voice_for_language(target_language, tts_voice, tts_provider),
             "speakerMode": "multiple" if speaker_mode == "multiple" else "single",
@@ -830,6 +845,9 @@ class ProjectCommandsController:
             "backgroundMusicVolume": int(background_music_volume),
             "ttsVolume": int(tts_volume),
             "watermarkText": str(watermark_text or ""),
+            "watermarkMoving": getattr(baseline_video, "watermark_moving", True),
+            "watermarkPosition": (baseline_video.watermark_position.model_dump()
+                                  if getattr(baseline_video, "watermark_position", None) is not None else {}),
             "removeOriginalSubtitles": bool(remove_original_subtitles),
             "originalSubtitleRemovalMode": str(original_subtitle_removal_mode),
             "originalSubtitleRegion": dict(getattr(baseline_video, "original_subtitle_region_override", {}) or {}),
@@ -1093,14 +1111,19 @@ class ProjectCommandsController:
         )
         if asr_model not in {"small", "small-cpu", "small-gpu", "large-v3-turbo"}:
             asr_model = "small"
-        selected_translation_model = str(translation_model or getattr(host, "_translation_model", "auto")).lower()
+        from haizflow.core.translation_models import normalize_translation_model
+
+        selected_translation_model = normalize_translation_model(
+            translation_model or getattr(host, "_translation_model", "auto"))
         from haizflow.core.model_choices import gpu_choice_blocked
 
         if gpu_choice_blocked(str(getattr(host, "_settings_processing_device", "cpu")),
                               recognition=asr_model, translation=selected_translation_model, voice=provider):
             QMessageBox.warning(None, "Đang dùng chế độ CPU", "Chọn model CPU hoặc chuyển sang GPU trong Cài đặt → Chung.")
             return False
-        if selected_translation_model not in {"auto", "q4", "full", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"}:
+        from haizflow.core.translation_models import is_api_model, translation_provider
+
+        if selected_translation_model not in {"auto", "q4", "full", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"} and not is_api_model(selected_translation_model):
             return False
         capabilities = getattr(host, "_hardware_capabilities", None)
         from haizflow.core.model_choices import heavy_gpu_choice_blocked, project_translation_choice
@@ -1226,7 +1249,7 @@ class ProjectCommandsController:
                 "target_language": language,
                 "speech_recognition_model": asr_model,
                 "translation_model": selected_translation_model,
-                "translator_provider": "gemini" if selected_translation_model.startswith("gemini-") else "hymt2",
+                "translator_provider": translation_provider(selected_translation_model),
                 "tts_provider": provider,
                 "tts_voice": voice,
                 "speaker_mode": normalized_speaker_mode,
@@ -1316,6 +1339,7 @@ class ProjectCommandsController:
         host._gemini_translation_instructions = str(values.get("geminiTranslationInstructions") or "")
         host._gemini_translation_glossary = str(values.get("geminiTranslationGlossary") or "")
         host._gemini_translation_style = str(values.get("geminiTranslationStyle") or "balanced")
+        host._translation_reasoning_effort = str(values.get("translationReasoningEffort") or "")
         signal = getattr(host, "geminiGuidanceChanged", None)
         if signal is not None:
             signal.emit()
@@ -1329,6 +1353,10 @@ class ProjectCommandsController:
         host._background_music_volume = values["backgroundMusicVolume"]
         host._tts_volume = values["ttsVolume"]
         host._watermark_text = values["watermarkText"]
+        host._watermark_moving = bool(values.get("watermarkMoving", True))
+        host._watermark_position = dict(values.get("watermarkPosition") or {})
+        if (signal := getattr(host, "watermarkStyleChanged", None)) is not None:
+            signal.emit()
         host._remove_original_subtitles = values["removeOriginalSubtitles"]
         host._original_subtitle_removal_mode = values["originalSubtitleRemovalMode"]
         host._original_subtitle_region_override = dict(values.get("originalSubtitleRegion") or {})
@@ -1406,11 +1434,11 @@ class ProjectCommandsController:
             host.batchChanged.emit()
         return True
 
-    def stop_batch(self) -> None:
+    def stop_batch(self, *, confirm: bool = True) -> None:
         host = self._host
         if not host.isBatchRunning:
             return
-        if (
+        if confirm and (
             QMessageBox.question(
                 None, "Pause batch", "Pause the active video and the remaining queue? You can resume this batch later."
             )
@@ -1568,7 +1596,7 @@ class ProjectCommandsController:
         host._enqueue_video(video.video_id)
         return True
 
-    def stop_video(self) -> None:
+    def stop_video(self, *, confirm: bool = True) -> None:
         host = self._host
         selected_video_id = host._selected_video_id
         if not selected_video_id or not host._processing_queue.contains(selected_video_id):
@@ -1583,7 +1611,7 @@ class ProjectCommandsController:
         # The synchronous confirmation runs a nested QML/Qt event loop before
         # cancellation. It can outlive a rebuilt inspector; avoid that extra
         # round trip for this explicit, non-destructive Manual action.
-        if getattr(selected_video, "project_type", "single") != "manual" and (
+        if confirm and getattr(selected_video, "project_type", "single") != "manual" and (
             QMessageBox.question(None, "Pause video", "Pause this video? You can resume it later from Projects.")
             != QMessageBox.StandardButton.Yes
         ):
@@ -1635,7 +1663,7 @@ class ProjectCommandsController:
             video_store.log_to_video(video.video_id, "Resumed from the saved processing state.")
             host.selectedVideoChanged.emit()
 
-    def restart_selected_video(self) -> None:
+    def restart_selected_video(self, *, confirm: bool = True) -> None:
         host = self._host
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
         if (
@@ -1651,7 +1679,7 @@ class ProjectCommandsController:
             return
         if not self._resources_ready(host, video):
             return
-        if (
+        if confirm and (
             QMessageBox.question(None, "Restart video", "Apply the current dubbing setup and restart this project?")
             != QMessageBox.StandardButton.Yes
         ):
@@ -1675,10 +1703,13 @@ class ProjectCommandsController:
         host._enqueue_video(restarted.video_id)
         host.selectedVideoChanged.emit()
 
-    def approve_translation_review(self, payload: str) -> bool:
+    def approve_translation_review(self, payload: str, *, continue_processing: bool = True) -> bool:
         host = self._host
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
-        if not video or video.status not in {"awaiting_review", "manual_ready", "done"}:
+        editable_states = {"awaiting_review", "manual_ready", "done"}
+        if not continue_processing:
+            editable_states.add("paused")
+        if not video or video.status not in editable_states:
             return False
         previous_segments: list[dict] = []
         try:
@@ -1787,19 +1818,25 @@ class ProjectCommandsController:
         video_store.update_video(
             video.video_id,
             review_approved=True,
-            status="pending",
-            step="queued",
+            status="pending" if continue_processing else "paused",
+            step="queued" if continue_processing else "creating_subtitle",
             resume_step="creating_subtitle",
             runtime_recovery_step="",
             checkpoints=checkpoints,
-            step_detail="Queued to create dub",
+            step_detail="Queued to create dub" if continue_processing else "Edited subtitles saved; processing not started",
             **elapsed_updates,
         )
         video_store.log_to_video(
             video.video_id,
-            f"Translation review approved with {len(segments)} edited segments. Added to the processing queue.",
+            f"Translation review approved with {len(segments)} edited segments. "
+            + ("Added to the processing queue." if continue_processing else "Saved without starting processing."),
         )
-        host._enqueue_video(video.video_id)
+        if continue_processing:
+            host._enqueue_video(video.video_id)
+        elif text_changed or timing_changed:
+            from haizflow.services import manual_artifacts
+
+            manual_artifacts.deactivate(video.video_id, {"export", "visual_proxy"})
         host.selectedVideoChanged.emit()
         return True
 

@@ -1075,6 +1075,7 @@ def test_watermark_style_changes_are_written_to_editor_document(tmp_path):
     video.watermark_text_color = "#FFEF00"
     video.watermark_bold = False
     video.watermark_italic = False
+    video.watermark_moving = False
     video.watermark_outline_percent = 150
     document = EditorDocument(
         video_id=video.video_id,
@@ -1098,6 +1099,7 @@ def test_watermark_style_changes_are_written_to_editor_document(tmp_path):
     assert style.font_weight == 400
     assert style.italic is False
     assert style.outline_width == 3
+    assert saved[0].clips[0].metadata["legacy_motion"] is False
 
 
 def test_text_overlay_compiler_uses_shared_sprite_and_keyframed_transform(tmp_path):

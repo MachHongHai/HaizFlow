@@ -82,6 +82,7 @@ class ProjectWorkspaceController:
         host._gemini_translation_instructions = str(getattr(video, "gemini_translation_instructions", "") or "")
         host._gemini_translation_glossary = str(getattr(video, "gemini_translation_glossary", "") or "")
         host._gemini_translation_style = str(getattr(video, "gemini_translation_style", "balanced") or "balanced")
+        host._translation_reasoning_effort = str(getattr(video, "translation_reasoning_effort", "") or "")
         signal = getattr(host, "geminiGuidanceChanged", None)
         if signal is not None:
             signal.emit()
@@ -141,6 +142,9 @@ class ProjectWorkspaceController:
         host._watermark_text_color = str(getattr(video, "watermark_text_color", "#FFFFFF") or "#FFFFFF")
         host._watermark_bold = bool(getattr(video, "watermark_bold", True))
         host._watermark_italic = bool(getattr(video, "watermark_italic", True))
+        host._watermark_moving = bool(getattr(video, "watermark_moving", True))
+        position = getattr(video, "watermark_position", None)
+        host._watermark_position = position.model_dump() if position is not None else {}
         host._remove_original_subtitles = bool(getattr(video, "remove_original_subtitles", True))
         host._original_subtitle_removal_mode = str(getattr(video, "original_subtitle_removal_mode", "patch") or "patch")
         host._original_subtitle_region_override = dict(getattr(video, "original_subtitle_region_override", {}) or {})

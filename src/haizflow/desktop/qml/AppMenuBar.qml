@@ -16,6 +16,7 @@ Rectangle {
     signal settingsRequested
     signal apiKeysRequested
     signal packagesRequested
+    signal mcpRequested
     signal undoRequested
     signal redoRequested
     signal aboutRequested
@@ -305,6 +306,7 @@ Rectangle {
             settingsItem.implicitWidth,
             apiKeysItem.implicitWidth,
             packagesItem.implicitWidth,
+            mcpItem.implicitWidth,
             guideItem.implicitWidth,
             reportIssueItem.implicitWidth,
             aboutItem.implicitWidth, copyrightItem.implicitWidth)
@@ -328,6 +330,13 @@ Rectangle {
 
             text: qsTr("Gói tài nguyên")
             onTriggered: root.packagesRequested()
+        }
+
+        AppMenuItem {
+            id: mcpItem
+            objectName: "mcpSettingsMenuItem"
+            text: qsTr("MCP")
+            onTriggered: root.mcpRequested()
         }
 
         MenuSeparator {}

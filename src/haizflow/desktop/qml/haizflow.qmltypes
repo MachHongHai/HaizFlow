@@ -7,14 +7,40 @@ import QtQuick.tooling 1.2
 
 Module {
     Component {
+        name: "TranslationApiController"
+        prototype: "QObject"
+        accessSemantics: "reference"
+        Signal { name: "changed" }
+        Property { name: "profiles"; type: "QVariantList"; notify: "changed"; isReadonly: true }
+        Property { name: "modelOptions"; type: "QVariantList"; notify: "changed"; isReadonly: true }
+        Property { name: "busy"; type: "bool"; notify: "changed"; isReadonly: true }
+        Signal { name: "catalogChanged" }
+        Property { name: "catalogOptions"; type: "QVariantList"; notify: "catalogChanged"; isReadonly: true }
+        Property { name: "catalogState"; type: "QString"; notify: "catalogChanged"; isReadonly: true }
+        Property { name: "catalogConnection"; type: "QString"; notify: "catalogChanged"; isReadonly: true }
+        Method { name: "reasoningConfiguration"; type: "QVariantMap"; Parameter { name: "choice"; type: "QString" } Parameter { name: "selected"; type: "QString" } Parameter { name: "hasGuidance"; type: "bool" } }
+        Property { name: "reasoningRevision"; type: "int"; notify: "catalogChanged"; isReadonly: true }
+        Method { name: "reasoningConfiguration"; type: "QVariantMap"; Parameter { name: "choice"; type: "QString" } Parameter { name: "selected"; type: "QString" } Parameter { name: "hasGuidance"; type: "bool" } Parameter { name: "revision"; type: "int" } }
+        Method { name: "connectionModels"; type: "QVariantList"; Parameter { name: "id"; type: "QString" } }
+        Method { name: "modelChoice"; type: "QString"; Parameter { name: "id"; type: "QString" } Parameter { name: "model"; type: "QString" } }
+        Method { name: "modelChoice"; type: "QString"; Parameter { name: "id"; type: "QString" } Parameter { name: "model"; type: "QString" } Parameter { name: "outputFormat"; type: "QString" } }
+        Method { name: "addCredential"; type: "bool"; Parameter { name: "provider"; type: "QString" } Parameter { name: "label"; type: "QString" } Parameter { name: "key"; type: "QString" } Parameter { name: "baseUrl"; type: "QString" } }
+        Method { name: "choiceLabel"; type: "QString"; Parameter { name: "choice"; type: "QString" } }
+        Method { name: "loadConnectionModels"; Parameter { name: "id"; type: "QString" } }
+        Method { name: "presetModels"; type: "QVariantList"; Parameter { name: "provider"; type: "string" } }
+        Method { name: "resetModels" }
+        Method { name: "loadModels"; Parameter { name: "provider"; type: "string" } Parameter { name: "key"; type: "string" } Parameter { name: "baseUrl"; type: "string" } }
+    }
+    Component {
         name: "ManualEditorDocumentModel"
         prototype: "QObject"
         accessSemantics: "reference"
         Signal { name: "clipsChanged" }
+        Signal { name: "ocrLayersChanged" }
         Property { name: "videoId"; type: "string"; isReadonly: true }
         Property { name: "document"; type: "QVariantMap"; isReadonly: true }
         Property { name: "tracks"; type: "QVariantList"; isReadonly: true }
-        Property { name: "ocrLayers"; type: "QVariantList"; isReadonly: true }
+        Property { name: "ocrLayers"; type: "QVariantList"; isReadonly: true; notify: "ocrLayersChanged" }
         Property { name: "clips"; type: "QVariantList"; isReadonly: true }
         Property { name: "assets"; type: "QVariantList"; isReadonly: true }
         Property { name: "styles"; type: "QVariantList"; isReadonly: true }
@@ -72,6 +98,7 @@ Module {
     }
     Component {
         name: "HaizFlowController"
+        Property { name: "mcpBridge"; type: "QObject"; isPointer: true; isReadonly: true }
         Property { name: "manualSubtitleModel"; type: "ManualSubtitleModel"; isPointer: true; isReadonly: true }
         Property { name: "subtitleOverlayRenderer"; type: "SubtitleOverlayRenderer"; isPointer: true; isReadonly: true }
         Property { name: "subtitleSampleOverlayRenderer"; type: "SubtitleOverlayRenderer"; isPointer: true; isReadonly: true }
@@ -809,7 +836,7 @@ Module {
             name: "ttsVoiceIndex"
             type: "int"
             read: "ttsVoiceIndex"
-            notify: "ttsVoiceOptionsChanged"
+            notify: "ttsVoiceSelectionChanged"
             index: 61
             isReadonly: true
         }
@@ -917,6 +944,9 @@ Module {
         Property { name: "watermarkTextColor"; type: "QString"; read: "watermarkTextColor"; write: "watermarkTextColor"; notify: "watermarkStyleChanged" }
         Property { name: "watermarkBold"; type: "bool"; read: "watermarkBold"; write: "watermarkBold"; notify: "watermarkStyleChanged" }
         Property { name: "watermarkItalic"; type: "bool"; read: "watermarkItalic"; write: "watermarkItalic"; notify: "watermarkStyleChanged" }
+        Property { name: "watermarkMoving"; type: "bool"; read: "watermarkMoving"; write: "watermarkMoving"; notify: "watermarkStyleChanged" }
+        Property { name: "watermarkPosition"; type: "QVariantMap"; read: "watermarkPosition"; write: "watermarkPosition"; notify: "watermarkStyleChanged" }
+        Method { name: "commitManualWatermarkPosition"; type: "bool"; Parameter { name: "position"; type: "QVariantMap" } }
         Property {
             name: "removeOriginalSubtitles"
             type: "bool"
@@ -1273,7 +1303,7 @@ Module {
             name: "manualToolModel"
             type: "QVariantList"
             read: "manualToolModel"
-            notify: "selectedVideoChanged"
+            notify: "manualToolStatesChanged"
             isReadonly: true
         }
         Property {
@@ -1578,6 +1608,13 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "translationApi"
+            type: "TranslationApiController"
+            isPointer: true
+            read: "translationApi"
+            isReadonly: true
+        }
+        Property {
             name: "translationModel"
             type: "QString"
             read: "translationModel"
@@ -1721,6 +1758,7 @@ Module {
         Property { name: "geminiTranslationInstructions"; type: "QString"; read: "geminiTranslationInstructions"; notify: "geminiGuidanceChanged"; isReadonly: true }
         Property { name: "geminiTranslationGlossary"; type: "QString"; read: "geminiTranslationGlossary"; notify: "geminiGuidanceChanged"; isReadonly: true }
         Property { name: "geminiTranslationStyle"; type: "QString"; read: "geminiTranslationStyle"; notify: "geminiGuidanceChanged"; isReadonly: true }
+        Property { name: "translationReasoningEffort"; type: "QString"; read: "translationReasoningEffort"; write: "translationReasoningEffort"; notify: "geminiGuidanceChanged" }
         Method {
             name: "saveGeminiTranslationGuidance"
             type: "bool"
@@ -1743,6 +1781,8 @@ Module {
         Signal { name: "speechRecognitionModelOptionsChanged" }
         Signal { name: "ttsVoiceChanged" }
         Signal { name: "ttsVoiceOptionsChanged" }
+        Signal { name: "ttsVoiceSelectionChanged" }
+        Signal { name: "manualToolStatesChanged" }
         Signal { name: "ttsProviderChanged" }
         Signal { name: "ttsProviderOptionsChanged" }
         Signal { name: "speakerModeChanged" }

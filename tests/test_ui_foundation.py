@@ -167,13 +167,13 @@ for name in ('AutoWatermarkPreviewDialog.qml', 'SubtitlePreviewDialog.qml',
         for component in ("HomeHero {", "HomeCreatorPanel {", "HomeActionButton {", "TutorialPlaceholder {"):
             self.assertNotIn(component, home)
 
-    def test_settings_has_three_sections_and_named_api_keys(self):
+    def test_settings_has_mcp_section_and_named_api_keys(self):
         workspace = (QML_DIR / "SettingsWorkspace.qml").read_text(encoding="utf-8")
         api_page = (QML_DIR / "ApiKeysPage.qml").read_text(encoding="utf-8")
         api_form = (QML_DIR / "ApiKeyEntryForm.qml").read_text(encoding="utf-8")
         api_row = (QML_DIR / "ApiKeyListRow.qml").read_text(encoding="utf-8")
         menu = (QML_DIR / "AppMenuBar.qml").read_text(encoding="utf-8")
-        for section in ("Chung", "API Key", "Gói tài nguyên"):
+        for section in ("Chung", "API Key", "Gói tài nguyên", "MCP"):
             self.assertIn(f'qsTr("{section}")', workspace)
         self.assertIn("ApiKeysPage {", workspace)
         self.assertIn("AppController.geminiApiKeys", api_page)
@@ -523,8 +523,8 @@ window.close()
         self.assertIn("HoverHandler {", scale_handle)
         self.assertEqual(watermark_overlay.count("CornerScaleHandle {"), 4)
         self.assertIn('objectName: "watermarkTransformSelection"', watermark_overlay)
-        self.assertIn("Math.sin(2 * Math.PI * root.timeSeconds / 31)", watermark_overlay)
-        self.assertIn("Math.sin(2 * Math.PI * root.timeSeconds / 43 + 1.2)", watermark_overlay)
+        self.assertIn("Math.sin(2 * Math.PI * root.motionTimeSeconds / 31)", watermark_overlay)
+        self.assertIn("Math.sin(2 * Math.PI * root.motionTimeSeconds / 43 + 1.2)", watermark_overlay)
         self.assertIn("WatermarkTransformOverlay {", compare_preview)
         self.assertNotIn("draftOpacity", watermark_dialog)
         self.assertNotIn("openWithSettings", watermark_dialog)
@@ -894,6 +894,7 @@ ApplicationWindow {{
         onActivated: editing = true
         onEditingDismissed: editing = false
         onScalePreviewChanged: function(value) {{ scalePercent = value; }}
+        onPositionCommitted: function(value) {{ position = value; moving = false; }}
     }}
 }}''', QUrl())
 assert component.isReady(), "\\n".join(error.toString() for error in component.errors())
@@ -916,6 +917,56 @@ QTest.mouseMove(window, QPoint(start.x() + 80, start.y() + 80), 20)
 QTest.mouseRelease(window, Qt.LeftButton, Qt.NoModifier, QPoint(start.x() + 80, start.y() + 80))
 app.processEvents()
 assert float(overlay.property("draftScalePercent")) > 100
+mark = overlay.findChild(QQuickItem, "watermarkTransformMark")
+for kind in ("text", "image", "video"):
+    overlay.setProperty("watermarkKind", kind)
+    overlay.setProperty("moving", False)
+    overlay.setProperty("timeSeconds", 0)
+    app.processEvents()
+    initial = (mark.x(), mark.y())
+    overlay.setProperty("timeSeconds", 12)
+    app.processEvents()
+    assert (mark.x(), mark.y()) == initial, kind
+    overlay.setProperty("moving", True)
+    app.processEvents()
+    assert (mark.x(), mark.y()) != initial, kind
+overlay.setProperty("watermarkKind", "text")
+overlay.setProperty("timeSeconds", 0)
+app.processEvents()
+point = mark.mapToScene(QPointF(mark.width() / 2, mark.height() / 2))
+start = QPoint(round(point.x()), round(point.y()))
+before = (mark.x(), mark.y())
+QTest.mousePress(window, Qt.LeftButton, Qt.NoModifier, start)
+QTest.mouseMove(window, QPoint(start.x() + 60, start.y() - 80), 20)
+QTest.mouseRelease(window, Qt.LeftButton, Qt.NoModifier, QPoint(start.x() + 60, start.y() - 80))
+app.processEvents()
+assert overlay.property("moving") is False
+after = (mark.x(), mark.y())
+assert after[0] > before[0] + 20 and after[1] < before[1] - 20, (before, after)
+overlay.setProperty("timeSeconds", 25)
+app.processEvents()
+assert (mark.x(), mark.y()) == after
+selection = overlay.findChild(QQuickItem, "watermarkTransformSelection")
+selection.forceActiveFocus()
+QTest.keyClick(window, Qt.Key_Left)
+app.processEvents()
+assert mark.x() < after[0]
+beforeCancel = (mark.x(), mark.y())
+point = mark.mapToScene(QPointF(mark.width() / 2, mark.height() / 2))
+start = QPoint(round(point.x()), round(point.y()))
+QTest.mousePress(window, Qt.LeftButton, Qt.NoModifier, start)
+QTest.mouseMove(window, QPoint(start.x() - 30, start.y() - 30), 20)
+QTest.keyClick(window, Qt.Key_Escape)
+QTest.mouseRelease(window, Qt.LeftButton, Qt.NoModifier, QPoint(start.x() - 30, start.y() - 30))
+app.processEvents()
+assert (mark.x(), mark.y()) == beforeCancel
+point = mark.mapToScene(QPointF(mark.width() / 2, mark.height() / 2))
+start = QPoint(round(point.x()), round(point.y()))
+QTest.mousePress(window, Qt.LeftButton, Qt.NoModifier, start)
+QTest.mouseMove(window, QPoint(1, 1), 20)
+QTest.mouseRelease(window, Qt.LeftButton, Qt.NoModifier, QPoint(1, 1))
+app.processEvents()
+assert abs(mark.x()) < .1 and abs(mark.y()) < .1, (mark.x(), mark.y())
 window.close()
 window.deleteLater()
 engine.deleteLater()

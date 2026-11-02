@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-POLICY_VERSION = "speech-length-v1"
+POLICY_VERSION = "speech-length-v2-spanish-budget"
 
 # Product heuristics for ordinary narration, not measured voice durations.
 # Vietnamese space-separated units are usually syllables; CJK characters and
@@ -14,6 +14,8 @@ _PROFILES = {
     "vi": (4.5, "space-separated spoken syllables"),
     "english": (2.8, "words"),
     "en": (2.8, "words"),
+    "spanish": (3.0, "words"),
+    "es": (3.0, "words"),
     "chinese": (4.5, "spoken characters"),
     "zh": (4.5, "spoken characters"),
     "japanese": (5.0, "spoken characters"),

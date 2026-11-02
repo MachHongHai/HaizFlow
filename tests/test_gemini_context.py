@@ -83,7 +83,7 @@ def test_sentence_repair_keeps_original_context_and_user_rules(tmp_path, monkeyp
 
     def fake(texts, **kwargs):
         calls.append(kwargs)
-        return ["Chào bạn", "Cảm ơn"] if len(calls) == 1 else ["Cảm ơn cậu"]
+        return ["Chào bạn", "\ufffd"] if len(calls) == 1 else ["Cảm ơn cậu"]
 
     monkeypatch.setattr(gemini, "translate_texts", fake)
     monkeypatch.setattr(translation, "shutdown_hymt2_worker", lambda: None)

@@ -138,12 +138,19 @@ class VideoExportController(QObject):
                    for key in self.host._batch_video_ids if (video := video_store.get_video(key)))
 
     def _set_jobs(self, jobs):
-        # Paused exports from another project must survive navigation and a
-        # new job. Replacing a destination for the same video is explicit.
+        # Keep every live owner/destination when another Auto project queues.
         identifiers = {job["videoId"] for job in jobs}
-        waiting = [job for job in self.jobs if job["status"] in {"paused", "awaiting_review"}
+        waiting = [job for job in self.jobs if job["status"] not in {"done", "failed", "cancelled"}
                    and job["videoId"] not in identifiers]
         self.jobs = waiting + jobs
+
+    def can_start_processing(self, video_id):
+        if self._pending_run_cleanup or self._cancelling_render_tokens or (self.busy and self.cancel.is_set()):
+            return False
+        return not any(job["videoId"] == str(video_id) and (
+            job["status"] in {"pending", "rendering", "exporting"}
+            or self.busy and job["status"] in {"paused", "awaiting_review"}
+        ) for job in self.jobs)
 
     def choose_file(self, video_id) -> str:
         video = video_store.get_video(str(video_id))
@@ -188,9 +195,13 @@ class VideoExportController(QObject):
                          "Cannot save here. Choose a folder outside managed project data and retry. ") + str(error)
 
     def start(self, video_id, preset, destination, *, overwrite=False, process=False, segment_id="") -> bool:
-        if self.busy:
-            return False
         video = video_store.get_video(str(video_id))
+        queue_auto = bool(process and video and video.project_type == "single")
+        if queue_auto:
+            if not self.can_start_processing(video_id):
+                return False
+        elif self.busy:
+            return False
         selected_range = None
         try:
             if segment_id:
@@ -204,6 +215,9 @@ class VideoExportController(QObject):
                                                "The result segment changed. Reopen the export dialog."))
             preset_settings(str(preset))
             target = validate_export_destination(destination)
+            if any(job["videoId"] != str(video_id) and job["status"] not in {"done", "failed", "cancelled"}
+                   and Path(job["path"]).resolve() == target.resolve() for job in self.jobs):
+                raise FileExistsError("This destination is already reserved by another export job.")
             if target.exists() and not overwrite:
                 raise FileExistsError(str(target))
         except (OSError, ValueError) as exc:
@@ -224,7 +238,8 @@ class VideoExportController(QObject):
                "targetIdentity": self._chosen_targets.get(str(target), destination_identity(target))}
         previous_jobs = self.jobs
         self._set_jobs([job])
-        self.cancel.clear()
+        if not self.busy:
+            self.cancel.clear()
         ready = current_render(video, verify=False)
         legacy = str((video.files or {}).get("final_video") or "")
         legacy_candidate = (not (video.active_artifacts or {}).get("export") and video.status == "done"

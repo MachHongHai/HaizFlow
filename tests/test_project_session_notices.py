@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 from PySide6.QtCore import QObject, QUrl, Slot
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtQml import QQmlComponent, QQmlEngine
+from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlExpression
 
 from haizflow.desktop.qml_controller import HaizFlowController
 
@@ -85,15 +85,15 @@ def test_production_model_combo_routes_all_gemini_choices_to_shared_session_noti
     app.processEvents()
     combo.edited.connect(lambda model: combo.setProperty("selectedModel", model))
     try:
-        for index in (2, 3, 0, 2, 3):
-            combo.setProperty("currentIndex", index)
+        for provider, index in (("gemini", 0), ("gemini", 1), ("hymt2", 0), ("gemini", 0), ("gemini", 1)):
+            QQmlExpression(engine.rootContext(), combo, f'openProvider("{provider}")').evaluate()
             app.processEvents()
-            combo.activated.emit(index)
+            QQmlExpression(engine.rootContext(), combo, f"choose({index})").evaluate()
         assert value._show_app_alert.call_count == 1
         assert value._show_app_alert.call_args.args[0] == "Chi phí Gemini"
         value._selected_project_key = "project-b"
-        combo.setProperty("currentIndex", 2)
-        combo.activated.emit(2)
+        QQmlExpression(engine.rootContext(), combo, 'openProvider("gemini")').evaluate()
+        QQmlExpression(engine.rootContext(), combo, "choose(0)").evaluate()
         assert value._show_app_alert.call_count == 2
     finally:
         combo.deleteLater()

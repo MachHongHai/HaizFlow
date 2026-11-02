@@ -167,6 +167,7 @@ class ManualEditorSessionTests(unittest.TestCase):
                 "target_language",
                 "speech_recognition_model",
                 "translation_model",
+                "translation_reasoning_effort",
                 "gemini_translation_instructions",
                 "gemini_translation_glossary",
                 "gemini_translation_style",
@@ -197,6 +198,8 @@ class ManualEditorSessionTests(unittest.TestCase):
                 "watermark_text_color",
                 "watermark_bold",
                 "watermark_italic",
+                "watermark_moving",
+                "watermark_position",
             },
         )
 

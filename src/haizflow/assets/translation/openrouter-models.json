@@ -1,0 +1,4183 @@
+{
+  "version": 2,
+  "retrieved_at": "2026-11-02",
+  "options": [
+    {
+      "value": "anthropic/claude-fable-5",
+      "label": "Anthropic: Claude Fable 5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "anthropic/claude-fable-5:batch",
+      "label": "Anthropic: Claude Fable 5 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "anthropic/claude-fable-5.1",
+      "label": "Anthropic: Claude Fable 5.1",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "anthropic/claude-fable-5.1:batch",
+      "label": "Anthropic: Claude Fable 5.1 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "~anthropic/claude-fable-latest",
+      "label": "Anthropic: Claude Fable Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "anthropic/claude-haiku-4.5",
+      "label": "Anthropic: Claude Haiku 4.5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "anthropic/claude-haiku-4.5:batch",
+      "label": "Anthropic: Claude Haiku 4.5 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "anthropic/claude-haiku-5.5",
+      "label": "Anthropic: Claude Haiku 5.5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "anthropic/claude-haiku-5.5:batch",
+      "label": "Anthropic: Claude Haiku 5.5 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "~anthropic/claude-haiku-latest",
+      "label": "Anthropic: Claude Haiku Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "anthropic/claude-opus-4.1:batch",
+      "label": "Anthropic: Claude Opus 4.1 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "anthropic/claude-opus-4.5",
+      "label": "Anthropic: Claude Opus 4.5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "anthropic/claude-opus-4.5:batch",
+      "label": "Anthropic: Claude Opus 4.5 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "anthropic/claude-opus-4.6",
+      "label": "Anthropic: Claude Opus 4.6",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "anthropic/claude-opus-4.6:batch",
+      "label": "Anthropic: Claude Opus 4.6 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "anthropic/claude-opus-4.7",
+      "label": "Anthropic: Claude Opus 4.7",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "anthropic/claude-opus-4.7:batch",
+      "label": "Anthropic: Claude Opus 4.7 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "anthropic/claude-opus-4.8",
+      "label": "Anthropic: Claude Opus 4.8",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "anthropic/claude-opus-4.8:batch",
+      "label": "Anthropic: Claude Opus 4.8 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "anthropic/claude-opus-5",
+      "label": "Anthropic: Claude Opus 5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "anthropic/claude-opus-5:batch",
+      "label": "Anthropic: Claude Opus 5 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "anthropic/claude-opus-5.5",
+      "label": "Anthropic: Claude Opus 5.5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "anthropic/claude-opus-5.5:batch",
+      "label": "Anthropic: Claude Opus 5.5 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "~anthropic/claude-opus-latest",
+      "label": "Anthropic: Claude Opus Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "anthropic/claude-sonnet-4.5",
+      "label": "Anthropic: Claude Sonnet 4.5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "anthropic/claude-sonnet-4.5:batch",
+      "label": "Anthropic: Claude Sonnet 4.5 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "anthropic/claude-sonnet-4.6",
+      "label": "Anthropic: Claude Sonnet 4.6",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "anthropic/claude-sonnet-4.6:batch",
+      "label": "Anthropic: Claude Sonnet 4.6 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "anthropic/claude-sonnet-5",
+      "label": "Anthropic: Claude Sonnet 5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "anthropic/claude-sonnet-5:batch",
+      "label": "Anthropic: Claude Sonnet 5 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "anthropic/claude-sonnet-5.5",
+      "label": "Anthropic: Claude Sonnet 5.5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "anthropic/claude-sonnet-5.5:batch",
+      "label": "Anthropic: Claude Sonnet 5.5 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "~anthropic/claude-sonnet-latest",
+      "label": "Anthropic: Claude Sonnet Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "bytedance-seed/seed-1.6",
+      "label": "ByteDance Seed: Seed 1.6",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "bytedance-seed/seed-1.6-flash",
+      "label": "ByteDance Seed: Seed 1.6 Flash",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "bytedance-seed/seed-2-1-turbo",
+      "label": "ByteDance Seed: Seed 2.1 Turbo",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "bytedance-seed/seed-2.0-code",
+      "label": "ByteDance Seed: Seed-2.0-Code",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "bytedance-seed/seed-2.0-lite",
+      "label": "ByteDance Seed: Seed-2.0-Lite",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "bytedance-seed/seed-2.0-mini",
+      "label": "ByteDance Seed: Seed-2.0-Mini",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "bytedance/ui-tars-1.5-7b",
+      "label": "ByteDance: UI-TARS 7B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "cohere/command-a",
+      "label": "Cohere: Command A",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "cohere/command-a-plus",
+      "label": "Cohere: Command A+",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "cohere/command-r-08-2024",
+      "label": "Cohere: Command R (08-2024)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "cohere/command-r-plus-08-2024",
+      "label": "Cohere: Command R+ (08-2024)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "cohere/command-r7b-12-2024",
+      "label": "Cohere: Command R7B (12-2024)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "~deepseek/deepseek-flash-latest",
+      "label": "DeepSeek: DeepSeek Flash Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "~deepseek/deepseek-pro-latest",
+      "label": "DeepSeek: DeepSeek Pro Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "deepseek/deepseek-chat",
+      "label": "DeepSeek: DeepSeek V3",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "deepseek/deepseek-chat-v3-0324",
+      "label": "DeepSeek: DeepSeek V3 0324",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "deepseek/deepseek-chat-v3.1",
+      "label": "DeepSeek: DeepSeek V3.1",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "deepseek/deepseek-v3.1-terminus",
+      "label": "DeepSeek: DeepSeek V3.1 Terminus",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "deepseek/deepseek-v3.2",
+      "label": "DeepSeek: DeepSeek V3.2",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "deepseek/deepseek-v3.2-exp",
+      "label": "DeepSeek: DeepSeek V3.2 Exp",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "deepseek/deepseek-v4-flash",
+      "label": "DeepSeek: DeepSeek V4 Flash 0423",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "deepseek/deepseek-v4-flash-0731",
+      "label": "DeepSeek: DeepSeek V4 Flash 0731",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "~deepseek/deepseek-v4-flash-latest",
+      "label": "DeepSeek: DeepSeek V4 Flash Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "deepseek/deepseek-v4-flash-vision-exp",
+      "label": "DeepSeek: DeepSeek V4 Flash Vision Exp",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "deepseek/deepseek-v4-pro",
+      "label": "DeepSeek: DeepSeek V4 Pro 0423",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "deepseek/deepseek-v4-pro-0813",
+      "label": "DeepSeek: DeepSeek V4 Pro 0813",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "deepseek/deepseek-v4.1-flash",
+      "label": "DeepSeek: DeepSeek V4.1 Flash",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "deepseek/deepseek-v4.1-flash:batch",
+      "label": "DeepSeek: DeepSeek V4.1 Flash (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "deepseek/deepseek-v4.1-flash-1017",
+      "label": "DeepSeek: DeepSeek V4.1 Flash 1017",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "deepseek/deepseek-r1-0528",
+      "label": "DeepSeek: R1 0528",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "dots-studio/dots-3-note-preview:free",
+      "label": "Dots Studio: Dots3-Note Preview (free)",
+      "pricing_kind": "free",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "elorian/glimpse",
+      "label": "Elorian: Glimpse",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "fireworks/ember-1",
+      "label": "Fireworks: Ember-1",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "google/gemini-2.5-flash",
+      "label": "Google: Gemini 2.5 Flash",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "google/gemini-2.5-flash-lite",
+      "label": "Google: Gemini 2.5 Flash Lite",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "google/gemini-2.5-pro",
+      "label": "Google: Gemini 2.5 Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemini-2.5-pro-preview",
+      "label": "Google: Gemini 2.5 Pro Preview 06-05",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemini-3-flash-preview",
+      "label": "Google: Gemini 3 Flash Preview",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "google/gemini-3-flash-preview:batch",
+      "label": "Google: Gemini 3 Flash Preview (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "google/gemini-3.1-flash-lite",
+      "label": "Google: Gemini 3.1 Flash Lite",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "google/gemini-3.1-flash-lite:batch",
+      "label": "Google: Gemini 3.1 Flash Lite (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "google/gemini-3.1-flash-lite-preview",
+      "label": "Google: Gemini 3.1 Flash Lite Preview",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "google/gemini-3.1-pro-preview",
+      "label": "Google: Gemini 3.1 Pro Preview",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemini-3.1-pro-preview:batch",
+      "label": "Google: Gemini 3.1 Pro Preview (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemini-3.1-pro-preview-customtools",
+      "label": "Google: Gemini 3.1 Pro Preview Custom Tools",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemini-3.5-flash",
+      "label": "Google: Gemini 3.5 Flash",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemini-3.5-flash:batch",
+      "label": "Google: Gemini 3.5 Flash (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemini-3.5-flash-lite",
+      "label": "Google: Gemini 3.5 Flash Lite",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemini-3.5-flash-lite:batch",
+      "label": "Google: Gemini 3.5 Flash Lite (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemini-3.6-flash",
+      "label": "Google: Gemini 3.6 Flash",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemini-3.6-flash:batch",
+      "label": "Google: Gemini 3.6 Flash (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemini-3.7-flash",
+      "label": "Google: Gemini 3.7 Flash",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemini-3.7-flash:batch",
+      "label": "Google: Gemini 3.7 Flash (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemini-3.8-flash",
+      "label": "Google: Gemini 3.8 Flash",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemini-3.8-flash:batch",
+      "label": "Google: Gemini 3.8 Flash (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemini-4-argon",
+      "label": "Google: Gemini 4 Argon",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemini-4-argon:batch",
+      "label": "Google: Gemini 4 Argon (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "~google/gemini-flash-latest",
+      "label": "Google: Gemini Flash Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "~google/gemini-pro-latest",
+      "label": "Google: Gemini Pro Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemma-2-27b-it",
+      "label": "Google: Gemma 2 27B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "google/gemma-3-12b-it",
+      "label": "Google: Gemma 3 12B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "google/gemma-3-27b-it",
+      "label": "Google: Gemma 3 27B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "google/gemma-3-4b-it",
+      "label": "Google: Gemma 3 4B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "google/gemma-4-26b-a4b-it",
+      "label": "Google: Gemma 4 26B A4B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "google/gemma-4-26b-a4b-it:free",
+      "label": "Google: Gemma 4 26B A4B (free)",
+      "pricing_kind": "free",
+      "output_format": "json_object"
+    },
+    {
+      "value": "google/gemma-4-31b-it",
+      "label": "Google: Gemma 4 31B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "google/gemma-4-31b-it:free",
+      "label": "Google: Gemma 4 31B (free)",
+      "pricing_kind": "free",
+      "output_format": "json_object"
+    },
+    {
+      "value": "ibm-granite/granite-4.2-8b",
+      "label": "IBM: Granite 4.2 8B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "inception/mercury-2",
+      "label": "Inception: Mercury 2",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "inception/mercury-2.5",
+      "label": "Inception: Mercury 2.5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "inception/mercury-3",
+      "label": "Inception: Mercury 3",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "inclusionai/ling-3.0-flash-vl",
+      "label": "inclusionAI: Ling 3.0 Flash VL",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "inclusionai/ling-3.1-flash",
+      "label": "inclusionAI: Ling 3.1 Flash",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "inference-net/schematron-v2-small",
+      "label": "Inference.net: Schematron V2 Small",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "inference-net/schematron-v2-turbo",
+      "label": "Inference.net: Schematron V2 Turbo",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "liquid/lfm-2.5-2.6b",
+      "label": "LiquidAI: LFM2.5-2.6B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "liquid/lfm-2.5-2.6b:free",
+      "label": "LiquidAI: LFM2.5-2.6B (free)",
+      "pricing_kind": "free",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "liquid/lfm-2.5-24b-a2b",
+      "label": "LiquidAI: LFM2.5-24B-A2B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "anthracite-org/magnum-v4-72b",
+      "label": "Magnum v4 72B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "meta-llama/llama-3.1-70b-instruct",
+      "label": "Meta: Llama 3.1 70B Instruct",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "meta-llama/llama-3.1-8b-instruct",
+      "label": "Meta: Llama 3.1 8B Instruct",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "meta-llama/llama-3.2-3b-instruct",
+      "label": "Meta: Llama 3.2 3B Instruct",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "meta-llama/llama-3.3-70b-instruct",
+      "label": "Meta: Llama 3.3 70B Instruct",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "meta-llama/llama-4-maverick",
+      "label": "Meta: Llama 4 Maverick",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "meta-llama/llama-4-scout",
+      "label": "Meta: Llama 4 Scout",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "meta/muse-glimmer-30b",
+      "label": "Meta: Muse Glimmer 30B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "meta/muse-spark-1.1",
+      "label": "Meta: Muse Spark 1.1",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "meta/muse-spark-1.2",
+      "label": "Meta: Muse Spark 1.2",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "meta/muse-spark-1.2-contributor",
+      "label": "Meta: Muse Spark 1.2 Contributor",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "meta/muse-spark-1.3",
+      "label": "Meta: Muse Spark 1.3",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "meta/muse-spark-1.3-contributor",
+      "label": "Meta: Muse Spark 1.3 Contributor",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "meta/muse-spark-open",
+      "label": "Meta: Muse Spark Open",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "meta/muse-wonder",
+      "label": "Meta: Muse Wonder",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "microsoft/phi-4",
+      "label": "Microsoft: Phi 4",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "minimax/minimax-m2.5",
+      "label": "MiniMax: MiniMax M2.5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "minimax/minimax-m3",
+      "label": "MiniMax: MiniMax M3",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "minimax/minimax-m3.1-flash",
+      "label": "MiniMax: MiniMax M3.1 Flash",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "mistralai/mistral-large",
+      "label": "Mistral Large",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "mistralai/mistral-large-2407",
+      "label": "Mistral Large 2407",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "mistralai/codestral-2508",
+      "label": "Mistral: Codestral 2508",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "mistralai/devstral-2512",
+      "label": "Mistral: Devstral 2 2512",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "mistralai/ministral-14b-2512",
+      "label": "Mistral: Ministral 3 14B 2512",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "mistralai/ministral-3b-2512",
+      "label": "Mistral: Ministral 3 3B 2512",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "mistralai/ministral-8b-2512",
+      "label": "Mistral: Ministral 3 8B 2512",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "mistralai/mistral-large-2512",
+      "label": "Mistral: Mistral Large 3 2512",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "mistralai/mistral-large-4-0",
+      "label": "Mistral: Mistral Large 4",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "mistralai/mistral-medium-3",
+      "label": "Mistral: Mistral Medium 3",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "mistralai/mistral-medium-3.1",
+      "label": "Mistral: Mistral Medium 3.1",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "mistralai/mistral-medium-3-5",
+      "label": "Mistral: Mistral Medium 3.5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "mistralai/mistral-medium-3-5:batch",
+      "label": "Mistral: Mistral Medium 3.5 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "mistralai/mistral-nemo",
+      "label": "Mistral: Mistral Nemo",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "mistralai/mistral-small-24b-instruct-2501",
+      "label": "Mistral: Mistral Small 3",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "mistralai/mistral-small-3.1-24b-instruct",
+      "label": "Mistral: Mistral Small 3.1 24B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "mistralai/mistral-small-3.2-24b-instruct",
+      "label": "Mistral: Mistral Small 3.2 24B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "mistralai/mistral-small-2603",
+      "label": "Mistral: Mistral Small 4",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "mistralai/mixtral-8x22b-instruct",
+      "label": "Mistral: Mixtral 8x22B Instruct",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "mistralai/mistral-saba",
+      "label": "Mistral: Saba",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "mistralai/voxtral-small-24b-2507",
+      "label": "Mistral: Voxtral Small 24B 2507",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "moonshotai/kimi-k2-0905",
+      "label": "MoonshotAI: Kimi K2 0905",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "moonshotai/kimi-k2-thinking",
+      "label": "MoonshotAI: Kimi K2 Thinking",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "moonshotai/kimi-k2.5",
+      "label": "MoonshotAI: Kimi K2.5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "moonshotai/kimi-k2.6",
+      "label": "MoonshotAI: Kimi K2.6",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "moonshotai/kimi-k2.7-code",
+      "label": "MoonshotAI: Kimi K2.7 Code",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "moonshotai/kimi-k3",
+      "label": "MoonshotAI: Kimi K3",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "moonshotai/kimi-k3:batch",
+      "label": "MoonshotAI: Kimi K3 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "moonshotai/kimi-k3.1-pro",
+      "label": "MoonshotAI: Kimi K3.1 Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "~moonshotai/kimi-latest",
+      "label": "MoonshotAI: Kimi Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "morph/morph-v3-fast",
+      "label": "Morph: Morph V3 Fast",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "morph/morph-v3-large",
+      "label": "Morph: Morph V3 Large",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "gryphe/mythomax-l2-13b",
+      "label": "MythoMax 13B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "nex-agi/nex-n2.5-mini",
+      "label": "Nex AGI: Nex-N2.5-Mini",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "nex-agi/nex-n2.5-pro",
+      "label": "Nex AGI: Nex-N2.5-Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "nvidia/nemotron-3-nano-30b-a3b",
+      "label": "NVIDIA: Nemotron 3 Nano 30B A3B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "nvidia/nemotron-3-super-120b-a12b",
+      "label": "NVIDIA: Nemotron 3 Super",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "nvidia/nemotron-3-ultra-550b-a55b",
+      "label": "NVIDIA: Nemotron 3 Ultra",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "nvidia/nemotron-3.5-lightning",
+      "label": "NVIDIA: Nemotron 3.5 Lightning",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "nvidia/nemotron-3.5-super-vl",
+      "label": "NVIDIA: Nemotron 3.5 Super VL",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "nvidia/nemotron-3.5-super-vl:free",
+      "label": "NVIDIA: Nemotron 3.5 Super VL (free)",
+      "pricing_kind": "free",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "~openai/gpt-astra-latest",
+      "label": "OpenAI: GPT Astra Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-chat-latest",
+      "label": "OpenAI: GPT Chat Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "~openai/gpt-luna-latest",
+      "label": "OpenAI: GPT Luna Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "~openai/gpt-mini-latest",
+      "label": "OpenAI: GPT Mini Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "~openai/gpt-sol-latest",
+      "label": "OpenAI: GPT Sol Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "~openai/gpt-terra-latest",
+      "label": "OpenAI: GPT Terra Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-3.5-turbo-0613",
+      "label": "OpenAI: GPT-3.5 Turbo (older v0613)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-3.5-turbo-16k",
+      "label": "OpenAI: GPT-3.5 Turbo 16k",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-4-turbo:batch",
+      "label": "OpenAI: GPT-4 Turbo (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-4.1",
+      "label": "OpenAI: GPT-4.1",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-4.1:batch",
+      "label": "OpenAI: GPT-4.1 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-4.1-mini",
+      "label": "OpenAI: GPT-4.1 Mini",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-4.1-mini:batch",
+      "label": "OpenAI: GPT-4.1 Mini (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-4.1-nano",
+      "label": "OpenAI: GPT-4.1 Nano",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-4.1-nano:batch",
+      "label": "OpenAI: GPT-4.1 Nano (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-4o",
+      "label": "OpenAI: GPT-4o",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-4o-2024-05-13",
+      "label": "OpenAI: GPT-4o (2024-05-13)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-4o-2024-08-06",
+      "label": "OpenAI: GPT-4o (2024-08-06)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-4o-2024-11-20",
+      "label": "OpenAI: GPT-4o (2024-11-20)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-4o:batch",
+      "label": "OpenAI: GPT-4o (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-4o-mini",
+      "label": "OpenAI: GPT-4o-mini",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-4o-mini-2024-07-18",
+      "label": "OpenAI: GPT-4o-mini (2024-07-18)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-4o-mini:batch",
+      "label": "OpenAI: GPT-4o-mini (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-5",
+      "label": "OpenAI: GPT-5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5:batch",
+      "label": "OpenAI: GPT-5 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5-mini",
+      "label": "OpenAI: GPT-5 Mini",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5-mini:batch",
+      "label": "OpenAI: GPT-5 Mini (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5-nano",
+      "label": "OpenAI: GPT-5 Nano",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5-nano:batch",
+      "label": "OpenAI: GPT-5 Nano (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5-pro",
+      "label": "OpenAI: GPT-5 Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "high"
+        ],
+        "default": "high",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5-pro:batch",
+      "label": "OpenAI: GPT-5 Pro (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "high"
+        ],
+        "default": "high",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5.1",
+      "label": "OpenAI: GPT-5.1",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.1:batch",
+      "label": "OpenAI: GPT-5.1 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.1-codex",
+      "label": "OpenAI: GPT-5.1-Codex",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5.1-codex-max",
+      "label": "OpenAI: GPT-5.1-Codex-Max",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5.1-codex-mini",
+      "label": "OpenAI: GPT-5.1-Codex-Mini",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5.2",
+      "label": "OpenAI: GPT-5.2",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.2:batch",
+      "label": "OpenAI: GPT-5.2 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.2-chat",
+      "label": "OpenAI: GPT-5.2 Chat",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "openai/gpt-5.2-pro",
+      "label": "OpenAI: GPT-5.2 Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "medium",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5.2-pro:batch",
+      "label": "OpenAI: GPT-5.2 Pro (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "medium",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5.2-codex",
+      "label": "OpenAI: GPT-5.2-Codex",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5.3-codex",
+      "label": "OpenAI: GPT-5.3-Codex",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.4",
+      "label": "OpenAI: GPT-5.4",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.4:batch",
+      "label": "OpenAI: GPT-5.4 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.4-mini",
+      "label": "OpenAI: GPT-5.4 Mini",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.4-mini:batch",
+      "label": "OpenAI: GPT-5.4 Mini (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.4-nano",
+      "label": "OpenAI: GPT-5.4 Nano",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.4-nano:batch",
+      "label": "OpenAI: GPT-5.4 Nano (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.4-pro",
+      "label": "OpenAI: GPT-5.4 Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "medium",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5.4-pro:batch",
+      "label": "OpenAI: GPT-5.4 Pro (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "medium",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5.5",
+      "label": "OpenAI: GPT-5.5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.5:batch",
+      "label": "OpenAI: GPT-5.5 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.5-pro",
+      "label": "OpenAI: GPT-5.5 Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "medium",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5.5-pro:batch",
+      "label": "OpenAI: GPT-5.5 Pro (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "medium",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-5.6-luna",
+      "label": "OpenAI: GPT-5.6 Luna",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.6-luna:batch",
+      "label": "OpenAI: GPT-5.6 Luna (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.6-luna-pro",
+      "label": "OpenAI: GPT-5.6 Luna Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.6-luna-pro:batch",
+      "label": "OpenAI: GPT-5.6 Luna Pro (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.6-sol",
+      "label": "OpenAI: GPT-5.6 Sol",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.6-sol:batch",
+      "label": "OpenAI: GPT-5.6 Sol (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.6-sol-pro",
+      "label": "OpenAI: GPT-5.6 Sol Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.6-sol-pro:batch",
+      "label": "OpenAI: GPT-5.6 Sol Pro (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.6-terra",
+      "label": "OpenAI: GPT-5.6 Terra",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.6-terra:batch",
+      "label": "OpenAI: GPT-5.6 Terra (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.6-terra-pro",
+      "label": "OpenAI: GPT-5.6 Terra Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-5.6-terra-pro:batch",
+      "label": "OpenAI: GPT-5.6 Terra Pro (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-6-astra",
+      "label": "OpenAI: GPT-6 Astra",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-6-astra:batch",
+      "label": "OpenAI: GPT-6 Astra (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-6-astra-pro",
+      "label": "OpenAI: GPT-6 Astra Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-6-astra-pro:batch",
+      "label": "OpenAI: GPT-6 Astra Pro (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-6-luna",
+      "label": "OpenAI: GPT-6 Luna",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-6-luna:batch",
+      "label": "OpenAI: GPT-6 Luna (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-6-luna-pro",
+      "label": "OpenAI: GPT-6 Luna Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-6-luna-pro:batch",
+      "label": "OpenAI: GPT-6 Luna Pro (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-6-sol",
+      "label": "OpenAI: GPT-6 Sol",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-6-sol:batch",
+      "label": "OpenAI: GPT-6 Sol (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-6-sol-pro",
+      "label": "OpenAI: GPT-6 Sol Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-6-sol-pro:batch",
+      "label": "OpenAI: GPT-6 Sol Pro (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-6.1-sol",
+      "label": "OpenAI: GPT-6.1 Sol",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-6.1-sol:batch",
+      "label": "OpenAI: GPT-6.1 Sol (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-6.1-sol-pro",
+      "label": "OpenAI: GPT-6.1 Sol Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-6.1-sol-pro:batch",
+      "label": "OpenAI: GPT-6.1 Sol Pro (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-6.1-terra",
+      "label": "OpenAI: GPT-6.1 Terra",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-6.1-terra:batch",
+      "label": "OpenAI: GPT-6.1 Terra (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "openai/gpt-6.1-terra-pro",
+      "label": "OpenAI: GPT-6.1 Terra Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-6.1-terra-pro:batch",
+      "label": "OpenAI: GPT-6.1 Terra Pro (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-oss-120b",
+      "label": "OpenAI: gpt-oss-120b",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-oss-120b:batch",
+      "label": "OpenAI: gpt-oss-120b (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-oss-20b",
+      "label": "OpenAI: gpt-oss-20b",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-oss-20b:batch",
+      "label": "OpenAI: gpt-oss-20b (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/gpt-oss-safeguard-20b",
+      "label": "OpenAI: gpt-oss-safeguard-20b",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/o3",
+      "label": "OpenAI: o3",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/o3:batch",
+      "label": "OpenAI: o3 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/o3-mini:batch",
+      "label": "OpenAI: o3 Mini (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/o3-pro",
+      "label": "OpenAI: o3 Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "openai/o4-mini:batch",
+      "label": "OpenAI: o4 Mini (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "particle-ai/particle-1",
+      "label": "Particle AI: Particle-1",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "perceptron/perceptron-mk1",
+      "label": "Perceptron: Perceptron Mk1",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "perceptron/perceptron-mk1.5",
+      "label": "Perceptron: Perceptron Mk1.5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "prism-ml/ternary-bonsai-2-27b",
+      "label": "PrismML: Ternary Bonsai 2 27B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "medium",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "prism-ml/ternary-bonsai-2-9b",
+      "label": "PrismML: Ternary Bonsai 2 9B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen-2.5-72b-instruct",
+      "label": "Qwen2.5 72B Instruct",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen-plus",
+      "label": "Qwen: Qwen-Plus",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen-2.5-7b-instruct",
+      "label": "Qwen: Qwen2.5 7B Instruct",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen2.5-vl-72b-instruct",
+      "label": "Qwen: Qwen2.5 VL 72B Instruct",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3-14b",
+      "label": "Qwen: Qwen3 14B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3-235b-a22b-2507",
+      "label": "Qwen: Qwen3 235B A22B Instruct 2507",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3-30b-a3b",
+      "label": "Qwen: Qwen3 30B A3B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3-30b-a3b-instruct-2507",
+      "label": "Qwen: Qwen3 30B A3B Instruct 2507",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3-32b",
+      "label": "Qwen: Qwen3 32B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3-coder-30b-a3b-instruct",
+      "label": "Qwen: Qwen3 Coder 30B A3B Instruct",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3-coder",
+      "label": "Qwen: Qwen3 Coder 480B A35B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3-coder-next",
+      "label": "Qwen: Qwen3 Coder Next",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3-next-80b-a3b-instruct",
+      "label": "Qwen: Qwen3 Next 80B A3B Instruct",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3-vl-235b-a22b-instruct",
+      "label": "Qwen: Qwen3 VL 235B A22B Instruct",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3-vl-30b-a3b-instruct",
+      "label": "Qwen: Qwen3 VL 30B A3B Instruct",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3-vl-30b-a3b-thinking",
+      "label": "Qwen: Qwen3 VL 30B A3B Thinking",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "qwen/qwen3-vl-8b-instruct",
+      "label": "Qwen: Qwen3 VL 8B Instruct",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3.5-397b-a17b",
+      "label": "Qwen: Qwen3.5 397B A17B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3.5-plus-02-15",
+      "label": "Qwen: Qwen3.5 Plus 2026-02-15",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3.5-plus-20260420",
+      "label": "Qwen: Qwen3.5 Plus 2026-04-20",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3.5-122b-a10b",
+      "label": "Qwen: Qwen3.5-122B-A10B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3.5-27b",
+      "label": "Qwen: Qwen3.5-27B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3.5-35b-a3b",
+      "label": "Qwen: Qwen3.5-35B-A3B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3.5-9b",
+      "label": "Qwen: Qwen3.5-9B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3.5-flash-02-23",
+      "label": "Qwen: Qwen3.5-Flash",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3.6-27b",
+      "label": "Qwen: Qwen3.6 27B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3.6-35b-a3b",
+      "label": "Qwen: Qwen3.6 35B A3B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3.6-flash",
+      "label": "Qwen: Qwen3.6 Flash",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3.6-plus",
+      "label": "Qwen: Qwen3.6 Plus",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3.7-max",
+      "label": "Qwen: Qwen3.7 Max",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3.7-plus",
+      "label": "Qwen: Qwen3.7 Plus",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3.7-plus:batch",
+      "label": "Qwen: Qwen3.7 Plus (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3.8-2.4t-a95b",
+      "label": "Qwen: Qwen3.8 2.4T A95B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "xhigh"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "qwen/qwen3.8-27b",
+      "label": "Qwen: Qwen3.8 27B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "qwen/qwen3.8-flash",
+      "label": "Qwen: Qwen3.8 Flash",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "qwen/qwen3.8-max-0902",
+      "label": "Qwen: Qwen3.8 Max (0902)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "qwen/qwen3.8-max-prime",
+      "label": "Qwen: Qwen3.8 Max Prime",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "qwen/qwen3.8-omni-flash",
+      "label": "Qwen: Qwen3.8 Omni Flash",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "recursive/flint-v1.0:free",
+      "label": "Recursive: Flint (free)",
+      "pricing_kind": "free",
+      "output_format": "json_object",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "reflection/beam-1.0-501b-a23b",
+      "label": "Reflection: Beam 1.0 501B A23B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "rekaai/reka-edge",
+      "label": "Reka Edge",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "rekaai/reka-flash-3",
+      "label": "Reka Flash 3",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "undi95/remm-slerp-l2-13b",
+      "label": "ReMM SLERP 13B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "sakana/fugu-max",
+      "label": "Sakana: Fugu Max",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "high",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "sakana/fugu-ultra",
+      "label": "Sakana: Fugu Ultra",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "high",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "sakana/fugu-ultra-v2",
+      "label": "Sakana: Fugu Ultra v2",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "high",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "sakana/sakana-namazu",
+      "label": "Sakana: Sakana Namazu",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "sao10k/l3-lunaris-8b",
+      "label": "Sao10K: Llama 3 8B Lunaris",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "sao10k/l3.1-euryale-70b",
+      "label": "Sao10K: Llama 3.1 Euryale 70B v2.2",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "x-ai/grok-4.20",
+      "label": "SpaceXAI: Grok 4.20",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "x-ai/grok-4.20-multi-agent",
+      "label": "SpaceXAI: Grok 4.20 Multi-Agent",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "x-ai/grok-4.3",
+      "label": "SpaceXAI: Grok 4.3",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "x-ai/grok-4.3:batch",
+      "label": "SpaceXAI: Grok 4.3 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "x-ai/grok-4.5",
+      "label": "SpaceXAI: Grok 4.5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "x-ai/grok-4.6",
+      "label": "SpaceXAI: Grok 4.6",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "x-ai/grok-4.7",
+      "label": "SpaceXAI: Grok 4.7",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "x-ai/grok-build-0.1",
+      "label": "SpaceXAI: Grok Build 0.1",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "stepfun/step-3.7-flash",
+      "label": "StepFun: Step 3.7 Flash",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "stepfun/step-5-preview",
+      "label": "StepFun: Step 5 Preview",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "tencent/hunyuan-a13b-instruct",
+      "label": "Tencent: Hunyuan A13B Instruct",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "tencent/hy-mt2-30b-a3b",
+      "label": "Tencent: Hy-MT2-30B-A3B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "tencent/hy-mt2-7b",
+      "label": "Tencent: Hy-MT2-7B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "tencent/hy3",
+      "label": "Tencent: Hy3",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "tencent/hy4-preview",
+      "label": "Tencent: Hy4 preview",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "thedrummer/cydonia-24b-v4.1",
+      "label": "TheDrummer: Cydonia 24B V4.1",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "thedrummer/skyfall-36b-v2",
+      "label": "TheDrummer: Skyfall 36B V2",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "thedrummer/unslopnemo-12b",
+      "label": "TheDrummer: UnslopNemo 12B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "typesafe/jev-router",
+      "label": "TypeSafe: Jev Router",
+      "pricing_kind": "unknown",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "upstage/solar-mini4",
+      "label": "Upstage: Solar Mini 4",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "upstage/solar-pro4",
+      "label": "Upstage: Solar Pro 4",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "~x-ai/grok-latest",
+      "label": "xAI: Grok Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "xiaomi/mimo-v2.5",
+      "label": "Xiaomi: MiMo-V2.5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "xiaomi/mimo-v2.5-pro",
+      "label": "Xiaomi: MiMo-V2.5-Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "xiaomi/mimo-v2.6-flash",
+      "label": "Xiaomi: MiMo-V2.6-Flash",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "xiaomi/mimo-v2.6-pro",
+      "label": "Xiaomi: MiMo-V2.6-Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "xiaomi/mimo-v2.6-pro-ultraspeed",
+      "label": "Xiaomi: MiMo-V2.6-Pro-UltraSpeed",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "xingchen-agi/xing4.0-29b-a4b:free",
+      "label": "XingChen: Xing4.0 29B A4B (free)",
+      "pricing_kind": "free",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "z-ai/glm-4.6",
+      "label": "Z.ai: GLM 4.6",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "z-ai/glm-4.7",
+      "label": "Z.ai: GLM 4.7",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "z-ai/glm-4.7-flash",
+      "label": "Z.ai: GLM 4.7 Flash",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "z-ai/glm-5",
+      "label": "Z.ai: GLM 5",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "z-ai/glm-5.1",
+      "label": "Z.ai: GLM 5.1",
+      "pricing_kind": "paid",
+      "output_format": "json_schema"
+    },
+    {
+      "value": "z-ai/glm-5.2",
+      "label": "Z.ai: GLM 5.2",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "z-ai/glm-5.3",
+      "label": "Z.ai: GLM 5.3",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "z-ai/glm-5.3:batch",
+      "label": "Z.ai: GLM 5.3 (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "z-ai/glm-5.3-flash",
+      "label": "Z.ai: GLM 5.3 Flash",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "z-ai/glm-5.3-flash:batch",
+      "label": "Z.ai: GLM 5.3 Flash (batch)",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "z-ai/glm-5.3-flashx-legal",
+      "label": "Z.ai: GLM 5.3 FlashX Legal",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "~z-ai/glm-flash-latest",
+      "label": "Z.ai: GLM Flash Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "~z-ai/glm-latest",
+      "label": "Z.ai: GLM Latest",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    }
+  ]
+}

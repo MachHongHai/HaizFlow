@@ -29,6 +29,9 @@ _SECRET_PATTERN = re.compile(
     r"(?i)\b(authorization|cookie|password|passwd|secret|token|api[_-]?key)\b"
     r"(\s*[:=]\s*)([^\s,;]+)"
 )
+_SECRET_HEADER_PATTERN = re.compile(
+    r"(?im)\b(authorization|proxy-authorization|cookie|set-cookie)(\s*:\s*)[^\r\n]*"
+)
 _URL_PATTERN = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
 _EMAIL_PATTERN = re.compile(r"(?<![\w.+-])[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}(?![\w.-])")
 _WINDOWS_PATH_PATTERN = re.compile(r"(?i)(?:[A-Z]:\\|\\\\)[^\r\n\"'<>|]*")
@@ -38,6 +41,9 @@ _POSIX_HOME_PATTERN = re.compile(r"(?<![\w.-])/(?:home|users)/[^/\s]+(?:/[^\s\"'
 def redact_diagnostic_text(value: str) -> str:
     """Remove credentials, URLs, e-mail addresses, and user paths from logs."""
     text = str(value or "")
+    # A header may contain spaces (Bearer token) or many cookie values. Mask
+    # the entire header before the individual key/value redaction runs.
+    text = _SECRET_HEADER_PATTERN.sub(lambda match: f"{match.group(1)}{match.group(2)}<redacted>", text)
     text = _SECRET_PATTERN.sub(lambda match: f"{match.group(1)}{match.group(2)}<redacted>", text)
     text = _URL_PATTERN.sub("<url>", text)
     text = _EMAIL_PATTERN.sub("<email>", text)

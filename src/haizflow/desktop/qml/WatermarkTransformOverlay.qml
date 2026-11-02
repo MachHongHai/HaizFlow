@@ -16,10 +16,14 @@ Item {
     property color textColor: "#FFFFFF"
     property bool fontBold: true
     property bool fontItalic: true
+    property bool moving: true
+    property var position: ({})
+    property var draftPosition: ({})
     property int opacityPercent: 46
     property int outlinePercent: 100
     property int scalePercent: 100
     property real timeSeconds: 0
+    readonly property real motionTimeSeconds: moving ? timeSeconds : 0
     property int referenceWidthPixels: 0
     property int referenceHeightPixels: 0
     property bool interactive: false
@@ -33,6 +37,12 @@ Item {
     signal editingDismissed()
     signal scalePreviewChanged(int scalePercent)
     signal scaleCommitted(int beforeScalePercent, int afterScalePercent)
+    signal positionCommitted(var position)
+
+    readonly property var displayedPosition: markPointer.dragging ? draftPosition : position
+    readonly property bool fixedPosition: Boolean(markPointer.dragging || (!moving
+        && displayedPosition && displayedPosition.x_percent !== undefined
+        && displayedPosition.y_percent !== undefined))
 
     readonly property bool imageMode: watermarkKind === "image"
     readonly property bool videoMode: watermarkKind === "video"
@@ -106,6 +116,12 @@ Item {
     }
     function outlineX(index) { return [-1, 0, 1, -1, 1, -1, 0, 1][index] * previewOutline; }
     function outlineY(index) { return [-1, -1, -1, 0, 0, 1, 1, 1][index] * previewOutline; }
+    function positionAt(x, y) {
+        return {
+            "x_percent": clamp(x / Math.max(1, videoCanvas.width - mark.width) * 100, 0, 100),
+            "y_percent": clamp(y / Math.max(1, videoCanvas.height - mark.height) * 100, 0, 100)
+        };
+    }
 
     TapHandler {
         enabled: root.editing && root.backgroundDismissEnabled
@@ -130,10 +146,12 @@ Item {
             width: root.mediaMode ? root.imageWidth : watermarkLabel.implicitWidth + root.previewOutline * 2
             height: root.mediaMode ? root.imageWidth / Math.max(0.05, root.imageAspect)
                 : watermarkLabel.implicitHeight + root.previewOutline * 2
-            x: (videoCanvas.width - width) * (
-                0.08 + 0.84 * (0.5 + 0.5 * Math.sin(2 * Math.PI * root.timeSeconds / 31)))
-            y: (videoCanvas.height - height) * (
-                0.10 + 0.80 * (0.5 + 0.5 * Math.sin(2 * Math.PI * root.timeSeconds / 43 + 1.2)))
+            x: Math.max(0, videoCanvas.width - width) * (root.fixedPosition
+                ? root.displayedPosition.x_percent / 100
+                : 0.08 + 0.84 * (0.5 + 0.5 * Math.sin(2 * Math.PI * root.motionTimeSeconds / 31)))
+            y: Math.max(0, videoCanvas.height - height) * (root.fixedPosition
+                ? root.displayedPosition.y_percent / 100
+                : 0.10 + 0.80 * (0.5 + 0.5 * Math.sin(2 * Math.PI * root.motionTimeSeconds / 43 + 1.2)))
 
             Repeater {
                 model: root.mediaMode || root.previewOutline <= 0 ? 0 : 8
@@ -209,12 +227,40 @@ Item {
             }
 
             MouseArea {
+                id: markPointer
+                objectName: "watermarkPositionDragArea"
+                property bool dragging: false
+                property bool dragCanceled: false
+                property point pressPoint: Qt.point(0, 0)
+                property point startPosition: Qt.point(0, 0)
                 anchors.fill: parent
                 anchors.margins: -8
                 enabled: root.interactive
                 hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.activated()
+                drag.threshold: 8
+                cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                onPressed: function(mouse) {
+                    dragCanceled = false;
+                    pressPoint = mapToItem(videoCanvas, mouse.x, mouse.y);
+                    startPosition = Qt.point(mark.x, mark.y);
+                    root.draftPosition = root.positionAt(mark.x, mark.y);
+                    root.activated();
+                    selection.forceActiveFocus();
+                }
+                onPositionChanged: function(mouse) {
+                    if (!pressed || dragCanceled) return;
+                    const point = mapToItem(videoCanvas, mouse.x, mouse.y);
+                    const dx = point.x - pressPoint.x;
+                    const dy = point.y - pressPoint.y;
+                    if (!dragging && Math.hypot(dx, dy) < drag.threshold) return;
+                    root.draftPosition = root.positionAt(startPosition.x + dx, startPosition.y + dy);
+                    dragging = true;
+                }
+                onReleased: {
+                    if (dragging) root.positionCommitted(root.draftPosition);
+                    dragging = false;
+                }
+                onCanceled: dragging = false
             }
         }
 
@@ -232,11 +278,23 @@ Item {
             visible: root.editing
             activeFocusOnTab: root.interactive
             Accessible.role: Accessible.Slider
-            Accessible.name: qsTr("Kích thước watermark")
+            Accessible.name: qsTr("Vị trí và kích thước watermark")
 
             Keys.onPressed: function(event) {
+                if (!root.interactive) return;
                 if (event.key === Qt.Key_Escape) {
+                    markPointer.dragCanceled = true;
+                    markPointer.dragging = false;
                     root.editingDismissed(); event.accepted = true; return;
+                }
+                const nudge = event.modifiers & Qt.ShiftModifier ? 10 : 2;
+                if (event.key === Qt.Key_Left || event.key === Qt.Key_Right
+                        || event.key === Qt.Key_Up || event.key === Qt.Key_Down) {
+                    const dx = event.key === Qt.Key_Left ? -nudge : event.key === Qt.Key_Right ? nudge : 0;
+                    const dy = event.key === Qt.Key_Up ? -nudge : event.key === Qt.Key_Down ? nudge : 0;
+                    root.positionCommitted(root.positionAt(mark.x + dx, mark.y + dy));
+                    event.accepted = true;
+                    return;
                 }
                 const step = event.modifiers & Qt.ShiftModifier ? 10 : 2;
                 const before = root.draftScalePercent;

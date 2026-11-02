@@ -1,14 +1,17 @@
-from pydantic import BaseModel, Field, field_validator
-from typing import Any, Dict, Literal, Optional
+from pydantic import AfterValidator, BaseModel, Field, field_validator
+from typing import Annotated, Any, Dict, Literal, Optional
+
+from haizflow.core.translation_models import valid_translation_model
 
 
 VIDEO_METADATA_SCHEMA_VERSION = 19
 VIDEO_METADATA_TYPE = "haizflow.video"
 SUBTITLE_FONT_FAMILY = "Bangers"
 WorkflowMode = Literal["A", "review"]
-TranslatorProvider = Literal["hymt2", "gemini"]
-TranslationModel = Literal["auto", "q4", "full", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
+TranslatorProvider = Literal["hymt2", "gemini", "api"]
+TranslationModel = Annotated[str, AfterValidator(valid_translation_model)]
 GeminiTranslationStyle = Literal["balanced", "literal", "natural", "adaptive"]
+TranslationReasoningEffort = Literal["", "disabled", "none", "minimal", "low", "medium", "high", "xhigh", "max"]
 TTSProvider = Literal["omnivoice", "omnivoice-gpu", "edge", "vieneu", "vieneu-gpu"]
 SpeechRecognitionModel = Literal["small", "small-cpu", "small-gpu", "large-v3-turbo"]
 OutputFormat = Literal["keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"]
@@ -78,6 +81,12 @@ class CropSettings(BaseModel):
     bottom_percent: float = Field(default=0, ge=0, le=84)
 
 
+class WatermarkPosition(BaseModel):
+    # Top-left relative to the available space after subtracting the mark size.
+    x_percent: float = Field(ge=0, le=100, allow_inf_nan=False)
+    y_percent: float = Field(ge=0, le=100, allow_inf_nan=False)
+
+
 class VideoConfig(BaseModel):
     mode: WorkflowMode = "A"  # A = full auto, review = pause after translation.
     source_language: str = "auto"  # Automatic detection is performed for every speech segment.
@@ -85,6 +94,7 @@ class VideoConfig(BaseModel):
     translator_provider: TranslatorProvider = "hymt2"
     speech_recognition_model: SpeechRecognitionModel = "small"
     translation_model: TranslationModel = "q4"
+    translation_reasoning_effort: TranslationReasoningEffort = ""
     gemini_translation_instructions: str = Field(default="", max_length=4000)
     gemini_translation_glossary: str = Field(default="", max_length=4000)
     gemini_translation_style: GeminiTranslationStyle = "balanced"
@@ -116,6 +126,8 @@ class VideoConfig(BaseModel):
     watermark_text_color: str = Field(default="#FFFFFF", pattern=r"^#[0-9A-Fa-f]{6}$")
     watermark_bold: bool = True
     watermark_italic: bool = True
+    watermark_moving: bool = True
+    watermark_position: WatermarkPosition | None = None
     # An import request only; the selected file is copied into the workspace.
     background_music_path: str = Field(default="", exclude=True)
     voice_reference_path: str = Field(default="", exclude=True)
@@ -149,6 +161,7 @@ class VideoInfo(BaseModel):
     translator_provider: TranslatorProvider = "hymt2"
     speech_recognition_model: SpeechRecognitionModel = "small"
     translation_model: TranslationModel = "q4"
+    translation_reasoning_effort: TranslationReasoningEffort = ""
     gemini_translation_instructions: str = Field(default="", max_length=4000)
     gemini_translation_glossary: str = Field(default="", max_length=4000)
     gemini_translation_style: GeminiTranslationStyle = "balanced"
@@ -180,6 +193,8 @@ class VideoInfo(BaseModel):
     watermark_text_color: str = Field(default="#FFFFFF", pattern=r"^#[0-9A-Fa-f]{6}$")
     watermark_bold: bool = True
     watermark_italic: bool = True
+    watermark_moving: bool = True
+    watermark_position: WatermarkPosition | None = None
     project_name: str = ""
     project_directory: str = ""
     project_type: ProjectType = "single"

@@ -49,7 +49,7 @@ ColumnLayout {
     SettingLabel {
         Layout.fillWidth: true
         text: qsTr("Model dịch")
-        helpText: qsTr("HY-MT2 chạy cục bộ. Gemini cần Internet và API key riêng; Google có thể tính phí theo mức sử dụng.")
+        helpText: qsTr("HY-MT2 chạy cục bộ. Các model API cần Internet và key riêng; nhà cung cấp có thể tính phí.")
     }
     TranslationModelCombo {
         Layout.fillWidth: true
@@ -61,9 +61,21 @@ ColumnLayout {
                 root.inspector.scheduleSave();
         }
     }
+    TranslationReasoningControl {
+        Layout.fillWidth: true
+        enabled: root.inspector.editable
+        selectedModel: AppController.translationModel
+        reasoningEffort: AppController.translationReasoningEffort
+        hasGuidance: Boolean(AppController.geminiTranslationInstructions || AppController.geminiTranslationGlossary
+            || AppController.geminiTranslationStyle !== "balanced")
+        onEdited: function(value) {
+            AppController.translationReasoningEffort = value;
+            root.inspector.scheduleSave();
+        }
+    }
     GeminiGuidanceButton {
         Layout.fillWidth: true
-        visible: AppController.translationModel.indexOf("gemini-") === 0
+        visible: AppController.translationModel.indexOf("gemini-") === 0 || AppController.translationModel.indexOf("api:") === 0
         enabled: root.inspector.editable
         instructions: AppController.geminiTranslationInstructions
         glossary: AppController.geminiTranslationGlossary

@@ -182,6 +182,7 @@ class EditorPreviewControllerTests(unittest.TestCase):
             settings,
             watermark_text="Mạch Hồng Hải",
             watermark_scale_percent=240,
+            watermark_moving=False,
         )
 
         self.assertEqual(

@@ -339,6 +339,32 @@ def _write_json_atomic(path: str, data: Any) -> None:
         raise
 
 
+@contextmanager
+def project_state_write_guard(project_key_value: str, project_root: str, checkpoint_path):
+    """Serialize small checkpoints with root detach, never recreate an owner.
+
+    Legacy/scratch coordinators may use existing unregistered directories.
+    UUID-backed projects must still have their matching ownership manifest.
+    Do not include the caller's write in the validation exception handler.
+    """
+    key = str(project_key_value or "")
+    with managed_storage_guard:
+        valid = False
+        try:
+            root = Path(project_root)
+            if key and project_root and root.is_dir():
+                owned_path(root, root, allow_root=True)
+                owned_path(checkpoint_path, root)
+                marker = owned_path(root / PROJECT_MANIFEST_NAME, root)
+                if key.startswith("project:") or marker.exists():
+                    valid = _read_json(str(marker)).get("key") == key
+                else:
+                    valid = True
+        except (OSError, ValueError, TypeError, AttributeError):
+            valid = False
+        yield valid
+
+
 def _schema_version(data: dict[str, Any], *, label: str) -> int:
     raw_version = data.get("schema_version", 1)
     try:

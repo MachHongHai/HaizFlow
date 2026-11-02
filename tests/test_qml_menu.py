@@ -51,7 +51,7 @@ class QmlMenuTests(unittest.TestCase):
                     state.insert("isProcessing", True)
                     self.assertTrue(picker.isEnabled())
                     state.insert("translationModel", "gemini-3.5-flash-lite")
-                    self.assertEqual(picker.property("currentIndex"), 3)
+                    self.assertEqual(picker.property("currentIndex"), 1)  # Gemini provider, not a flat model index.
                     # Freeze B as soon as its immutable job enters the queue.
                     state.insert("canEditSelectedVideo", False)
                     self.assertFalse(picker.isEnabled())
@@ -262,6 +262,16 @@ class QmlMenuTests(unittest.TestCase):
             self.assertFalse(process.property("enabled"))
             self.assertFalse(pause.property("visible"))
             state.insert("hasSelectedVideo", True)
+            state.insert("selectedVideoId", "video-b")
+            state.insert("videoExportBusy", True)
+            state.insert("videoExportJobs", [{"videoId": "video-a", "status": "rendering"}])
+            self.app.processEvents()
+            self.assertTrue(process.property("enabled"))
+            state.insert("videoExportJobs", [{"videoId": "video-b", "status": "rendering"}])
+            self.app.processEvents()
+            self.assertFalse(process.property("enabled"))
+            state.insert("videoExportJobs", [])
+            state.insert("videoExportBusy", False)
             for status in ("paused", "done", "failed", "cancelled"):
                 state.insert("selectedStatus", status)
                 self.app.processEvents()

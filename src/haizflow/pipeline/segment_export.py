@@ -190,9 +190,10 @@ def render_segment(video, document, range_ms, output, token, progress):
             output_speed=1.0 if has_overlays else getattr(video, "output_speed", 1.0),
             **{name: getattr(video, name) for name in (
                 "watermark_scale_percent", "watermark_kind", "watermark_opacity_percent", "watermark_outline_percent",
-                "watermark_font_family", "watermark_text_color", "watermark_bold", "watermark_italic")},
+                "watermark_font_family", "watermark_text_color", "watermark_bold", "watermark_italic", "watermark_moving")},
             watermark_image_path=str(video.files.get("watermark_image") or ""),
             watermark_video_path=str(video.files.get("watermark_video") or ""),
+            watermark_position=video.watermark_position.model_dump() if video.watermark_position else None,
             progress_callback=lambda value: report(20 + round(65 * value)))
         overlays = directory / "overlays.mp4"
         finished = apply_overlays(str(base), str(overlays), document, process_id, encoding_quality=quality,

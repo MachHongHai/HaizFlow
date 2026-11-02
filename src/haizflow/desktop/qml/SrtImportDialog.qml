@@ -49,7 +49,10 @@ AppDialog {
             {value: "und", label: qsTr("Chọn ngôn ngữ · Khác")},
             {value: "vi", label: qsTr("Tiếng Việt")},
             {value: "en", label: qsTr("Tiếng Anh")},
-            {value: "zh", label: qsTr("Tiếng Trung")}
+            {value: "zh", label: qsTr("Tiếng Trung")},
+            {value: "ko", label: qsTr("Tiếng Hàn")},
+            {value: "ja", label: qsTr("Tiếng Nhật")},
+            {value: "es", label: qsTr("Tiếng Tây Ban Nha")}
         ]
     }
     footerActions: [

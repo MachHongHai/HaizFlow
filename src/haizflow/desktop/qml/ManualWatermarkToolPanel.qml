@@ -88,6 +88,17 @@ ColumnLayout {
             }
         }
     }
+    StudioCheckBox {
+        objectName: "manualWatermarkMovingCheckBox"
+        Layout.fillWidth: true
+        text: qsTr("Di chuyển")
+        checked: AppController.watermarkMoving
+        enabled: imagePane.inspector.editable
+        onToggled: {
+            AppController.watermarkMoving = checked;
+            imagePane.inspector.scheduleSave();
+        }
+    }
     SettingLabel {
         Layout.fillWidth: true
         visible: imagePane.draftWatermarkKind === imagePane.appliedWatermarkKind

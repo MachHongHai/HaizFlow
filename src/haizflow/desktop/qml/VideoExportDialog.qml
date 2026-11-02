@@ -12,6 +12,10 @@ AppDialog {
     property bool destinationExists: false
     property bool processBeforeExport: false
     property bool batchMode: false
+    readonly property bool targetExportActive: (root.controller.videoExportJobs || []).some(job =>
+        job.videoId === (root.configuration.videoId || "") &&
+        (["pending", "rendering", "exporting"].indexOf(job.status) >= 0
+         || root.controller.videoExportBusy && ["paused", "awaiting_review"].indexOf(job.status) >= 0))
     title: batchMode ? qsTr("Xử lý và xuất hàng loạt") : processBeforeExport ? qsTr("Xử lý và xuất video") : qsTr("Xuất video")
     subtitle: ""
     preferredWidth: 600
@@ -142,7 +146,9 @@ AppDialog {
             objectName: "confirmVideoExport"
             readyText: root.processBeforeExport ? qsTr("Xử lý và xuất") : qsTr("Xuất")
             variant: "primary"
-            actionEnabled: root.destination.length > 0 && !root.controller.videoExportBusy
+            actionEnabled: root.destination.length > 0
+                && (root.processBeforeExport && !root.batchMode
+                    ? !root.targetExportActive : !root.controller.videoExportBusy)
                 && (root.batchMode || (!root.controller.isSelectedVideoProcessing
                     && !root.controller.isSelectedVideoQueued))
             actionContext: ({ batch: root.batchMode, process: root.processBeforeExport,

@@ -106,9 +106,9 @@ def synthesize_batch_to_mp3(items, video_id, *, device="cpu", language_id="vi",
     from haizflow.pipeline.process_registry import check_cancellation, communicate_process
     from haizflow.services.video_store import log_to_video
 
-    from haizflow.core.vieneu_voices import han_text_notice, unsupported_language_notice
+    from haizflow.core.vieneu_voices import unsupported_text_notice, unsupported_language_notice
 
-    notice = han_text_notice(items)
+    notice = unsupported_text_notice(items)
     if notice:
         raise ValueError(notice[1])
     notice = unsupported_language_notice("vieneu", language_id)
@@ -158,7 +158,8 @@ def synthesize_batch_to_mp3(items, video_id, *, device="cpu", language_id="vi",
                 references[source] = str(target)
             item["reference_path"] = references[source]
         status_path = work / "status.json"
-        request = dict(root=str(root), site=str(site), device=device, items=entries, status=str(status_path))
+        request = dict(root=str(root), site=str(site), device=device, items=entries, status=str(status_path),
+                       language=language_id)
         request_path = work / "request.json"
         request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
         environment = os.environ.copy()
@@ -281,9 +282,9 @@ def _load_model(root: Path, device: str):
 
 
 def _worker(request):
-    from haizflow.core.vieneu_voices import han_text_notice
+    from haizflow.core.vieneu_voices import unsupported_text_notice, unsupported_language_notice
 
-    notice = han_text_notice(request["items"])
+    notice = unsupported_text_notice(request["items"]) or unsupported_language_notice("vieneu", request.get("language", "vi"))
     if notice:
         raise ValueError(notice[1])
     import numpy as np

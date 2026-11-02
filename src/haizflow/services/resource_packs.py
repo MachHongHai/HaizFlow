@@ -752,15 +752,18 @@ class ResourcePackManager:
         )
         translation_packs: list[str] = []
         if str(capability) == "translation":
-            translation_model = str(context.get("translation_model") or "auto").lower()
-            if translation_model.startswith("gemini-"):
+            from haizflow.core.translation_models import is_cloud_model, normalize_translation_model
+
+            translation_model = normalize_translation_model(context.get("translation_model"))
+
+            if is_cloud_model(translation_model):
                 translation_packs = []
             elif translation_model == "auto":
                 from haizflow.core.hardware import runtime_profile
 
                 profile = runtime_profile()
                 translation_model = "full" if device == "gpu" and profile.total_vram_gib >= 12 else "q4"
-            if not translation_model.startswith("gemini-"):
+            if not is_cloud_model(translation_model):
                 translation_device = "gpu" if translation_model == "full" else "cpu"
                 translation_engine = f"engine-{'cuda128-py313' if translation_device == 'gpu' else 'cpu-py313'}"
                 translation_packs = [translation_engine, f"model-hymt2-{translation_device}"]

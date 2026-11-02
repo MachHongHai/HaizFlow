@@ -18,6 +18,7 @@ FloatingToolDialog {
     property string draftTargetLanguage: "vi"
     property string draftSpeechRecognitionModel: "small"
     property string draftTranslationModel: "auto"
+    property string draftTranslationReasoningEffort: ""
     property string draftGeminiInstructions: ""
     property string draftGeminiGlossary: ""
     property string draftGeminiStyle: "balanced"
@@ -61,6 +62,8 @@ FloatingToolDialog {
     property string draftWatermarkTextColor: "#FFFFFF"
     property bool draftWatermarkBold: true
     property bool draftWatermarkItalic: true
+    property bool draftWatermarkMoving: true
+    property var draftWatermarkPosition: ({})
     property var draftSubtitleStyle: ({})
     property string draftPreviewVoice: ""
     property var previewSources: []
@@ -139,11 +142,14 @@ FloatingToolDialog {
         draftWatermarkTextColor = settings.watermarkTextColor || "#FFFFFF";
         draftWatermarkBold = settings.watermarkBold !== false;
         draftWatermarkItalic = settings.watermarkItalic !== false;
+        draftWatermarkMoving = settings.watermarkMoving !== false;
+        draftWatermarkPosition = settings.watermarkPosition || {};
         draftSubtitleStyle = settings.subtitleStyle || ({});
         baselineSettings = settings
         draftTargetLanguage = settings.targetLanguage || "vi"
         draftSpeechRecognitionModel = settings.speechRecognitionModel || "small"
         draftTranslationModel = settings.translationModel || "q4"
+        draftTranslationReasoningEffort = settings.translationReasoningEffort || "";
         draftGeminiInstructions = settings.geminiTranslationInstructions || "";
         draftGeminiGlossary = settings.geminiTranslationGlossary || "";
         draftGeminiStyle = settings.geminiTranslationStyle || "balanced";
@@ -182,6 +188,7 @@ FloatingToolDialog {
             "targetLanguage": draftTargetLanguage,
             "speechRecognitionModel": draftSpeechRecognitionModel,
             "translationModel": draftTranslationModel,
+            "translationReasoningEffort": draftTranslationReasoningEffort,
             "geminiTranslationInstructions": draftGeminiInstructions,
             "geminiTranslationGlossary": draftGeminiGlossary,
             "geminiTranslationStyle": draftGeminiStyle,
@@ -210,6 +217,8 @@ FloatingToolDialog {
             "watermarkTextColor": draftWatermarkTextColor,
             "watermarkBold": draftWatermarkBold,
             "watermarkItalic": draftWatermarkItalic,
+            "watermarkMoving": draftWatermarkMoving,
+            "watermarkPosition": draftWatermarkPosition,
             "removeOriginalSubtitles": draftRemoveOriginalSubtitles,
             "originalSubtitleRemovalMode": draftOriginalSubtitleRemovalMode,
             "originalSubtitleRegion": draftOriginalSubtitleRegion,
@@ -341,6 +350,8 @@ FloatingToolDialog {
                 showMusicPlaybackSettings: true
                 speechRecognitionModel: root.draftSpeechRecognitionModel
                 translationModel: root.draftTranslationModel
+                translationReasoningEffort: root.draftTranslationReasoningEffort
+                onTranslationReasoningEdited: function(value) { root.draftTranslationReasoningEffort = value; }
                 geminiInstructions: root.draftGeminiInstructions
                 geminiGlossary: root.draftGeminiGlossary
                 geminiStyle: root.draftGeminiStyle
@@ -380,6 +391,7 @@ FloatingToolDialog {
 
                 onSpeechRecognitionEdited: function(value) { root.draftSpeechRecognitionModel = value }
                 onTranslationModelEdited: function(value) {
+                    root.draftTranslationReasoningEffort = "";
                     root.draftTranslationModel = value;
                     // The generated QML type metadata does not include this runtime property yet.
                     // qmllint disable missing-property
@@ -389,6 +401,7 @@ FloatingToolDialog {
                     }
                     // qmllint enable missing-property
                 }
+                onTranslationSetupRequested: function(provider) { root.close(); }
                 onTargetLanguageEdited: function(value) {
                     if (!AppController.validateTtsProviderForLanguage(value, root.draftTtsProvider))
                         return
@@ -514,6 +527,8 @@ FloatingToolDialog {
         property alias watermarkTextColor: root.draftWatermarkTextColor
         property alias watermarkBold: root.draftWatermarkBold
         property alias watermarkItalic: root.draftWatermarkItalic
+        property alias watermarkMoving: root.draftWatermarkMoving
+        property alias watermarkPosition: root.draftWatermarkPosition
         readonly property string watermarkImageSource: localUrl(watermarkImagePath)
         readonly property string watermarkVideoSource: localUrl(watermarkVideoPath)
         function localUrl(path) { return path ? "file:///" + path.replace(/\\/g, "/") : ""; }

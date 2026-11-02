@@ -519,6 +519,10 @@ def translation_model_preference() -> str:
 def translation_model_signature_parts(preference: str | None = None) -> tuple[str, ...]:
     """Keep legacy automatic caches valid; explicit model choices get distinct caches."""
     preference = preference or translation_model_preference()
+    if preference.startswith("api:"):
+        from haizflow.services.translation_connections import signature_parts
+
+        return signature_parts(preference)
     return () if preference == "auto" else (f"translation-model:{preference}",)
 
 

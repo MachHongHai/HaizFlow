@@ -683,6 +683,65 @@ class RenderExportStorageTests(unittest.TestCase):
         self.exporter.poll()
         self.assertEqual((self.external / "first.mp4").read_bytes(), b"managed-render")
 
+    def test_auto_projects_queue_sequentially_and_keep_both_export_destinations(self):
+        import time
+
+        from haizflow.services.processing_queue import SerialProcessingQueue
+
+        _, first = self.make_video(name="Auto A", content=b"render-A")
+        _, second = self.make_video(name="Auto B", content=b"render-B")
+        started, release = threading.Event(), threading.Event()
+        ran = []
+
+        def run(identifier):
+            ran.append(identifier)
+            video_store.update_video(identifier, status="processing")
+            if identifier == first.video_id:
+                started.set()
+                release.wait(5)
+            video_store.update_video(identifier, status="done")
+
+        task_queue = SerialProcessingQueue(run)
+        self.host._processing_queue = task_queue
+        target_a, target_b = self.external / "A.mp4", self.external / "B.mp4"
+        try:
+            with patch("haizflow.desktop.project_commands_controller.ProjectCommandsController.process_for_export",
+                       side_effect=lambda identifier: task_queue.enqueue(identifier)):
+                self.host._selected_video_id = first.video_id
+                self.assertTrue(self.exporter.start(first.video_id, "source", target_a, process=True))
+                self.assertTrue(started.wait(2))
+                self.host._selected_video_id = second.video_id
+                self.assertTrue(self.exporter.busy)
+                self.assertTrue(self.exporter.start(second.video_id, "source", target_b, process=True))
+                self.assertEqual(task_queue.pending_ids(), [second.video_id])
+                self.assertEqual([job["path"] for job in self.exporter.jobs], [str(target_a), str(target_b)])
+                self.assertFalse(self.exporter.start(second.video_id, "source", target_b, process=True))
+                self.assertEqual(task_queue.pending_ids(), [second.video_id])
+            release.set()
+            deadline = time.monotonic() + 8
+            while (task_queue.has_work or self.exporter.busy) and time.monotonic() < deadline:
+                self.exporter.poll()
+                time.sleep(.01)
+            self.exporter.poll()
+            self.assertEqual(ran, [first.video_id, second.video_id])
+            self.assertEqual(target_a.read_bytes(), b"render-A")
+            self.assertEqual(target_b.read_bytes(), b"render-B")
+            self.assertTrue(all(job["status"] == "done" for job in self.exporter.jobs))
+        finally:
+            release.set()
+            task_queue.shutdown(timeout_seconds=3)
+
+    def test_queued_auto_job_cannot_reuse_another_live_destination(self):
+        _, first = self.make_video(name="Auto A")
+        _, second = self.make_video(name="Auto B")
+        target = self.external / "reserved.mp4"
+        self.exporter.jobs = [{"videoId": first.video_id, "path": str(target), "status": "rendering"}]
+        self.host._selected_video_id = second.video_id
+        with patch("haizflow.desktop.project_commands_controller.ProjectCommandsController.process_for_export") as start:
+            self.assertFalse(self.exporter.start(second.video_id, "source", target, process=True, overwrite=True))
+            start.assert_not_called()
+        self.assertEqual(len(self.exporter.jobs), 1)
+
     def test_batch_default_is_stable_when_most_videos_are_customized(self):
         from haizflow.services import batch_settings
         project, video = self.make_video(kind="batch")

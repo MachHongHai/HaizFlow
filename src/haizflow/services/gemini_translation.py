@@ -151,11 +151,11 @@ def clear_key() -> bool:
     return remove_key("legacy")
 
 
-def _chunks(texts: list[str]):
+def _chunks(texts: list[str], *, max_sentences: int = 24, max_characters: int = 4000):
     chunk: list[tuple[int, str]] = []
     chars = 0
     for index, text in enumerate(texts):
-        if chunk and (len(chunk) >= 24 or chars + len(text) > 4000):
+        if chunk and (len(chunk) >= max_sentences or chars + len(text) > max_characters):
             yield chunk
             chunk, chars = [], 0
         chunk.append((index, text))
@@ -247,18 +247,23 @@ def _retry_delay(seconds: float, video_id: str) -> None:
         remaining -= interval
 
 
-def _request_chunk(
-    chunk: list[tuple[int, str]], *, key: str, model: str,
+def _payload_for_chunk(
+    chunk: list[tuple[int, str]], *, model: str,
     source_language: str, target_language: str, video_id: str = "",
     speech_durations: list[float] | None = None,
     translation_instructions: str = "", translation_glossary: str = "",
     translation_context: dict | None = None,
     translation_style: str = "balanced",
-) -> list[str]:
+    reasoning_effort: str = "",
+) -> dict:
     from haizflow.services.gemini_context import STYLE_PROMPTS
 
     if translation_style not in STYLE_PROMPTS:
         raise ValueError("Unsupported Gemini translation style.")
+    if reasoning_effort:
+        from haizflow.services.translation_api_policy import capabilities
+        if reasoning_effort not in capabilities("gemini", model).get("values", []):
+            raise ValueError("Mức thinkingLevel không được model Gemini đang chọn hỗ trợ.")
     entries = [{"id": index, "text": text} for index, text in chunk]
     for entry in entries:
         index = entry["id"]
@@ -299,8 +304,8 @@ def _request_chunk(
             # A cap does not prepay tokens. Leave room for language expansion,
             # JSON framing and low-level reasoning so the last cue is not cut.
             "maxOutputTokens": min(8192, max(2048, 1024 + len(chunk) * 64, sum(len(text) for _, text in chunk) * 4)),
-            "thinkingConfig": {"thinkingLevel": "minimal" if not has_guidance and model in {
-                "gemini-3.1-flash-lite", "gemini-3.5-flash-lite"} else "low", "includeThoughts": False},
+            "thinkingConfig": {"thinkingLevel": reasoning_effort or ("minimal" if not has_guidance and model in {
+                "gemini-3.1-flash-lite", "gemini-3.5-flash-lite"} else "low"), "includeThoughts": False},
             "responseMimeType": "application/json",
             "responseSchema": {
                 "type": "OBJECT",
@@ -312,6 +317,10 @@ def _request_chunk(
             },
         },
     }
+    if reasoning_effort:
+        from haizflow.services.translation_api_policy import output_limit
+        payload["generationConfig"]["maxOutputTokens"] = output_limit(
+            payload["generationConfig"]["maxOutputTokens"], reasoning_effort)
     if has_guidance:
         # Keep the output contract in system instructions. User-authored plot
         # summaries/rules are separate from both task sentences and examples.
@@ -324,6 +333,13 @@ def _request_chunk(
         payload["contents"][0]["parts"].append({"text": json.dumps(
             {"translation_context_only": translation_context}, ensure_ascii=False, separators=(",", ":"),
         )})
+    return payload
+
+
+def _request_chunk(chunk: list[tuple[int, str]], *, key: str, model: str,
+                   source_language: str, target_language: str, video_id: str = "", **kwargs) -> list[str]:
+    payload = _payload_for_chunk(chunk, model=model, source_language=source_language,
+                                 target_language=target_language, video_id=video_id, **kwargs)
     url = _ENDPOINT.format(model=model)
     for attempt in range(3):
         check_cancellation(video_id)
@@ -387,7 +403,7 @@ def _request_chunk(
             if not retry:
                 raise RuntimeError(str(failure)) from None
             if failure.reason == "token_limit":
-                payload["generationConfig"]["maxOutputTokens"] = 8192
+                payload["generationConfig"]["maxOutputTokens"] = max(8192, payload["generationConfig"]["maxOutputTokens"])
     raise RuntimeError("Gemini không phản hồi sau các lần thử.")
 
 
@@ -400,6 +416,9 @@ def translate_texts(
     context_texts: list[str] | None = None, context_translations: list[str | None] | None = None,
     context_indices: list[int] | None = None,
     translation_style: str = "balanced",
+    _request_handler=None, _key: str = "", _engine_name: str = "Gemini",
+    reasoning_effort: str = "",
+    _chunk_limits: tuple[int, int] = (24, 4000),
 ) -> list[str]:
     from haizflow.services.gemini_context import MAX_GUIDANCE, STYLE_PROMPTS, request_context
 
@@ -412,9 +431,9 @@ def translate_texts(
             raise ValueError("Each source sentence must have a speech duration.")
         for duration in speech_durations:
             timing_budget(duration, target_language)
-    if model not in MODELS:
+    if _request_handler is None and model not in MODELS:
         raise ValueError("Model Gemini không được hỗ trợ.")
-    key = active_key()
+    key = _key if _request_handler is not None else active_key()
     if not key:
         raise RuntimeError("Chưa có Gemini API key. Vào Cài đặt → Quản lý API Key để thêm key.")
     output = list(initial_translations) if initial_translations is not None else [None] * len(texts)
@@ -431,21 +450,22 @@ def translate_texts(
     # batches. Never use their old translations as name/address anchors.
     for index, source_index in enumerate(source_indices):
         context_memory[source_index] = output[index]
-    for chunk in _chunks(texts):
+    for chunk in _chunks(texts, max_sentences=_chunk_limits[0], max_characters=_chunk_limits[1]):
         chunk = [(index, text) for index, text in chunk if output[index] is None]
         if not chunk:
             continue
         check_cancellation(video_id)
-        detail = f"Sending Gemini translation batch: sentences {chunk[0][0] + 1}-{chunk[-1][0] + 1} of {len(texts)}."
+        detail = f"Sending {_engine_name} translation batch: sentences {chunk[0][0] + 1}-{chunk[-1][0] + 1} of {len(texts)}."
         log_to_video(video_id, detail, component="TRANSLATE", level="INFO")
         if progress_callback:
             progress_callback(sum(value is not None for value in output), len(texts), detail)
-        values = _request_chunk(
+        values = (_request_handler or _request_chunk)(
             chunk, key=key, model=model,
             source_language=source_language, target_language=target_language, video_id=video_id,
             speech_durations=speech_durations,
             translation_instructions=translation_instructions, translation_glossary=translation_glossary,
             translation_style=translation_style,
+            **({"reasoning_effort": reasoning_effort} if reasoning_effort else {}),
             translation_context=request_context(context_source, context_memory,
                 [source_indices[index] for index, _ in chunk]),
         )
@@ -460,9 +480,9 @@ def translate_texts(
             result_callback([index for index, _ in chunk], values)
         check_cancellation(video_id)
         log_to_video(
-            video_id, f"Gemini translated {chunk[-1][0] + 1} of {len(texts)} sentences.",
+            video_id, f"{_engine_name} translated {chunk[-1][0] + 1} of {len(texts)} sentences.",
             component="TRANSLATE", level="INFO",
         )
         if progress_callback:
-            progress_callback(sum(value is not None for value in output), len(texts), "Đang dịch bằng Gemini")
+            progress_callback(sum(value is not None for value in output), len(texts), "Đang dịch bằng " + _engine_name)
     return output

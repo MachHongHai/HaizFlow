@@ -24,6 +24,7 @@ from haizflow.schemas.video import (
     MediaSource,
     CropSettings,
     SubtitleStyle,
+    WatermarkPosition,
     subtitle_style_for_project,
 )
 from haizflow.services import project_store
@@ -244,6 +245,7 @@ def create_video(video_id: str, original_filename: str, config: VideoConfig, vid
         speech_recognition_model=config.speech_recognition_model,
         translator_provider=config.translator_provider,
         translation_model=config.translation_model,
+        translation_reasoning_effort=config.translation_reasoning_effort,
         gemini_translation_instructions=config.gemini_translation_instructions,
         gemini_translation_glossary=config.gemini_translation_glossary,
         gemini_translation_style=config.gemini_translation_style,
@@ -274,6 +276,8 @@ def create_video(video_id: str, original_filename: str, config: VideoConfig, vid
         watermark_text_color=config.watermark_text_color,
         watermark_bold=config.watermark_bold,
         watermark_italic=config.watermark_italic,
+        watermark_moving=config.watermark_moving,
+        watermark_position=config.watermark_position,
         project_name=config.project_name,
         project_directory=config.project_directory,
         project_type=config.project_type,
@@ -519,9 +523,11 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
                     override["provider"] = "omnivoice"
     if data.get("speech_recognition_model") not in {"small", "small-cpu", "small-gpu", "large-v3-turbo"}:
         data["speech_recognition_model"] = "small"
-    if data.get("translation_model") not in {"auto", "q4", "full", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"}:
+    from haizflow.core.translation_models import is_api_model, translation_provider
+
+    if data.get("translation_model") not in {"auto", "q4", "full", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"} and not is_api_model(data.get("translation_model", "")):
         data["translation_model"] = "q4"
-    data["translator_provider"] = "gemini" if str(data["translation_model"]).startswith("gemini-") else "hymt2"
+    data["translator_provider"] = translation_provider(str(data["translation_model"]))
     if data.get("speaker_mode") not in {"single", "multiple"}:
         data["speaker_mode"] = "single"
     data["output_format"] = (
@@ -652,6 +658,12 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
     data["watermark_text_color"] = watermark_color if re.fullmatch(r"#[0-9A-F]{6}", watermark_color) else "#FFFFFF"
     data["watermark_bold"] = bool(data.get("watermark_bold", True))
     data["watermark_italic"] = bool(data.get("watermark_italic", True))
+    data["watermark_moving"] = bool(data.get("watermark_moving", True))
+    try:
+        position = data.get("watermark_position")
+        data["watermark_position"] = WatermarkPosition.model_validate(position).model_dump() if position else None
+    except (TypeError, ValueError):
+        data["watermark_position"] = None
     return data, data != original
 
 

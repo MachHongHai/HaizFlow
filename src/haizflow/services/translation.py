@@ -16,6 +16,9 @@ from pathlib import Path
 from haizflow.config import HYMT2_REQUEST_TIMEOUT_SECONDS, HYMT2_WARM_TIMEOUT_SECONDS
 from haizflow.core.hardware import processing_device_preference, runtime_profile, translation_model_preference
 from haizflow.core.paths import is_frozen, project_root
+from haizflow.core.translation_models import (
+    is_api_model, is_cloud_model, normalize_translation_model, translation_provider, valid_translation_model,
+)
 from haizflow.pipeline.process_registry import check_cancellation, register_process, release_process_job, unregister_process
 from haizflow.services.video_store import log_to_video
 from haizflow.services.translation_timing import POLICY_VERSION, speech_duration, timing_budget
@@ -80,15 +83,17 @@ def translate_segments(
     translation_instructions: str = "",
     translation_glossary: str = "",
     translation_style: str = "balanced",
+    reasoning_effort: str = "",
 ):
-    from haizflow.services.gemini_translation import MODELS as GEMINI_MODELS
     from haizflow.services.gemini_translation import translate_texts
+    if is_api_model(translation_model):
+        from haizflow.services.api_translation import translate_texts
 
     if validation_mode not in {"auto", "manual"}:
         raise ValueError("Unsupported translation validation mode.")
 
-    requested_model = str(translation_model or "auto").lower()
-    using_gemini = requested_model in GEMINI_MODELS
+    requested_model = normalize_translation_model(translation_model)
+    using_gemini = is_cloud_model(requested_model)
     from haizflow.services.gemini_context import MAX_GUIDANCE, STYLE_PROMPTS, VERSION
 
     if using_gemini and translation_style not in STYLE_PROMPTS:
@@ -97,12 +102,11 @@ def translate_segments(
     translation_glossary = str(translation_glossary or "").strip()
     if using_gemini and max(len(translation_instructions), len(translation_glossary)) > MAX_GUIDANCE:
         raise ValueError("Hướng dẫn dịch và quy ước tên/xưng hô chỉ được dài tối đa 4000 ký tự mỗi ô.")
-    if provider not in {"hymt2", "gemini"} or (provider == "gemini") != using_gemini:
+    if provider != translation_provider(requested_model):
         raise ValueError("Translation provider does not match the selected model.")
     from haizflow.core.hardware import configure_translation_model
 
-    if requested_model not in {"auto", "q4", "full", *GEMINI_MODELS}:
-        raise ValueError(f"Unsupported translation model: {translation_model}")
+    valid_translation_model(requested_model)
     if using_gemini:
         # An earlier local project may have left HY-MT2 warm. Gemini does not
         # need it and should never hold a second large model in memory.
@@ -112,7 +116,7 @@ def translate_segments(
         configure_translation_model(requested_model)
 
     target_language_name = language_name(target_language)
-    engine_name = "Gemini" if using_gemini else "HY-MT2"
+    engine_name = "API" if is_api_model(requested_model) else "Gemini" if using_gemini else "HY-MT2"
     log_to_video(video_id, f"Initializing {engine_name} translation | target: {target_language_name}.")
     with open(input_json_path, "r", encoding="utf-8") as file:
         segments = json.load(file)
@@ -135,6 +139,7 @@ def translate_segments(
     source_codes = [str(segment.get("language") or source_language or "en").lower() for segment in segments]
     speech_durations = [speech_duration(segment) for segment in segments]
     from haizflow.services.translation_progress import TranslationProgress
+    from haizflow.services.translation_connections import signature_parts as api_signature_parts
 
     checkpoint = TranslationProgress(checkpoint_path or output_json_path + ".progress.json", {
         "segments": segments, "model": requested_model, "provider": provider,
@@ -142,6 +147,8 @@ def translate_segments(
         "format": "sentence-translation-v1",
         "speech_length_policy": POLICY_VERSION,
         "generation": checkpoint_key,
+        **({"reasoning_effort": reasoning_effort} if using_gemini and reasoning_effort else {}),
+        **({"api_connection": api_signature_parts(requested_model)} if is_api_model(requested_model) else {}),
         **({"gemini_context": [VERSION, translation_instructions, translation_glossary, translation_style]} if using_gemini else {}),
     }, len(segments))
     def save_valid_batch(indices, values):
@@ -168,6 +175,7 @@ def translate_segments(
             speech_durations=speech_durations,
             translation_instructions=translation_instructions, translation_glossary=translation_glossary,
             translation_style=translation_style,
+            **({"reasoning_effort": reasoning_effort} if reasoning_effort else {}),
         )
     else:
         _release_translation_competitors(video_id)
@@ -199,7 +207,13 @@ def translate_segments(
     for retry_number, include_context in enumerate((True, False), start=1):
         if not suspect_indexes:
             break
-        retry_indexes = sorted(suspect_indexes)
+        # Similarity is not evidence of an invalid answer (names, loanwords,
+        # numbers). Do not spend cloud credits repeating a valid translation
+        # solely on that heuristic. Keep recovery for objectively invalid text.
+        retry_indexes = sorted(index for index in suspect_indexes
+                               if not using_gemini or _invalid_translation(translations[index]))
+        if not retry_indexes:
+            break
         labels = ", ".join(str(index + 1) for index in retry_indexes)
         recovery_kind = "strict contextual" if include_context else "isolated"
         log_to_video(
@@ -218,6 +232,7 @@ def translate_segments(
                     speech_durations=[speech_durations[index] for index in retry_indexes],
                     translation_instructions=translation_instructions, translation_glossary=translation_glossary,
                     translation_style=translation_style,
+                    **({"reasoning_effort": reasoning_effort} if reasoning_effort else {}),
                     context_texts=source_texts, context_translations=translations, context_indices=retry_indexes,
                 )
                 if len(retry_values) != len(retry_indexes):
@@ -247,6 +262,8 @@ def translate_segments(
                 raise
             log_to_video(video_id, f"Translation recovery {retry_number}/2 failed; retaining received results: {exc}",
                          level="WARNING", component="TRANSLATE")
+            if using_gemini:
+                break  # Do not spend another paid request after a failed recovery.
         save_valid_batch(retry_indexes, [translations[index] for index in retry_indexes])
         suspect_indexes = _suspicious_translation_indexes(
             source_texts,

@@ -2393,7 +2393,7 @@ class SocialPublishController:
             self._start_status_worker(only_pending=False)
         return False
 
-    def remove_item(self, row: int) -> bool:
+    def remove_item(self, row: int, *, confirm: bool = True) -> bool:
         item = self._host.tiktok_publish_items.item_at(row)
         if not item or not self._ensure_publish_project() or self._item_in_flight(item):
             return False
@@ -2408,7 +2408,7 @@ class SocialPublishController:
             f"Remove '{item['file_name']}' from this project list? "
             "The video file and any published social post will remain unchanged."
         )
-        if (
+        if confirm and (
             QMessageBox.question(
                 None,
                 title,

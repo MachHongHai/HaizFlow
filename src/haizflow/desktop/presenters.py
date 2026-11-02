@@ -197,7 +197,7 @@ def format_memory_size(value: int) -> str:
 
 def voice_options_for_language(language_code: str, ui_language: str, provider: str = "omnivoice"):
     if provider in {"vieneu", "vieneu-gpu"}:
-        from haizflow.core.vieneu_voices import VIENEU_VOICES
+        from haizflow.core.vieneu_voices import VIENEU_VOICES, unsupported_language_notice
 
         return ([{"voice": "vieneu:" + name,
                  "label": f"{name} · {'Nam' if gender == 'male' else 'Nữ'} · {region}",
@@ -205,7 +205,7 @@ def voice_options_for_language(language_code: str, ui_language: str, provider: s
                 for name, gender, region in VIENEU_VOICES] + [{"voice": "vieneu:clone",
                     "label": "Giọng nhân bản của tôi" if ui_language == "vi" else "My cloned voice",
                     "category": "reference", "categoryLabel": "Giọng của tôi" if ui_language == "vi" else "My voice"}]
-                if language_code != "zh" else [])
+                if not unsupported_language_notice(provider, language_code) else [])
     if provider == "edge":
         from haizflow.core.edge_voices import EDGE_VOICES
 

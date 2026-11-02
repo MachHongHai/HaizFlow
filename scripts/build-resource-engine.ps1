@@ -106,6 +106,12 @@ try {
   }
   & $Uv pip sync --python $Python --require-hashes --index-strategy unsafe-best-match @EngineIndexArguments $Lock
   if ($LASTEXITCODE -ne 0) { throw "Could not install the locked engine environment." }
+  if ($Profile -eq "vision") {
+    # A CPU-only wheel can import successfully while silently removing the
+    # feature this isolated pack promises. No GPU/model is loaded by this probe.
+    & $Python -c "import onnxruntime as ort; assert 'DmlExecutionProvider' in ort.get_available_providers(), 'Vision engine is missing DirectML support'"
+    if ($LASTEXITCODE -ne 0) { throw "Vision engine does not contain the reviewed GPU-capable runtime." }
+  }
 
   $Arguments = @(
     "-m", "PyInstaller",
@@ -153,6 +159,7 @@ try {
     # Do not collect RapidOCR's mutable default model payload. HaizFlow loads
     # only the separately checksum-pinned subtitle OCR assets.
     $Arguments += @("--collect-binaries", "onnxruntime")
+    $Arguments += @("--copy-metadata", "onnxruntime-directml")
     $Arguments += @("--hidden-import", "rapidocr", "--hidden-import", "haizflow.pipeline.subtitle_ocr")
     foreach ($Module in @("torch", "torchaudio", "torchvision", "whisperx", "transformers", "demucs")) {
       $Arguments += @("--exclude-module", $Module)

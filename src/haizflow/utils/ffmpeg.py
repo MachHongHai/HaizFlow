@@ -3,6 +3,8 @@ import shutil
 import subprocess
 from functools import lru_cache
 from pathlib import Path
+from threading import Lock
+from time import monotonic
 
 from haizflow.config import BIN_DIR
 
@@ -37,8 +39,40 @@ def available_video_encoders() -> set[str]:
     return encoders
 
 
-@lru_cache(maxsize=None)
+_ENCODER_FAILURE_RETRY_SECONDS = 30.0
+_ENCODER_PROBE_LOCK = Lock()
+_ENCODER_PROBES: dict[str, tuple[bool, float]] = {}
+
+
+def _clear_encoder_probes() -> None:
+    with _ENCODER_PROBE_LOCK:
+        _ENCODER_PROBES.clear()
+
+
+def mark_video_encoder_failed(encoder: str) -> None:
+    """Cool down a temporarily busy/broken hardware backend, not the whole app."""
+    if encoder in {"h264_nvenc", "h264_qsv", "h264_amf"}:
+        with _ENCODER_PROBE_LOCK:
+            _ENCODER_PROBES[encoder] = (False, monotonic())
+
+
 def _encoder_works(encoder: str) -> bool:
+    now = monotonic()
+    with _ENCODER_PROBE_LOCK:
+        cached = _ENCODER_PROBES.get(encoder)
+        if cached and (cached[0] or now - cached[1] < _ENCODER_FAILURE_RETRY_SECONDS):
+            return cached[0]
+    works = _probe_video_encoder(encoder)
+    with _ENCODER_PROBE_LOCK:
+        _ENCODER_PROBES[encoder] = (works, monotonic())
+    return works
+
+
+# Keep the existing cache-reset hook used by diagnostics and tests.
+_encoder_works.cache_clear = _clear_encoder_probes
+
+
+def _probe_video_encoder(encoder: str) -> bool:
     if encoder not in available_video_encoders():
         return False
     try:

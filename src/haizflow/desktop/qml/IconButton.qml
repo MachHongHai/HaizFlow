@@ -10,6 +10,7 @@ Button {
     property string toolTipText: ""
     property bool showToolTip: false
     property int controlSize: 30
+    property int iconSize: Theme.icon
 
     implicitWidth: controlSize
     implicitHeight: controlSize
@@ -18,8 +19,9 @@ Button {
     scale: down ? 0.96 : 1
 
     contentItem: AppIcon {
+        objectName: "buttonLeadingIcon"
         glyph: root.glyph
-        iconSize: Theme.icon
+        iconSize: root.iconSize
         iconColor: !root.enabled ? Theme.textDisabled : root.tone === "danger" ? Theme.danger : root.tone === "primary" ? Theme.textOnAccent : Theme.textMuted
     }
 

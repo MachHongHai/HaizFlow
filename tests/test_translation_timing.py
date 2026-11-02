@@ -34,6 +34,9 @@ def test_budgets_use_target_speech_units_not_source_character_count():
     assert timing_budget(2, "Vietnamese")["target_spoken_units"] == 9
     assert timing_budget(2, "English")["target_spoken_units"] == 6
     assert timing_budget(2, "Chinese")["target_spoken_units"] == 9
+    assert timing_budget(2, "Spanish")["target_spoken_units"] == 6
+    assert timing_budget(2, "Japanese")["spoken_unit"] == "spoken characters"
+    assert timing_budget(2, "Korean")["spoken_unit"] == "spoken characters"
     assert timing_budget(2, "Thai") == {"speech_seconds": 2.0}
     assert timing_budget(.0001, "Vietnamese")["speech_seconds"] > 0
     assert timing_instruction(None, "Vietnamese") == ""
@@ -187,7 +190,7 @@ def test_first_pass_pause_keeps_checkpoint_and_previous_published_result(tmp_pat
     assert output.read_text(encoding="utf-8") == "old published result"
     checkpoint = json.loads((tmp_path / "translated.json.progress.json").read_text(encoding="utf-8"))
     assert checkpoint["translations"] == [original]
-    assert POLICY_VERSION == "speech-length-v1"
+    assert POLICY_VERSION == "speech-length-v2-spanish-budget"
 
     with patch.object(translation, "_translate_with_hymt2_worker") as worker, patch.object(translation, "log_to_video"):
         result = translation.translate_segments(str(source), str(output), "fixture")

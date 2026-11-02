@@ -12,6 +12,7 @@ from pathlib import Path
 import srt
 
 from haizflow.services import manual_artifacts, video_store
+from haizflow.desktop.catalog import TARGET_LANGUAGE_CODES
 
 MAX_BYTES = 8 * 1024 * 1024
 TEXT_KINDS = {"recognition", "translation", "subtitle_document", "tts_manifest", "audio_mix", "export"}
@@ -28,9 +29,10 @@ def detect_language(segments) -> str:
         return "und"
     han = len(re.findall(r"[\u3400-\u9fff]", text))
     kana = len(re.findall(r"[\u3040-\u30ff]", text))
-    if kana and (han + kana) / letters >= .5:
+    if kana and kana / (han + kana) >= .1 and (han + kana) / letters >= .5:
         return "ja"  # Japanese captions commonly mix kana and kanji.
-    for code, pattern in (("ja", r"[\u3040-\u30ff]"), ("ko", r"[\uac00-\ud7af]"),
+    for code, pattern in (("ja", r"[\u3040-\u30ff\u31f0-\u31ff\uff66-\uff9f]"),
+                          ("ko", r"[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7af\ud7b0-\ud7ff]"),
                           ("ar", r"[\u0600-\u06ff]"), ("ru", r"[\u0400-\u04ff]"),
                           ("th", r"[\u0e00-\u0e7f]"), ("hi", r"[\u0900-\u097f]"),
                           ("zh", r"[\u3400-\u9fff]")):
@@ -63,16 +65,21 @@ def chinese_text_notice(video, segments, ui_language="vi"):
 
 def voice_notice(video, provider, segments, ui_language="vi"):
     if str(provider).startswith("vieneu"):
-        from haizflow.core.vieneu_voices import han_text_notice
+        from haizflow.core.vieneu_voices import unsupported_text_notice
 
-        notice = han_text_notice(segments, ui_language, imported=has_import(video))
+        notice = unsupported_text_notice(segments, ui_language, imported=has_import(video))
         if notice:
             return notice
     if not has_import(video):
+        if str(provider).startswith("vieneu"):
+            from haizflow.core.vieneu_voices import unsupported_language_notice
+            from haizflow.services.subtitle_language import manual_subtitle_language
+
+            return unsupported_language_notice(provider, manual_subtitle_language(video, segments), ui_language)
         return None
     language = str(getattr(video, "subtitle_language", "") or "und")
     script = detect_language(segments)
-    if language not in {"vi", "en", "zh"} or script not in {"vi", "zh", "und"}:
+    if language not in TARGET_LANGUAGE_CODES or script not in {*TARGET_LANGUAGE_CODES, "und"}:
         return ("Ngôn ngữ SRT chưa được cấu hình", "Chọn ngôn ngữ SRT phù hợp khi nhập hoặc dịch sang ngôn ngữ được hỗ trợ trước khi tạo giọng.") if ui_language == "vi" else (
             "SRT language is not configured", "Choose a supported SRT language when importing, or translate before generating speech.")
     if str(provider).startswith("vieneu") and (language == "zh" or script == "zh"):
@@ -88,6 +95,12 @@ def voice_notice(video, provider, segments, ui_language="vi"):
             "If its actual content is Vietnamese, reimport it with the correct language; otherwise translate "
             "the captions into Vietnamese or choose OmniVoice/Edge TTS."
         ))
+    from haizflow.core.vieneu_voices import unsupported_language_notice
+
+    notice = unsupported_language_notice(provider, language, ui_language)
+    if notice:
+        source = "Ngôn ngữ SRT đã nhập" if ui_language == "vi" else "Imported SRT language"
+        return notice[0], source + ": " + notice[1]
     return None
 
 
@@ -224,10 +237,13 @@ def import_srt(video_id: str, path: str, *, duration_ms: int = 0, language: str 
         raise ValueError("Hãy nhập video nguồn trước khi nhập SRT.")
     raw, segments = inspect_srt(path, duration_ms=duration_ms)
     language = language or detect_language(segments)
-    if language not in {"vi", "en", "zh", "und", "ja", "ko", "ar", "ru", "th", "hi"}:
+    if language not in {*TARGET_LANGUAGE_CODES, "und", "ar", "ru", "th", "hi"}:
         raise ValueError("Ngôn ngữ SRT không hợp lệ.")
     # Distinct Chinese text must not inherit the next translation's language.
-    if detect_language(segments) == "zh":
+    script = detect_language(segments)
+    if script in {"ja", "ko"}:
+        language = script
+    elif script == "zh" and language not in {"ja", "ko"}:
         han = sum(len(re.findall(r"[\u3400-\u9fff]", str(item.get("text") or ""))) for item in segments)
         letters = sum(char.isalpha() for item in segments for char in str(item.get("text") or ""))
         if han / max(1, letters) >= .5:

@@ -96,6 +96,10 @@ GPU mode supports compatible NVIDIA 4 GB-class cards (at least 3.5 GiB dedicated
 
 See [Installation](docs/install.md) for CPU/GPU packs, API keys and storage. See the [User guide](docs/user-guide.md) for projects, captions, dubbing and publishing.
 
+## Agent integration (MCP)
+
+Connect Claude, Codex, Antigravity and other stdio MCP clients from **Settings → MCP**. The dedicated page includes setup instructions and copyable configuration for each host. Agents can inspect and operate project, subtitle, processing, download and publishing workflows through the app's existing queues. Deletion and publishing require explicit in-app approval. See the [MCP setup and permissions guide](docs/mcp.md).
+
 ## License and commercial use
 
 HaizFlow is free to use under [HaizFlow Source-Available 1.0](LICENSE). This is not an OSI open-source license. Redistribution, repackaging and commercial software conditions are specified in LICENSE.

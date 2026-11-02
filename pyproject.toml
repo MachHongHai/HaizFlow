@@ -26,6 +26,7 @@ dependencies = [
   "playwright==1.63.0",
   "pydub==0.25.1",
   "srt==3.5.3",
+  "mcp==2.3.0",
   "edge-tts @ https://github.com/rany2/edge-tts/archive/360fa8e1de354e1dda74c09bd695887d6a44df74.tar.gz#sha256=470d399a288b9ff9800988538ae31c99f06e589ec0ed67cb01141b29a005ab47",
 ]
 
@@ -63,6 +64,7 @@ ai-runtime = [
 
 [project.scripts]
 haizflow = "haizflow.desktop.main:main"
+haizflow-mcp = "haizflow.mcp.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -75,7 +77,7 @@ url = "https://github.com/rany2/edge-tts/archive/360fa8e1de354e1dda74c09bd695887
 sha256 = "470d399a288b9ff9800988538ae31c99f06e589ec0ed67cb01141b29a005ab47"
 
 [tool.setuptools.package-data]
-"haizflow" = ["assets/fonts/Bangers-Regular.ttf"]
+"haizflow" = ["assets/fonts/Bangers-Regular.ttf", "assets/translation/*.json"]
 "haizflow.desktop" = ["qml/*.qml", "qml/qmldir", "qml/icons/*.svg", "translations/*.qm", "translations/*.ts", "assets/branding/haizflow-mark.png", "assets/branding/haizflow.ico", "assets/voice_samples/**/*.mp3", "assets/voice_samples/samples.json"]
 
 [tool.uv.sources]

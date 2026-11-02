@@ -12,6 +12,7 @@ from typing import Any
 
 from haizflow.config import HYMT2_MODEL_REVISION
 from haizflow.core.hardware import translation_model_signature_parts
+from haizflow.core.translation_models import is_cloud_model, translation_provider
 from haizflow.core.model_integrity import DEMUCS_MODEL_SIGNATURE
 from haizflow.core.processing_errors import describe_failure
 from haizflow.core.storage_ownership import owned_path
@@ -335,7 +336,7 @@ def translation_signature(video) -> str:
     from haizflow.services.gemini_context import signature_parts
 
     model = str(getattr(video, "translation_model", "auto") or "auto")
-    using_gemini = model.startswith("gemini-")
+    using_gemini = is_cloud_model(model)
     return manual_artifacts.signature(
         recognition_signature(video),
         getattr(video, "target_language", "vi"),
@@ -895,6 +896,9 @@ def export_signature(video, *, validate: bool = True) -> str:
         getattr(video, "watermark_text_color", "#FFFFFF"),
         getattr(video, "watermark_bold", True),
         getattr(video, "watermark_italic", True),
+        *(["watermark-fixed-v1"] if not getattr(video, "watermark_moving", True) else []),
+        *(["watermark-position-v1", video.watermark_position.model_dump()]
+          if getattr(video, "watermark_position", None) and not getattr(video, "watermark_moving", True) else []),
         getattr(video, "subtitle_layout_override", False),
         result_segments.render_payload(editor_document),
         getattr(video, "export_preset", "source"),
@@ -1177,6 +1181,7 @@ def tool_readiness(video, tool_id: str, *, language: str = "vi") -> dict[str, An
     return {"toolId": tool_id, "canRun": bool(ready), "blockedReason": "" if ready else blocked}
 
 
+@manual_artifacts.presentation_batch
 @editor_documents.read_batch()
 def tool_states(video, *, language: str = "vi") -> list[dict[str, Any]]:
     labels_vi = {
@@ -1552,7 +1557,9 @@ def _replace_subtitles_from_translation(video_id: str, translated_segments: str)
     files.pop("voice_parts_dir", None)
     language = str(getattr(video, "target_language", "vi") or "vi")
     changes = {"files": files, "subtitle_language": language}
-    if language == "zh" and str(getattr(video, "tts_provider", "")).startswith("vieneu"):
+    from haizflow.core.vieneu_voices import unsupported_language_notice
+
+    if unsupported_language_notice(getattr(video, "tts_provider", ""), language):
         from haizflow.services.subtitle_language import compatible_manual_voice
 
         provider, voice = compatible_manual_voice(language, video.tts_provider, video.tts_voice)
@@ -1561,7 +1568,7 @@ def _replace_subtitles_from_translation(video_id: str, translated_segments: str)
             key: value for key, value in dict(files.get("manual_voice_overrides") or {}).items()
             if isinstance(value, dict) and not str(value.get("provider", "")).startswith("vieneu")
         }
-        video_store.log_to_video(video_id, "Chinese subtitles published: VieNeu switched to OmniVoice.")
+        video_store.log_to_video(video_id, f"{language} subtitles published: VieNeu switched to OmniVoice.")
     video_store.update_video(video_id, **changes)
     if draft_path:
         try:
@@ -1774,7 +1781,7 @@ def _run_translation(video, reporter) -> None:
                 video.video_id,
                 getattr(video, "target_language", "vi"),
                 source_language="auto",
-                provider="gemini" if str(getattr(video, "translation_model", "")).startswith("gemini-") else "hymt2",
+                provider=translation_provider(str(getattr(video, "translation_model", ""))),
                 translation_model=getattr(video, "translation_model", "auto"),
                 **gemini_guidance(video),
                 checkpoint_path=str(manual_progress_path(video.video_id)),
@@ -2437,6 +2444,9 @@ def _run_export(video, reporter) -> None:
                 watermark_text_color=getattr(video, "watermark_text_color", "#FFFFFF"),
                 watermark_bold=getattr(video, "watermark_bold", True),
                 watermark_italic=getattr(video, "watermark_italic", True),
+                watermark_moving=getattr(video, "watermark_moving", True),
+                watermark_position=(video.watermark_position.model_dump()
+                                    if getattr(video, "watermark_position", None) else None),
                 subtitle_style_overrides=subtitle_style_overrides(editor_document),
                 encoding_quality=encoding_quality,
                 export_preset="source" if has_overlays else export_preset,

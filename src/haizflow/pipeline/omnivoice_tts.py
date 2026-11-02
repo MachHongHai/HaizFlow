@@ -912,17 +912,29 @@ def _encode_mp3(wav_path: Path, output_path: Path, video_id: str) -> None:
 
 
 def _preset_reference(voice: str, language: str) -> tuple[str, str]:
-    """Use the same packaged speaker identity as the library preview."""
-    if voice not in OMNIVOICE_VOICE_INSTRUCTIONS or language not in {"vi", "en", "zh"}:
+    """Prefer target-language samples; never leave new presets unconditioned.
+
+    The SDK's voice-design task is trained mainly on English/Chinese and is
+    unstable for short utterances without reference audio. Cross-language
+    cloning is supported: retain this exact preset's packaged English identity
+    when a Japanese/Korean/Spanish sample is not installed. Keep the reference
+    transcript in its ORIGINAL language; target language is passed separately
+    to generate(). Do not substitute another preset or source-video dialogue.
+    """
+    if voice not in OMNIVOICE_VOICE_INSTRUCTIONS or language not in {"vi", "en", "zh", "ja", "ko", "es"}:
         return "", ""
     root = Path(__file__).resolve().parents[1] / "desktop" / "assets" / "voice_samples"
     try:
         metadata = json.loads((root / "samples.json").read_text(encoding="utf-8"))
-        text = str(metadata["sentences"][language]).strip()
+        if not isinstance(metadata, dict) or not isinstance(metadata.get("sentences"), dict):
+            return "", ""
         safe_voice = re.sub(r"[^a-zA-Z0-9._-]+", "_", voice).strip("_")
-        sample = root / "omnivoice" / safe_voice / f"{language}.mp3"
-        if text and sample.is_file() and sample.stat().st_size > 512:
-            return str(sample), text
+        candidates = (language, "en") if language in {"ja", "ko", "es"} else (language,)
+        for reference_language in candidates:
+            text = str(metadata["sentences"].get(reference_language) or "").strip()
+            sample = root / "omnivoice" / safe_voice / f"{reference_language}.mp3"
+            if text and sample.is_file() and sample.stat().st_size > 512:
+                return str(sample), text
     except (OSError, ValueError, KeyError, TypeError):
         pass
     return "", ""
@@ -1044,6 +1056,12 @@ def synthesize_batch_to_mp3(
                     raise RuntimeError((stderr or "Could not prepare a source-speaker reference.").strip()[:500])
                 reference_path = str(reference_wav)
                 reference_text = str(item.get("source_text") or "").strip()
+            preset_path, preset_text = _preset_reference(str(item.get("voice") or "omnivoice:female"), language_id)
+            if language_id in {"ja", "ko", "es"} and not reference_path and not (preset_path and preset_text):
+                raise RuntimeError(
+                    f"OmniVoice thiếu mẫu giọng {item.get('voice')} cho {language_id}. "
+                    "Hãy cài lại/cập nhật HaizFlow để khôi phục mẫu giọng; không thể tạo câu ngắn mà không có mẫu."
+                )
             request_items.append(
                 {
                     "text": str(item.get("text") or "").strip(),
@@ -1052,8 +1070,8 @@ def synthesize_batch_to_mp3(
                     "wav_path": str(wav),
                     "reference_path": reference_path,
                     "reference_text": reference_text,
-                    "preset_reference_path": _preset_reference(str(item.get("voice") or "omnivoice:female"), language_id)[0],
-                    "preset_reference_text": _preset_reference(str(item.get("voice") or "omnivoice:female"), language_id)[1],
+                    "preset_reference_path": preset_path,
+                    "preset_reference_text": preset_text,
                 }
             )
             output_pairs.append((wav, output))
@@ -1083,6 +1101,12 @@ def synthesize_batch_to_mp3(
             )
             request["preset_reference_path"] = reference_path
             request["preset_reference_text"] = reference_text
+        if language_id in {"ja", "ko", "es"}:
+            references = sorted({Path(item["preset_reference_path"]).stem
+                                 for item in request_items if item.get("preset_reference_path")})
+            log_to_video(video_id, f"[TTS][REFERENCE] target={language_id} "
+                         f"preset_reference_languages={','.join(references) or 'user-reference'} "
+                         "policy=packaged-preset-cross-lingual; target text/language unchanged.")
         request_path = temp_root / "request.json"
         request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
         log_to_video(
@@ -1872,7 +1896,14 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
                     # for measured silence/codec collapse, with the same voice.
                     write_status(offset, "retrying_short_utterance", current=offset + position + 1)
                     retry_wave = generate([entry], seed_offset=1)[0]
-                    validate_speech_waveform(retry_wave, sample_rate)
+                    try:
+                        validate_speech_waveform(retry_wave, sample_rate)
+                    except SpeechQualityError as exc:
+                        raise SpeechQualityError(
+                            f"OmniVoice invalid audio after one retry: segment {offset + position + 1}/{len(items)}, "
+                            f"language={request.get('language')}, voice={entry.get('voice')}, "
+                            f"text={str(entry.get('text') or '')[:160]!r}. {exc}"
+                        ) from exc
                     waveforms[position] = retry_wave
                 # All clearly quiet sentences need the same bounded reference
                 # calibration; the number-only policy missed ordinary short

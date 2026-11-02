@@ -301,6 +301,8 @@ class EditorPreviewController:
             "removal_mode": settings["removal_mode"] if removes_source_text else "keep",
             "watermark_text": settings["watermark_text"],
             "watermark_scale_percent": settings["watermark_scale_percent"],
+            **({"watermark_moving": False} if not settings.get("watermark_moving", True) else {}),
+            **({"watermark_position": settings["watermark_position"]} if settings.get("watermark_position") else {}),
             "ocr_region": settings["ocr_region"] if removes_source_text else {},
             "preview_encoding": settings["preview_encoding"],
             "source_treatment_revision": 3,
@@ -325,6 +327,9 @@ class EditorPreviewController:
             # instant and do not invalidate the expensive source proxy.
             "watermark_text": settings["watermark_text"] if live_watermark else "",
             "watermark_scale_percent": settings["watermark_scale_percent"] if live_watermark else 100,
+            **({"watermark_moving": False} if live_watermark and not settings.get("watermark_moving", True) else {}),
+            **({"watermark_position": settings["watermark_position"]}
+               if live_watermark and settings.get("watermark_position") else {}),
             "ocr_region": settings["ocr_region"] if removes_source_text else {},
             "preview_encoding": settings["preview_encoding"],
             "source_treatment_revision": 3,
@@ -551,6 +556,9 @@ class EditorPreviewController:
                                               or ocr_region.get("treatment_layers")),
             "removal_mode": str(getattr(video, "original_subtitle_removal_mode", "patch") or "patch"),
             "watermark_text": str(getattr(video, "watermark_text", "") or ""),
+            **({"watermark_moving": False} if not getattr(video, "watermark_moving", True) else {}),
+            **({"watermark_position": video.watermark_position.model_dump()}
+               if getattr(video, "watermark_position", None) else {}),
             "watermark_scale_percent": max(
                 25, min(300, int(getattr(video, "watermark_scale_percent", 100) or 100))
             ),
@@ -1312,6 +1320,9 @@ class EditorPreviewController:
                 subtitle_region_override=subtitle_region_override,
                 original_subtitle_intervals=original_subtitle_intervals,
                 watermark_scale_percent=getattr(video, "watermark_scale_percent", 100),
+                watermark_moving=getattr(video, "watermark_moving", True),
+                watermark_position=(video.watermark_position.model_dump()
+                                    if getattr(video, "watermark_position", None) else None),
                 progress_callback=lambda fraction: self._set_progress(
                     generation,
                     progress_start + max(0.0, min(1.0, float(fraction))) * progress_span,

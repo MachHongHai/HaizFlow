@@ -79,7 +79,7 @@ AppDialog {
     Text {
         objectName: "geminiGuidanceDisclosure"
         Layout.fillWidth: true
-        text: qsTr("Phụ đề và hướng dẫn được gửi tới Google khi dịch.")
+        text: qsTr("Phụ đề và hướng dẫn được gửi tới nhà cung cấp đã chọn khi dịch.")
         textFormat: Text.PlainText
         wrapMode: Text.Wrap
         color: Theme.textMuted

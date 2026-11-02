@@ -1,2 +1,4 @@
-onnxruntime==1.23.2
+# Isolated Windows vision engine only. Never install alongside the CPU ORT
+# distribution in Core or the speech engines: both own the same module files.
+onnxruntime-directml==1.24.4
 rapidocr==3.8.1

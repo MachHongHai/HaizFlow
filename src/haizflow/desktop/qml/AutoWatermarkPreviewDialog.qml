@@ -14,7 +14,7 @@ FloatingToolDialog {
     expandedWidth: 1040
     expandedHeight: 720
     toolTitle: qsTr("Watermark")
-    toolSubtitle: qsTr("Kéo góc trên hình để đổi kích thước")
+    toolSubtitle: qsTr("Kéo để đặt vị trí · Kéo góc để đổi kích thước")
 
     function openForSelectedVideo() {
         open();
@@ -61,16 +61,23 @@ FloatingToolDialog {
                 textColor: root.controller.watermarkTextColor
                 fontBold: root.controller.watermarkBold
                 fontItalic: root.controller.watermarkItalic
+                moving: root.controller.watermarkMoving
+                position: root.controller.watermarkPosition
                 opacityPercent: root.controller.watermarkOpacityPercent
                 outlinePercent: root.controller.watermarkOutlinePercent
                 scalePercent: root.controller.watermarkScalePercent
-                interactive: true
-                editing: true
+                interactive: root.controller.canEditSelectedVideo
+                editing: interactive
                 onScalePreviewChanged: function(value) {
                     root.controller.watermarkScalePercent = value;
                 }
                 onScaleCommitted: function(_before, value) {
                     root.controller.watermarkScalePercent = value;
+                    root.watermarkSettingsEdited();
+                }
+                onPositionCommitted: function(value) {
+                    root.controller.watermarkPosition = value;
+                    root.controller.watermarkMoving = false;
                     root.watermarkSettingsEdited();
                 }
             }
@@ -130,6 +137,17 @@ FloatingToolDialog {
                     }
                 }
 
+                StudioCheckBox {
+                    objectName: "autoWatermarkMovingCheckBox"
+                    Layout.fillWidth: true
+                    text: qsTr("Di chuyển")
+                    checked: root.controller.watermarkMoving
+                    enabled: root.controller.canEditSelectedVideo
+                    onToggled: {
+                        root.controller.watermarkMoving = checked;
+                        root.watermarkSettingsEdited();
+                    }
+                }
                 SettingLabel {
                     Layout.fillWidth: true
                     text: qsTr("Độ hiển thị · %1%")

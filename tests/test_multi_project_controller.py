@@ -180,11 +180,11 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertTrue(next(item for item in options if item["value"] == "large-v3-turbo")["available"])
 
     def test_whisper_turbo_readiness_uses_fast_resource_inventory(self):
-        manager = SimpleNamespace(status=Mock(return_value="installed"))
-        host = SimpleNamespace(_resource_packs=SimpleNamespace(manager=manager))
+        resources = SimpleNamespace(status_for_ui=Mock(return_value="installed"))
+        host = SimpleNamespace(_resource_packs=resources)
 
         self.assertTrue(HaizFlowController._detect_whisper_turbo_model_ready(host))
-        manager.status.assert_called_once_with("model-whisper-turbo")
+        resources.status_for_ui.assert_called_once_with("model-whisper-turbo")
 
     def test_download_project_source_import_uses_single_replace_and_batch_copy_flows(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -1235,7 +1235,7 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         self.assertEqual(controller._tts_voice, "en-US-JennyNeural")
         controller.ttsVoiceChanged.emit.assert_called_once()
-        controller.ttsVoiceOptionsChanged.emit.assert_called_once()
+        controller.ttsVoiceOptionsChanged.emit.assert_not_called()
 
     def test_edge_provider_changes_voice_and_invalidates_old_audio_preview(self):
         preview = SimpleNamespace(invalidate=Mock())

@@ -92,7 +92,7 @@ def _copy_video(input_path, output_path, process_id, progress_callback=None):
 def _run_video_encode(inputs: list[str], output_args: list[str], *, quality: int,
                       process_id: str, progress_callback=None, dimensions=None, **kwargs) -> None:
     """Use the same verified encoder selection as the main render pass."""
-    from haizflow.utils.ffmpeg import preferred_export_encoder
+    from haizflow.utils.ffmpeg import mark_video_encoder_failed, preferred_export_encoder
 
     check_cancellation(process_id)
     encoder, options = preferred_export_encoder(quality, dimensions=dimensions, duration=kwargs.get("duration", 0))
@@ -115,6 +115,7 @@ def _run_video_encode(inputs: list[str], output_args: list[str], *, quality: int
         check_cancellation(process_id)
         if encoder == "libx264":
             raise
+        mark_video_encoder_failed(encoder)
         encode("libx264", ["-preset", "veryfast", "-crf", str(quality)])
 
 

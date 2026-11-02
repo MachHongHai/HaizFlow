@@ -253,9 +253,9 @@ def generate_voice_parts(
     if not requested_segments:
         return
     if backend == "vieneu":
-        from haizflow.core.vieneu_voices import han_text_notice
+        from haizflow.core.vieneu_voices import unsupported_text_notice
 
-        notice = han_text_notice([{**segment, "index": index} if isinstance(segment, dict) else {}
+        notice = unsupported_text_notice([{**segment, "index": index} if isinstance(segment, dict) else {}
                                   for index, segment in requested_segments])
         if notice:
             raise ValueError(notice[1])

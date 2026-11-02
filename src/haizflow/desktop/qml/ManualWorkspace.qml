@@ -809,6 +809,8 @@ Item {
                     watermarkTextColor: AppController.watermarkTextColor
                     watermarkBold: AppController.watermarkBold
                     watermarkItalic: AppController.watermarkItalic
+                    watermarkMoving: AppController.watermarkMoving
+                    watermarkPosition: AppController.watermarkPosition
                     watermarkOpacityPercent: AppController.watermarkOpacityPercent
                     watermarkOutlinePercent: AppController.watermarkOutlinePercent
                     watermarkScalePercent: AppController.watermarkScalePercent
@@ -836,6 +838,9 @@ Item {
                     onWatermarkEditingDismissed: root.dismissWatermarkEditor()
                     onWatermarkScalePreviewChanged: function(value) {
                         AppController.watermarkScalePercent = value;
+                    }
+                    onWatermarkPositionCommitted: function(value) {
+                        AppController.commitManualWatermarkPosition(value);
                     }
                     onWatermarkScaleCommitted: function(beforeValue, afterValue) {
                         AppController.watermarkScalePercent = afterValue;

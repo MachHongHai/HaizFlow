@@ -273,9 +273,14 @@ if (!(Test-Path -LiteralPath $SubtitleFontPath -PathType Leaf)) {
   throw "Subtitle font is missing: $SubtitleFontPath"
 }
 $ArgsList += @("--add-data", "$SubtitleFontsPath;haizflow\assets\fonts")
+$TranslationCatalogPath = Join-Path $Root "src\haizflow\assets\translation"
+$ArgsList += @("--add-data", "$TranslationCatalogPath;haizflow\assets\translation")
 
 $ArgsList += @("--collect-all", "yt_dlp")
 $ArgsList += @("--collect-data", "certifi")
+$ArgsList += @("--collect-submodules", "mcp.server")
+$ArgsList += @("--collect-submodules", "mcp.client")
+$ArgsList += @("--copy-metadata", "mcp", "--copy-metadata", "mcp-types")
 $ArgsList += @("--additional-hooks-dir", (Join-Path $PSScriptRoot "pyinstaller-hooks"))
 $ArgsList += @("--hidden-import", "edge_tts")
 $ArgsList += @("--collect-all", "playwright")

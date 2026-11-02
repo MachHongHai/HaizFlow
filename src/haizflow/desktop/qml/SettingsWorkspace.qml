@@ -34,7 +34,8 @@ Item {
                 options: [
                     { label: qsTr("Chung"), value: "settings" },
                     { label: qsTr("API Key"), value: "api-keys" },
-                    { label: qsTr("Gói tài nguyên"), value: "packages" }
+                    { label: qsTr("Gói tài nguyên"), value: "packages" },
+                    { label: qsTr("MCP"), value: "mcp" }
                 ]
                 onActivated: function(value) { root.navigateRequested(value); }
             }
@@ -51,7 +52,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             currentIndex: root.currentRoute === "api-keys" ? 1
-                : root.currentRoute === "packages" ? 2 : 0
+                : root.currentRoute === "packages" ? 2 : root.currentRoute === "mcp" ? 3 : 0
             SettingsPage { Layout.fillWidth: true; Layout.fillHeight: true }
             ApiKeysPage { Layout.fillWidth: true; Layout.fillHeight: true }
             Loader {
@@ -60,6 +61,13 @@ Item {
                 active: settingsPages.currentIndex === 2
                 asynchronous: true
                 sourceComponent: Component { ResourcePacksPage {} }
+            }
+            Loader {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                active: settingsPages.currentIndex === 3
+                asynchronous: true
+                sourceComponent: Component { McpSettingsPage {} }
             }
         }
     }

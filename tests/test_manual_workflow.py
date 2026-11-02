@@ -255,6 +255,26 @@ class ManualWorkflowTests(unittest.TestCase):
 
         self.assertEqual(config.project_type, "manual")
 
+    def test_mcp_retranslation_skips_only_the_extra_voice_confirmation(self):
+        video = SimpleNamespace(
+            video_id="manual-video", project_type="manual", status="manual_ready",
+            active_artifacts={"tts_manifest": "voice-current"},
+        )
+        host = SimpleNamespace(
+            _project_type="manual", _settings_language="vi", _selected_video=lambda: video,
+            _processing_queue=SimpleNamespace(contains=lambda _video_id: False), appAlertRequested=Mock(),
+        )
+        with (
+            patch("haizflow.pipeline.manual_tools.tool_readiness",
+                  return_value={"canRun": True, "blockedReason": ""}),
+            patch("haizflow.desktop.qml_controller.manual_artifacts.peek_active", return_value={"artifact_id": "voice"}),
+            patch("haizflow.desktop.qml_controller.QMessageBox.question") as question,
+            patch("haizflow.pipeline.process_registry.prepare_video_resume", side_effect=RuntimeError("queue boundary")),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "queue boundary"):
+                HaizFlowController.runManualTool(host, "translation", confirm_existing_voice=False)
+        question.assert_not_called()
+
     def test_presenter_does_not_collapse_manual_projects_into_single(self):
         video = SimpleNamespace(
             video_id="manual-video",
@@ -524,32 +544,24 @@ class ManualWorkflowTests(unittest.TestCase):
             transcript_path.parent.mkdir(parents=True)
             input_path.write_bytes(b"video")
             transcript_path.write_text('[{"start": 0, "end": 1, "text": "xin chào"}]', encoding="utf-8")
-            signature = process_video._signature(
-                process_video._file_state(str(input_path)),
-                process_video.TIMING_SOURCE,
-                "hymt2-semantic-source-context-retry-v21",
-                "vi",
-                True,
-                "small",
-                "hymt2",
-                process_video.HYMT2_MODEL_REVISION,
-            )
             video = SimpleNamespace(
                 video_id="manual-video",
                 mode="A",
                 translator_provider="hymt2",
+                translation_model="q4",
                 target_language="vi",
                 enable_audio_separation=True,
                 speech_recognition_model="small",
                 project_type="manual",
                 manual_completed_stages=["translation", "subtitles"],
                 resume_step="",
-                checkpoints={"translation": signature},
+                checkpoints={},
                 files={
                     "video_input": str(input_path),
                     "transcript_json": str(transcript_path),
                 },
             )
+            video.checkpoints["translation"] = process_video._translation_signature(video, str(input_path))
             reporter = SimpleNamespace(update=lambda *_args: None)
 
             with (

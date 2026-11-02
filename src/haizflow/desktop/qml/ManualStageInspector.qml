@@ -438,7 +438,8 @@ InspectorPanel {
         onTriggered: {
             AppController.persistVideoSettingsFor(root.pendingSettingsVideoId);
             root.pendingSettingsVideoId = "";
-            root.settingsCommitted();
+            if (root.toolId !== "translation" && root.toolId !== "voice")
+                root.settingsCommitted();
         }
     }
 

@@ -121,6 +121,40 @@ def test_portrait_patch_and_image_watermark_fuse_final_size_speed_in_one_pass(me
     assert get_video_duration(str(output)) == pytest.approx(1, abs=.1)
 
 
+@pytest.mark.parametrize("kind", ["text", "image", "video"])
+@pytest.mark.parametrize("moving", [True, False])
+def test_watermark_motion_matches_rendered_pixels(media, tmp_path, kind, moving):
+    source, voice, subtitles = media
+    output = tmp_path / "motion.mp4"
+    kwargs = dict(watermark_kind=kind, watermark_moving=moving, watermark_opacity_percent=100)
+    if not moving:
+        kwargs["watermark_position"] = {"x_percent": 15, "y_percent": 20}
+    if kind == "image":
+        image = tmp_path / "mark.bmp"
+        ffmpeg("-f", "lavfi", "-i", "color=red:size=24x24", "-frames:v", "1", str(image))
+        kwargs["watermark_image_path"] = str(image)
+    elif kind == "video":
+        clip = tmp_path / "mark.mp4"
+        ffmpeg("-f", "lavfi", "-i", "color=red:size=24x24:rate=20:duration=2",
+               "-c:v", "libx264", "-pix_fmt", "yuv420p", str(clip))
+        kwargs["watermark_video_path"] = str(clip)
+    render.render_video(str(source), str(voice), str(subtitles), str(output), "keep_ratio", SubtitleStyle(),
+                        CropSettings(), "watermark-motion", watermark_text="TEST", **kwargs)
+    positions = []
+    for at in (.1, 1.6):
+        frame = np.frombuffer(ffmpeg("-ss", str(at), "-i", str(output), "-frames:v", "1",
+                              "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"), np.uint8).reshape(108, 192, 3)
+        mask = ((frame[:, :, 0] > 170) & (frame[:, :, 1] > 170)) if kind == "text" else (
+            (frame[:, :, 0] > 170) & (frame[:, :, 1] < 80))
+        y, x = np.where(mask)
+        assert len(x) > 10
+        positions.append((x.mean(), y.mean()))
+    distance = np.linalg.norm(np.subtract(*positions))
+    assert distance > 3 if moving else distance < 1
+    if not moving:
+        assert positions[0][0] < 70 and positions[0][1] < 50, positions
+
+
 def test_constant_patch_mask_matches_existing_feather_on_first_and_last_frames():
     decoded = []
     for static in (False, True):

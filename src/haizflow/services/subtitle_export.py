@@ -46,13 +46,18 @@ def compose_source_srt(video, document: EditorDocument | None = None) -> str:
     return srt.compose(sorted(cues, key=lambda cue: (cue.start, cue.end)), eol="\r\n")
 
 
-def save_srt_pair(source: str, result: str, destination: str | Path) -> list[Path]:
+def save_srt_pair(source: str, result: str, destination: str | Path, *, overwrite: bool = True) -> list[Path]:
     """Stage both files before publication; restore previous files on failure."""
     target = validate_srt_destination(destination)
     outputs = {target.with_name(target.stem + ".source.srt"): source,
                target.with_name(target.stem + ".result.srt"): result}
     if not all(content.strip() for content in outputs.values()):
         raise ValueError("No subtitles to export.")
+    if not overwrite and any(path.exists() for path in outputs):
+        raise FileExistsError("SRT destination exists; replacement must be explicitly requested.")
+    from haizflow.services.video_export import destination_identity
+
+    identities = {path: destination_identity(path) for path in outputs}
     temporary = []
     prepared = []
     published = []
@@ -74,10 +79,16 @@ def save_srt_pair(source: str, result: str, destination: str | Path) -> list[Pat
                 shutil.copy2(path, backup)
             prepared.append((path, Path(name), backup))
         for path, name, backup in prepared:
-            replace_with_retry(name, path)
-            published.append((path, backup))
+            _publish_srt(name, path, overwrite=overwrite, expected_identity=identities[path])
+            published.append((path, backup, destination_identity(path)))
     except Exception:
-        for path, backup in reversed(published):
+        for path, backup, published_identity in reversed(published):
+            if destination_identity(path) != published_identity:
+                # Another app edited the newly published file. Do not clobber
+                # its data during rollback; retain any old-file recovery copy.
+                if backup:
+                    temporary.remove(backup)
+                continue
             if backup:
                 try:
                     replace_with_retry(backup, path)
@@ -138,17 +149,37 @@ def validate_srt_destination(destination: str | Path) -> Path:
     return target
 
 
-def save_srt(content: str, destination: str | Path) -> Path:
+def _publish_srt(temporary, target, *, overwrite, expected_identity):
+    from haizflow.services.video_export import destination_identity
+
+    validate_srt_destination(target)
+    if overwrite:
+        if destination_identity(target) != expected_identity:
+            raise FileExistsError("SRT destination changed during export. Choose it again.")
+        replace_with_retry(temporary, target)
+    elif os.name == "nt":
+        os.rename(temporary, target)
+    else:
+        os.link(temporary, target)  # Atomic no-clobber publication, including races after preflight.
+        os.unlink(temporary)
+
+
+def save_srt(content: str, destination: str | Path, *, overwrite: bool = True) -> Path:
     if not content.strip():
         raise ValueError("No subtitles to export.")
     target = validate_srt_destination(destination)
+    if target.exists() and not overwrite:
+        raise FileExistsError("SRT destination exists; replacement must be explicitly requested.")
+    from haizflow.services.video_export import destination_identity
+
+    identity = destination_identity(target)
     descriptor, temporary = tempfile.mkstemp(prefix=".haizflow-srt-", suffix=".tmp", dir=target.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as stream:
             stream.write(content)
             stream.flush()
             os.fsync(stream.fileno())
-        replace_with_retry(temporary, target)
+        _publish_srt(temporary, target, overwrite=overwrite, expected_identity=identity)
     finally:
         try:
             Path(temporary).unlink(missing_ok=True)

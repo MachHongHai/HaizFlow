@@ -12,6 +12,7 @@ from PySide6.QtCore import QObject, Property, Signal, Slot
 
 from haizflow.desktop.localization import QFileDialog
 from haizflow.desktop.models import ChannelCandidateListModel
+from haizflow.services import project_store
 from haizflow.schemas.channel_import import (
     ChannelImportRequest,
     ChannelImportSession,
@@ -25,6 +26,7 @@ from haizflow.services.channel_import import (
     new_session,
     normalize_remote_url,
     save_session,
+    session_directory,
     scan_channel,
 )
 from haizflow.services.video_download import DownloadCancelled
@@ -259,6 +261,10 @@ class ChannelImportCoordinator(QObject):
         if not session and self._active_project_root:
             session = load_latest_session(self._active_project_root)
             if session:
+                # The directory being opened owns this checkpoint, not paths
+                # or legacy keys embedded in old session metadata.
+                session.project_key = self._active_project_key
+                session.project_root = self._active_project_root
                 for candidate in session.candidates:
                     if candidate.status in {"downloading", "importing"}:
                         candidate.status = "failed"
@@ -270,7 +276,7 @@ class ChannelImportCoordinator(QObject):
                 self._project_sessions[session.project_key] = session.session_id
                 self._rebuild_session_cache(session)
                 try:
-                    save_session(session)
+                    self._save_session(session)
                 except OSError:
                     pass
         self._active_session_id = session.session_id if session else ""
@@ -378,7 +384,7 @@ class ChannelImportCoordinator(QObject):
         cancel_event = threading.Event()
         self._cancel_events[session.session_id] = cancel_event
         self._scan_progress = 0
-        save_session(session)
+        self._save_session(session)
         self._refresh_active_model()
 
         def report(progress: int, detail: str) -> None:
@@ -830,6 +836,9 @@ class ChannelImportCoordinator(QObject):
     @staticmethod
     def _save_session(session: ChannelImportSession) -> None:
         try:
-            save_session(session)
+            path = os.path.join(session_directory(session.project_root, session.session_id), "session.json")
+            with project_store.project_state_write_guard(session.project_key, session.project_root, path) as writable:
+                if writable:
+                    save_session(session)
         except OSError:
             pass

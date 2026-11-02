@@ -14,6 +14,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QmlNamedElement, QmlSingleton
 
 from haizflow.config import RUNTIME_DATA_DIR
+from haizflow.core.translation_models import is_api_model, is_cloud_model, translation_provider
 from haizflow.core.events import subscribe_log, unsubscribe_log
 from haizflow.core.hardware import (
     basic_hardware_capabilities,
@@ -90,7 +91,7 @@ from haizflow.schemas.editor import (
     EditorTextStyle,
     SourceEditDecision,
 )
-from haizflow.schemas.video import CropSettings, SubtitleStyle, VideoConfig
+from haizflow.schemas.video import CropSettings, SubtitleStyle, VideoConfig, WatermarkPosition
 from haizflow.services import (
     desktop_settings,
     editor_documents,
@@ -126,6 +127,7 @@ class HaizFlowController(QObject):
         "gemini_translation_instructions",
         "gemini_translation_glossary",
         "gemini_translation_style",
+        "translation_reasoning_effort",
         "tts_provider",
         "tts_voice",
         "speaker_mode",
@@ -153,6 +155,8 @@ class HaizFlowController(QObject):
         "watermark_text_color",
         "watermark_bold",
         "watermark_italic",
+        "watermark_moving",
+        "watermark_position",
     )
 
     videoPathChanged = Signal()
@@ -167,6 +171,7 @@ class HaizFlowController(QObject):
     ttsProviderOptionsChanged = Signal()
     ttsVoiceChanged = Signal()
     ttsVoiceOptionsChanged = Signal()
+    ttsVoiceSelectionChanged = Signal()
     speakerModeChanged = Signal()
     enableAudioSeparationChanged = Signal()
     originalVolumeChanged = Signal()
@@ -191,6 +196,7 @@ class HaizFlowController(QObject):
     audioPreviewChanged = Signal()
     workflowModeChanged = Signal()
     selectedVideoChanged = Signal()
+    manualToolStatesChanged = Signal()
     selectedElapsedChanged = Signal()
     processingChanged = Signal()
     logsChanged = Signal()
@@ -273,6 +279,7 @@ class HaizFlowController(QObject):
         self._gemini_translation_instructions = ""
         self._gemini_translation_glossary = ""
         self._gemini_translation_style = "balanced"
+        self._translation_reasoning_effort = ""
         self._tts_provider = "vieneu-gpu"
         self._tts_voice = "vieneu:Hải Đăng"
         self._speaker_mode = "single"
@@ -296,6 +303,8 @@ class HaizFlowController(QObject):
         self._watermark_text_color = "#FFFFFF"
         self._watermark_bold = True
         self._watermark_italic = True
+        self._watermark_moving = True
+        self._watermark_position = {}
         self._remove_original_subtitles = True
         self._original_subtitle_removal_mode = "patch"
         self._original_subtitle_region_override = {}
@@ -386,6 +395,12 @@ class HaizFlowController(QObject):
         self.selectedVideoChanged.connect(self._sync_edit_history_context)
         self.projectSetupChanged.connect(self._sync_edit_history_context)
         self._manual_subtitles = ManualSubtitleModel(self, self._manual_edit_history)
+        from haizflow.desktop.manual_tool_state_controller import ManualToolStateController
+
+        self._manual_tool_states = ManualToolStateController(self)
+        self._manual_tool_states.changed.connect(self.manualToolStatesChanged)
+        self.ttsVoiceChanged.connect(self.ttsVoiceSelectionChanged)
+        self.ttsVoiceOptionsChanged.connect(self.ttsVoiceSelectionChanged)
         self._manual_editor_document = ManualEditorDocumentModel(self)
         self._manual_preview_composition = ManualPreviewCompositionController(
             self._manual_editor_document,
@@ -411,6 +426,8 @@ class HaizFlowController(QObject):
         self._manual_subtitles.saveFailed.connect(self._subtitle_voice_edit_failed)
         self._manual_subtitles.changed.connect(self.manualSubtitleDocumentChanged)
         self.selectedVideoChanged.connect(self.manualSubtitleDocumentChanged)
+        self.manualSubtitleDocumentChanged.connect(self._refresh_manual_tool_states)
+        self.manualEditorDocumentChanged.connect(self._refresh_manual_tool_states)
         self._manual_subtitles.published.connect(self._manual_subtitles_published)
         self._manual_voice_refresh_pending = False
         self._manual_voice_refresh_enabled = False
@@ -460,6 +477,7 @@ class HaizFlowController(QObject):
         self._manual_editor_workspace = dict(settings.get("manual_editor_workspace") or {})
         self._resource_packs = ResourcePackController(self)
         self._resource_packs.changed.connect(self.resourcePacksChanged.emit)
+        self.resourcePacksChanged.connect(self._refresh_whisper_turbo_model_ready)
         self.hardwareChanged.connect(self.resourcePacksChanged.emit)
         self.hardwareChanged.connect(self.ttsProviderOptionsChanged.emit)
         self._app_updates = AppUpdateController(self)
@@ -564,8 +582,15 @@ class HaizFlowController(QObject):
 
         self.refreshVideos()
         self._last_video_metadata_revision = video_store.metadata_revision()
+        from haizflow.desktop.mcp_bridge import McpBridge
+
+        self._mcp_bridge = McpBridge(self)
         # Let Qt render the first frame before migrations touch large workspaces or invoke FFmpeg.
         QTimer.singleShot(0, self._start_startup_maintenance)
+
+    @Property(QObject, constant=True)
+    def mcpBridge(self):
+        return self._mcp_bridge
 
     def _drain_media_import_events(self) -> None:
         self._project_import.drain_background_events()
@@ -866,7 +891,7 @@ class HaizFlowController(QObject):
         if resource_packs is None:
             return False
         try:
-            return resource_packs.manager.status("model-whisper-turbo") in {"installed", "bundled"}
+            return resource_packs.status_for_ui("model-whisper-turbo") in {"installed", "bundled"}
         except (KeyError, OSError):
             return False
 
@@ -889,6 +914,9 @@ class HaizFlowController(QObject):
         return HaizFlowController._runtime_device_for(self)._confirm_application_close()
 
     def shutdown(self):
+        bridge = getattr(self, "_mcp_bridge", None)
+        if bridge is not None:
+            bridge.close()
         douyin_session = getattr(self, "_douyin_session", None)
         if douyin_session is not None:
             douyin_session.shutdown()
@@ -908,6 +936,9 @@ class HaizFlowController(QObject):
         audio = getattr(self, "_manual_audio", None)
         if audio is not None:
             audio.close()
+        tool_states = getattr(self, "_manual_tool_states", None)
+        if tool_states is not None:
+            tool_states.close()
         overlay = getattr(self, "_subtitle_overlay", None)
         if overlay is not None:
             overlay.close()
@@ -1449,7 +1480,7 @@ class HaizFlowController(QObject):
             )
         resource_packs = getattr(self, "_resource_packs", None)
         if requested in {"small", "small-cpu", "small-gpu"} and resource_packs is not None:
-            if resource_packs.manager.status("model-whisper-small") not in {"installed", "bundled"}:
+            if resource_packs.status_for_ui("model-whisper-small") in {"missing", "paused", "failed"}:
                 self._show_app_alert(
                     "Thiếu Whisper Small", "Hãy cài Whisper Small trong Gói tài nguyên trước khi nhận dạng.", "warning"
                 )
@@ -1550,6 +1581,9 @@ class HaizFlowController(QObject):
         video = self._selected_video()
         if not video:
             return "vi"
+        stored = str(getattr(video, "subtitle_language", "") or "").lower()
+        if stored and stored != "und":
+            return stored
         model = getattr(self, "_manual_subtitles", None)
         segments = model.segments if model is not None and model.video_id == video.video_id else None
         return manual_subtitle_language(video, segments)
@@ -1650,7 +1684,6 @@ class HaizFlowController(QObject):
             if preview is not None:
                 preview.invalidate()
             self.ttsVoiceChanged.emit()
-            self.ttsVoiceOptionsChanged.emit()
 
     @Property(str, notify=speakerModeChanged)
     def speakerMode(self):
@@ -1761,7 +1794,7 @@ class HaizFlowController(QObject):
             )
         ]
 
-    @Property(int, notify=ttsVoiceOptionsChanged)
+    @Property(int, notify=ttsVoiceSelectionChanged)
     def ttsVoiceIndex(self):
         voices = self._voice_options_for_language(HaizFlowController._selected_voice_language(self), self._tts_provider)
         for index, item in enumerate(voices):
@@ -2009,6 +2042,31 @@ class HaizFlowController(QObject):
         normalized = bool(value)
         if self._watermark_italic != normalized:
             self._watermark_italic = normalized
+            self.watermarkStyleChanged.emit()
+
+    @Property(bool, notify=watermarkStyleChanged)
+    def watermarkMoving(self):
+        return self._watermark_moving
+
+    @watermarkMoving.setter
+    def watermarkMoving(self, value):
+        normalized = bool(value)
+        if self._watermark_moving != normalized:
+            self._watermark_moving = normalized
+            self.watermarkStyleChanged.emit()
+
+    @Property("QVariantMap", notify=watermarkStyleChanged)
+    def watermarkPosition(self):
+        return dict(self._watermark_position)
+
+    @watermarkPosition.setter
+    def watermarkPosition(self, value):
+        try:
+            normalized = WatermarkPosition.model_validate(value).model_dump() if value else {}
+        except (TypeError, ValueError):
+            return
+        if self._watermark_position != normalized:
+            self._watermark_position = normalized
             self.watermarkStyleChanged.emit()
 
     @Property(bool, notify=subtitleSettingsChanged)
@@ -2393,7 +2451,7 @@ class HaizFlowController(QObject):
         )
         editor = getattr(self, "_manual_editor_document", None)
         if editor is not None and editor.video_id == self._selected_video_id:
-            editor.changed.emit()
+            editor.ocrLayersChanged.emit()
 
     def _selected_video(self):
         if not self._selected_video_id:
@@ -2811,29 +2869,16 @@ class HaizFlowController(QObject):
         video = self._selected_video()
         return str(getattr(video, "manual_target_tool", "") or "") if video else ""
 
-    @Property("QVariantList", notify=manualSubtitleDocumentChanged)
-    def manualToolModel(self):
+    def _refresh_manual_tool_states(self):
         video = self._selected_video()
-        if not video or getattr(video, "project_type", "single") != "manual":
-            return []
-        try:
-            from haizflow.pipeline.manual_tools import tool_states
+        document = self._manual_editor_document.document_object
+        revision = (self._manual_subtitles.revision, getattr(document, "revision", None))
+        self._manual_tool_states.request(video, self._settings_language,
+            bool(video and self._processing_queue.contains(video.video_id)), revision)
 
-            display_video = video
-            if (
-                video.status in {"pending", "processing"}
-                and getattr(video, "manual_target_tool", "")
-                and not self._processing_queue.contains(video.video_id)
-            ):
-                # A terminated worker can leave a durable processing snapshot
-                # behind. The queue is authoritative for live UI state; do not
-                # block every Manual control with a phantom "other tool".
-                display_video = video.model_copy(
-                    update={"status": "manual_ready", "manual_target_tool": ""}
-                )
-            return tool_states(display_video, language=self._settings_language)
-        except (OSError, RuntimeError, ValueError):
-            return []
+    @Property("QVariantList", notify=manualToolStatesChanged)
+    def manualToolModel(self):
+        return self._manual_tool_states.rows
 
     @Property("QVariantMap", notify=selectedVideoChanged)
     def manualArtifactSummary(self):
@@ -3138,6 +3183,14 @@ class HaizFlowController(QObject):
     def applyGeneralSettings(self, language, device, keep_warm):
         return HaizFlowController._settings_delegate_for(self).apply_general(str(language), str(device), bool(keep_warm))
 
+    @Property(QObject, constant=True)
+    def translationApi(self):
+        if not hasattr(self, "_translation_api"):
+            from haizflow.desktop.translation_api_controller import TranslationApiController
+
+            self._translation_api = TranslationApiController(self)
+        return self._translation_api
+
     @Property(bool, notify=geminiKeyChanged)
     def geminiKeyConfigured(self):
         try:
@@ -3215,12 +3268,12 @@ class HaizFlowController(QObject):
 
     @Slot(str)
     def requestApiKeySettings(self, provider: str):
-        if provider in {"gemini", "zernio"}:
+        if provider in {"gemini", "zernio", "openai", "deepseek", "openrouter", "custom"}:
             self.apiKeySettingsRequested.emit(provider)
 
     @Slot(str)
     def requestApiKeyGuide(self, provider: str):
-        if provider in {"gemini", "zernio"}:
+        if provider in {"gemini", "zernio", "openai", "deepseek", "openrouter", "custom"}:
             self.apiKeySettingsRequested.emit(provider)
             self.apiKeyGuideRequested.emit(provider)
 
@@ -3277,14 +3330,60 @@ class HaizFlowController(QObject):
         self.geminiGuidanceChanged.emit()
         return True
 
+    @Property(str, notify=geminiGuidanceChanged)
+    def translationReasoningEffort(self):
+        return str(getattr(self, "_translation_reasoning_effort", "") or "")
+
+    @translationReasoningEffort.setter
+    def translationReasoningEffort(self, value):
+        from haizflow.services.translation_api_policy import project_configuration
+
+        value = str(value or "")
+        info = project_configuration(self._translation_model, value,
+            has_guidance=bool(getattr(self, "_gemini_translation_instructions", "")
+                or getattr(self, "_gemini_translation_glossary", "")
+                or getattr(self, "_gemini_translation_style", "balanced") != "balanced"))
+        allowed = info.get("values", []) + (["disabled"] if info.get("thinking") else [])
+        if value and value not in allowed:
+            self._show_app_alert("Reasoning", "Mức reasoning không được model đang chọn hỗ trợ.", "warning")
+            return
+        if value == info.get("default"):
+            value = ""
+        if value != getattr(self, "_translation_reasoning_effort", ""):
+            self._translation_reasoning_effort = value
+            self.geminiGuidanceChanged.emit()
+
     @translationModel.setter
     def translationModel(self, value):
-        normalized = str(value or "").lower()
-        if normalized not in {"q4", "full", *gemini_translation.MODELS}:
+        from haizflow.core.translation_models import is_api_model, normalize_translation_model
+
+        normalized = normalize_translation_model(value)
+
+        if normalized not in {"q4", "full", *gemini_translation.MODELS} and not is_api_model(normalized):
+            return
+        if is_api_model(normalized):
+            from haizflow.services.translation_connections import resolve
+
+            try:
+                resolve(normalized, with_key=True)
+            except (OSError, ValueError) as exc:
+                self._show_app_alert("Kết nối dịch", str(exc), "warning")
+                return
+            if normalized != self._translation_model:
+                self._translation_model = normalized
+                self._translation_reasoning_effort = ""
+                signal = getattr(self, "geminiGuidanceChanged", None)
+                if signal is not None:
+                    signal.emit()
+                self.translationModelChanged.emit()
             return
         if normalized in gemini_translation.MODELS:
             if normalized != self._translation_model:
                 self._translation_model = normalized
+                self._translation_reasoning_effort = ""
+                signal = getattr(self, "geminiGuidanceChanged", None)
+                if signal is not None:
+                    signal.emit()
                 self.translationModelChanged.emit()
             if not self.geminiKeyConfigured:
                 self.requestGeminiSetup()
@@ -3304,7 +3403,7 @@ class HaizFlowController(QObject):
             if not compatible:
                 self._show_app_alert("Máy không đáp ứng", reason, "warning")
                 return
-            if resource_packs.manager.status(pack_id) not in {"installed", "bundled"}:
+            if resource_packs.status_for_ui(pack_id) in {"missing", "paused", "failed"}:
                 self._show_app_alert(
                     "Thiếu model dịch",
                     f"Hãy cài {resource_packs.manager.definitions[pack_id].label} trong Gói tài nguyên trước khi dịch.",
@@ -3312,6 +3411,10 @@ class HaizFlowController(QObject):
                 )
         if normalized != self._translation_model:
             self._translation_model = normalized
+            self._translation_reasoning_effort = ""
+            signal = getattr(self, "geminiGuidanceChanged", None)
+            if signal is not None:
+                signal.emit()
             self.translationModelChanged.emit()
 
     @Property(bool, notify=settingsChanged)
@@ -4473,7 +4576,8 @@ class HaizFlowController(QObject):
     @Slot()
     def requestAutoProcessing(self):
         video = self._selected_video()
-        if (video and video.project_type in {"single", "batch"} and not self.videoExportBusy
+        if (video and video.project_type in {"single", "batch"}
+                and self._video_exports.can_start_processing(video.video_id)
                 and not self._processing_queue.contains(video.video_id)):
             self.autoProcessingRequested.emit()
 
@@ -4609,7 +4713,7 @@ class HaizFlowController(QObject):
 
     @Slot(str, result=bool)
     @Slot(str, bool, result=bool)
-    def runManualTool(self, tool_id, force_rerun=False):
+    def runManualTool(self, tool_id, force_rerun=False, *, confirm_existing_voice=True):
         commands = getattr(self, "_project_commands", None)
         if commands is not None and commands.is_deleting(str(self._selected_project_key or "")):
             return False
@@ -4655,6 +4759,14 @@ class HaizFlowController(QObject):
         ):
             self.requestGeminiSetup()
             return False
+        if tool_id == "translation" and is_api_model(str(getattr(effective_config, "translation_model", ""))):
+            from haizflow.services.translation_connections import resolve
+
+            try:
+                resolve(effective_config.translation_model, with_key=True)
+            except (OSError, ValueError) as exc:
+                self._show_app_alert("Kết nối dịch", str(exc), "warning")
+                return False
         ensure_hardware = getattr(self, "_ensure_hardware_ready_for_action", None)
         if tool_id in {"translation", "voice", "separation"} and callable(ensure_hardware):
             if not ensure_hardware():
@@ -4768,7 +4880,11 @@ class HaizFlowController(QObject):
         if state and not state["canRun"]:
             self.appAlertRequested.emit("Chưa thể chạy", state["blockedReason"] or "Thiếu dữ liệu đầu vào.", "info")
             return False
-        if tool_id == "translation" and manual_artifacts.peek_active(video, "tts_manifest"):
+        if (
+            confirm_existing_voice
+            and tool_id == "translation"
+            and manual_artifacts.peek_active(video, "tts_manifest")
+        ):
             answer = QMessageBox.question(
                 None,
                 "Translate again",
@@ -5385,6 +5501,27 @@ class HaizFlowController(QObject):
             return False
         self.watermarkScalePercent = max(25, min(300, int(scale_percent)))
         return self.saveSelectedVideoSettings()
+
+    @Slot("QVariantMap", result=bool)
+    def commitManualWatermarkPosition(self, after_position):
+        video = self._selected_video()
+        if not video or video.project_type != "manual" or not self.canEditSelectedVideo:
+            return False
+        try:
+            position = WatermarkPosition.model_validate(after_position).model_dump()
+        except (TypeError, ValueError):
+            return False
+        before_position = dict(self._watermark_position)
+        before_moving = self.watermarkMoving
+        self.watermarkPosition = position
+        self.watermarkMoving = False
+        if not self.saveSelectedVideoSettings():
+            self.watermarkPosition = before_position
+            self.watermarkMoving = before_moving
+            return False
+
+        # The ordinary settings save records one atomic position/motion undo.
+        return True
 
     @Slot(int, int)
     def recordManualWatermarkScaleChange(self, before_scale, after_scale):
@@ -7189,6 +7326,9 @@ class HaizFlowController(QObject):
             "watermark_text_color": getattr(video, "watermark_text_color", "#FFFFFF"),
             "watermark_bold": getattr(video, "watermark_bold", True),
             "watermark_italic": getattr(video, "watermark_italic", True),
+            "watermark_moving": getattr(video, "watermark_moving", True),
+            "watermark_position": (video.watermark_position.model_dump()
+                                   if getattr(video, "watermark_position", None) is not None else None),
             "project_name": video.project_name,
             "project_directory": video.project_directory,
             "project_type": video.project_type,
@@ -7452,10 +7592,11 @@ class HaizFlowController(QObject):
             target_language=self._target_language,
             speech_recognition_model=self._speech_recognition_model,
             translation_model=translation_model,
-            translator_provider="gemini" if translation_model in gemini_translation.MODELS else "hymt2",
+            translator_provider=translation_provider(translation_model),
             gemini_translation_instructions=str(getattr(self, "_gemini_translation_instructions", "") or ""),
             gemini_translation_glossary=str(getattr(self, "_gemini_translation_glossary", "") or ""),
             gemini_translation_style=str(getattr(self, "_gemini_translation_style", "balanced") or "balanced"),
+            translation_reasoning_effort=str(getattr(self, "_translation_reasoning_effort", "") or ""),
             tts_provider=self._tts_provider,
             tts_voice=self._tts_voice,
             speaker_mode=self._speaker_mode,
@@ -7483,6 +7624,8 @@ class HaizFlowController(QObject):
             watermark_text_color=self._watermark_text_color,
             watermark_bold=self._watermark_bold,
             watermark_italic=self._watermark_italic,
+            watermark_moving=getattr(self, "_watermark_moving", True),
+            watermark_position=getattr(self, "_watermark_position", None) or None,
             background_music_path=self._background_music_path,
             project_name=self._project_name,
             project_directory=self._project_directory,
@@ -7599,6 +7742,14 @@ class HaizFlowController(QObject):
                 if clip.transform.opacity_percent != video.watermark_opacity_percent:
                     clip.transform.opacity_percent = video.watermark_opacity_percent
                     did_change = True
+                if clip.metadata.get("legacy_motion", True) != video.watermark_moving:
+                    clip.metadata["legacy_motion"] = video.watermark_moving
+                    did_change = True
+                point = getattr(video, "watermark_position", None)
+                position = point.model_dump() if point else None
+                if clip.metadata.get("watermark_position") != position:
+                    clip.metadata["watermark_position"] = position
+                    did_change = True
         if not did_change:
             return
         try:
@@ -7622,6 +7773,7 @@ class HaizFlowController(QObject):
             "gemini_translation_instructions": config.gemini_translation_instructions,
             "gemini_translation_glossary": config.gemini_translation_glossary,
             "gemini_translation_style": config.gemini_translation_style,
+            "translation_reasoning_effort": config.translation_reasoning_effort,
             "translator_provider": config.translator_provider,
             "tts_provider": config.tts_provider,
             "tts_voice": config.tts_voice,
@@ -7650,6 +7802,8 @@ class HaizFlowController(QObject):
             "watermark_text_color": config.watermark_text_color,
             "watermark_bold": config.watermark_bold,
             "watermark_italic": config.watermark_italic,
+            "watermark_moving": config.watermark_moving,
+            "watermark_position": config.watermark_position,
             "project_type": config.project_type,
         }
         if getattr(video, "project_type", "single") == "manual":
@@ -7669,10 +7823,11 @@ class HaizFlowController(QObject):
             )
             target_language_changed = changed("target_language", config.target_language)
             translation_model_changed = changed("translation_model", config.translation_model)
-            guidance_changed = str(config.translation_model).startswith("gemini-") and any((
+            guidance_changed = is_cloud_model(str(config.translation_model)) and any((
                     changed("gemini_translation_instructions", config.gemini_translation_instructions),
                     changed("gemini_translation_glossary", config.gemini_translation_glossary),
                     changed("gemini_translation_style", config.gemini_translation_style),
+                    changed("translation_reasoning_effort", config.translation_reasoning_effort),
                 ))
             if recognition_changed or target_language_changed or translation_model_changed:
                 # Recognition and translation controls describe the next
@@ -7755,6 +7910,8 @@ class HaizFlowController(QObject):
                     changed("watermark_text_color", config.watermark_text_color),
                     changed("watermark_bold", config.watermark_bold),
                     changed("watermark_italic", config.watermark_italic),
+                    changed("watermark_moving", config.watermark_moving),
+                    changed("watermark_position", config.watermark_position),
                 )
             ):
                 invalidated.add("render")

@@ -64,6 +64,7 @@ if str(SRC) not in sys.path:
 import haizflow.config as _runtime_config  # noqa: E402,F401
 
 _INTERNAL_STREAM_MODES = {
+    "--mcp-server",
     "--engine-worker",
     "--douyin-channel-worker",
     "--demucs-separate",
@@ -78,6 +79,11 @@ _INTERNAL_STREAM_MODES = {
 }
 if any(mode in sys.argv for mode in _INTERNAL_STREAM_MODES):
     _restore_internal_standard_streams()
+
+if "--mcp-server" in sys.argv:
+    from haizflow.mcp.__main__ import main as run_mcp_server
+
+    raise SystemExit(run_mcp_server(sys.argv[sys.argv.index("--mcp-server") + 1:]))
 
 if "--engine-worker" in sys.argv:
     from haizflow.engine.main import main as run_engine_worker

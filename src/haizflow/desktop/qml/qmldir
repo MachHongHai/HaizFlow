@@ -1,4 +1,12 @@
 module HaizFlow
+TranslationApiEntryForm 1.0 TranslationApiEntryForm.qml
+TranslationProjectModelDialog 1.0 TranslationProjectModelDialog.qml
+TranslationReasoningControl 1.0 TranslationReasoningControl.qml
+TranslationApiListRow 1.0 TranslationApiListRow.qml
+SettingsMcpGroup 1.0 SettingsMcpGroup.qml
+McpSettingsPage 1.0 McpSettingsPage.qml
+McpConnectionGuide 1.0 McpConnectionGuide.qml
+McpLaunchFields 1.0 McpLaunchFields.qml
 LazyDialogLoader 1.0 LazyDialogLoader.qml
 DeferredActionButton 1.0 DeferredActionButton.qml
 SrtExportDialog 1.0 SrtExportDialog.qml

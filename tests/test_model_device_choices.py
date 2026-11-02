@@ -184,8 +184,8 @@ def test_device_switch_keeps_a_compatible_native_vieneu_preset():
     host.ttsVoiceChanged.emit.assert_not_called()
 
 
-@pytest.mark.parametrize("language", ["en", "zh"])
-def test_auto_language_choice_rejects_chinese_and_keeps_english_vieneu(language):
+@pytest.mark.parametrize("language", ["en", "zh", "ko", "ja", "es"])
+def test_auto_language_choice_rejects_unsupported_and_keeps_english_vieneu(language):
     from haizflow.desktop.presenters import voice_options_for_language
 
     host = SimpleNamespace(_target_language="vi", _tts_provider="vieneu-gpu", _tts_voice="vieneu:Hải Đăng",
@@ -196,10 +196,10 @@ def test_auto_language_choice_rejects_chinese_and_keeps_english_vieneu(language)
     host._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(host)
     for _ in range(2):
         HaizFlowController.targetLanguage.fset(host, language)
-    assert host._target_language == ("vi" if language == "zh" else "en")
+    assert host._target_language == ("en" if language == "en" else "vi")
     assert host._tts_provider == "vieneu-gpu" and host._tts_voice == "vieneu:Hải Đăng"
-    assert host.appAlertRequested.emit.call_count == (2 if language == "zh" else 0)
-    assert host._audio_preview.invalidate.call_count == (0 if language == "zh" else 1)
+    assert host.appAlertRequested.emit.call_count == (0 if language == "en" else 2)
+    assert host._audio_preview.invalidate.call_count == (1 if language == "en" else 0)
 
 
 def test_device_change_updates_empty_defaults_and_selected_gpu_models():

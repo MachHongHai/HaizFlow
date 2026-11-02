@@ -5,6 +5,7 @@ import unicodedata
 SHORT_PHRASE_VERSION = "omnivoice-short-phrase-v5-legacy-generation-zero-fade"
 NUMBER_SPEECH_VERSION = "omnivoice-vi-numbers-v3-legacy-native-text"
 VOICE_AUDIO_VERSION = "omnivoice-clean-level-v4-zero-fade-speaker-peer-median"
+MULTILINGUAL_REFERENCE_VERSION = "omnivoice-ja-ko-es-reference-v1-packaged-preset"
 OMNIVOICE_FADE_DURATION = 0.0
 
 _VI_DIGITS = ("không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín")
@@ -88,6 +89,10 @@ def uses_spoken_number_normalization(text: str, language: str) -> bool:
 
 def voice_text_policy_versions(text: str, language: str) -> tuple[str, ...]:
     versions = (VOICE_AUDIO_VERSION,)
+    if str(language or "").lower() in {"ja", "japanese", "ko", "korean", "es", "spanish"}:
+        # Do not mix previously unconditioned clips with the new stable preset
+        # voice. Other languages/backends keep their existing cache identity.
+        versions += (MULTILINGUAL_REFERENCE_VERSION,)
     if short_phrase_units(text, language):
         versions += (SHORT_PHRASE_VERSION,)
     if uses_spoken_number_normalization(text, language):

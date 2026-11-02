@@ -9,6 +9,7 @@ from pathlib import Path
 from haizflow.schemas.video import VideoConfig
 from haizflow.services import project_store
 from haizflow.core.storage_ownership import owned_path
+from haizflow.desktop.catalog import TARGET_LANGUAGE_CODES
 
 
 FIELDS = {
@@ -19,6 +20,7 @@ FIELDS = {
     "geminiTranslationInstructions": "gemini_translation_instructions",
     "geminiTranslationGlossary": "gemini_translation_glossary",
     "geminiTranslationStyle": "gemini_translation_style",
+    "translationReasoningEffort": "translation_reasoning_effort",
     "ttsProvider": "tts_provider", "ttsVoice": "tts_voice", "speakerMode": "speaker_mode",
     "enableAudioSeparation": "enable_audio_separation", "originalVolume": "original_video_volume",
     "backgroundMusicVolume": "background_music_volume", "ttsVolume": "tts_volume",
@@ -28,6 +30,8 @@ FIELDS = {
     "watermarkOpacityPercent": "watermark_opacity_percent", "watermarkOutlinePercent": "watermark_outline_percent",
     "watermarkFontFamily": "watermark_font_family", "watermarkTextColor": "watermark_text_color",
     "watermarkBold": "watermark_bold", "watermarkItalic": "watermark_italic",
+    "watermarkMoving": "watermark_moving",
+    "watermarkPosition": "watermark_position",
     "removeOriginalSubtitles": "remove_original_subtitles", "originalSubtitleRemovalMode": "original_subtitle_removal_mode",
     "originalSubtitleRegion": "original_subtitle_region_override",
 }
@@ -36,8 +40,11 @@ ASSETS = {"backgroundMusicPath": "background_music", "voiceReferencePath": "voic
 
 
 def values_for(video) -> dict:
-    result = {key: getattr(video, field, "balanced" if field == "gemini_translation_style" else "") for key, field in FIELDS.items()}
+    result = {key: getattr(video, field, True if field == "watermark_moving" else
+                          "balanced" if field == "gemini_translation_style" else "") for key, field in FIELDS.items()}
     result["workflowMode"] = "A"
+    position = getattr(video, "watermark_position", None)
+    result["watermarkPosition"] = position.model_dump() if position is not None else {}
     result["subtitleStyle"] = {**video.subtitle_style.model_dump(), "manual": video.subtitle_layout_override}
     result.update({key: str((video.files or {}).get(field) or "") for key, field in ASSETS.items()})
     return result
@@ -69,15 +76,18 @@ def differences(actual: dict, expected: dict) -> list[str]:
 def config_for(values: dict) -> VideoConfig:
     payload = {field: values[key] for key, field in FIELDS.items() if key in values}
     payload["mode"] = "A"
+    payload["watermark_position"] = payload.get("watermark_position") or None
     payload["source_language"] = "auto"
     payload["project_type"] = "batch"
-    payload["translator_provider"] = "gemini" if str(values.get("translationModel", "")).startswith("gemini-") else "hymt2"
+    from haizflow.core.translation_models import translation_provider
+
+    payload["translator_provider"] = translation_provider(str(values.get("translationModel", "")))
     style = dict(values.get("subtitleStyle") or {})
     payload["subtitle_layout_override"] = bool(style.pop("manual", False))
     payload["subtitle_style"] = style
     payload.update({field + "_path": str(values.get(key) or "") for key, field in ASSETS.items()})
-    if payload.get("target_language", "vi") not in {"vi", "en", "zh"}:
-        raise ValueError("Choose English, Vietnamese or Chinese.")
+    if payload.get("target_language", "vi") not in TARGET_LANGUAGE_CODES:
+        raise ValueError("Choose a supported target language.")
     config = VideoConfig.model_validate(payload)
     from haizflow.core.vieneu_voices import unsupported_language_notice
 
@@ -126,7 +136,8 @@ def stable_values(project_key: str, initial: dict, videos: list) -> dict:
         # Older shared defaults predate hand-drawn cover regions. An individual
         # video's region must not silently become the shared batch default.
         return {**initial, "originalSubtitleRegion": {}, "geminiTranslationInstructions": "",
-                "geminiTranslationGlossary": "", "geminiTranslationStyle": "balanced", **saved}
+                "geminiTranslationGlossary": "", "geminiTranslationStyle": "balanced",
+                "translationReasoningEffort": "", "watermarkMoving": True, "watermarkPosition": {}, **saved}
     if videos:
         maps = [values_for(video) for video in videos]
         signatures = [json.dumps({key: asset_identity(value) if key in ASSETS else value

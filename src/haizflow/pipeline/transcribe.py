@@ -5,6 +5,8 @@ import re
 import statistics
 import tempfile
 import threading
+import math
+import unicodedata
 from pathlib import Path
 
 from haizflow.config import HF_HOME, MODELS_DIR
@@ -59,6 +61,7 @@ _ALIGNMENT_GROUP_SPLIT_GAP_SECONDS = 3.0
 _ALIGNMENT_GROUP_MAX_SECONDS = 75.0
 _MIN_SENTENCE_SPAN_SECONDS = 0.45
 _CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
+_UNSPACED_TEXT_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
 _CJK_LANGUAGE_CODES = frozenset({"zh", "ja", "ko"})
 _SENTENCE_END_CHARS = frozenset(".!?\u2026\u3002\uff01\uff1f")
 _SENTENCE_CLOSERS = frozenset("\"'\u2019\u201d)]}\u3009\u300b\u300d\u300f\u3011")
@@ -238,7 +241,7 @@ def _merge_transcript_text(left: str, right: str) -> str:
         return left
     if raw_right[:1].isspace():
         return f"{left} {right}"
-    if _CJK_RE.search(left[-1:]) and _CJK_RE.match(right[:1]):
+    if _UNSPACED_TEXT_RE.search(left[-1:]) and _UNSPACED_TEXT_RE.match(right[:1]):
         return left + right
     if right[:1] in ",.;:!?%)]}\u3001\u3002\uff0c\uff01\uff1f":
         return left + right
@@ -438,6 +441,85 @@ def _speech_weight(text: str) -> int:
     return max(1, sum(character.isalnum() for character in str(text or "")))
 
 
+def _spoken_characters(text) -> str:
+    return "".join(char for char in unicodedata.normalize("NFC", str(text or "")).casefold() if char.isalnum())
+
+
+def _split_with_asr_words(segment, sentences):
+    """Partition verified native ASR word clocks, not the whole VAD span."""
+    words = segment.get("words") or []
+    if not words or _spoken_characters("".join(str(word.get("word") or "") for word in words)) != _spoken_characters(segment["text"]):
+        return None
+    characters = []
+    previous_end = float(segment["start"])
+    try:
+        for word in words:
+            letters = _spoken_characters(word.get("word"))
+            if not letters:
+                continue
+            start, end = float(word["start"]), float(word["end"])
+            if (not math.isfinite(start) or not math.isfinite(end) or end <= start
+                    or start < previous_end - .05 or end > float(segment["end"]) + .05):
+                return None
+            characters.extend((start + (end - start) * index / len(letters),
+                               start + (end - start) * (index + 1) / len(letters)) for index in range(len(letters)))
+            previous_end = end
+    except (TypeError, ValueError, KeyError):
+        return None
+    result, offset = [], 0
+    for sentence in sentences:
+        count = len(_spoken_characters(sentence))
+        if count == 0 or offset + count > len(characters):
+            return None
+        start, end = characters[offset][0], characters[offset + count - 1][1]
+        if end - start < .25:
+            return None
+        result.append({**segment, "text": sentence, "start": round(start, 3), "end": round(end, 3)})
+        result[-1].pop("words", None)
+        offset += count
+    return result if offset == len(characters) else None
+
+
+def _native_unaligned_word_timing(asr_model, audio, segments, video_id):
+    """Use the loaded Whisper decoder for Japanese/Korean; no extra model pack.
+
+    Only matching text may contribute timing. A different transcription or
+    incomplete/uncertain word clock keeps the original ASR span unchanged.
+    """
+    decoder = getattr(getattr(asr_model, "model", None), "transcribe", None)
+    if not callable(decoder):
+        return segments
+    result = []
+    for segment in segments:
+        current = dict(segment)
+        result.append(current)
+        if segment.get("language") not in {"ja", "ko"}:
+            continue
+        check_cancellation(video_id)
+        start, end = float(segment["start"]), float(segment["end"])
+        clip = audio[round(start * _AUDIO_SAMPLE_RATE):round(end * _AUDIO_SAMPLE_RATE)]
+        try:
+            proposals, _info = decoder(clip, language=segment["language"], beam_size=1, word_timestamps=True,
+                                       vad_filter=False, condition_on_previous_text=False)
+            proposals = list(proposals)
+            check_cancellation(video_id)
+            words = [word for proposal in proposals for word in (proposal.words or []) if _spoken_characters(word.word)]
+            if (not words or _spoken_characters("".join(word.word for word in words)) != _spoken_characters(segment["text"])
+                    or any(not math.isfinite(float(word.probability)) or float(word.probability) < .15 for word in words)):
+                log_to_video(video_id, "Native ASR word timing did not match the transcript; keeping source timing.")
+                continue
+            timed = {**segment, "words": [{"word": word.word, "start": start + float(word.start),
+                                           "end": start + float(word.end)} for word in words]}
+            if _split_with_asr_words(timed, _split_sentence_text(segment["text"])):
+                current.update(timed)
+                log_to_video(video_id, f"Verified native {segment['language']} word timing at {start:.3f}-{end:.3f}s.")
+        except Exception as exc:
+            if is_cancelled(video_id):
+                raise
+            log_to_video(video_id, f"WARNING: Native ASR word timing unavailable; keeping source timing: {exc}")
+    return result
+
+
 def _coalesce_short_sentence_segments(segments: list[dict]) -> list[dict]:
     """Join unusably short contiguous speech fragments to a neighbour."""
     coalesced = []
@@ -447,11 +529,9 @@ def _coalesce_short_sentence_segments(segments: list[dict]) -> list[dict]:
         if duration < _MIN_SENTENCE_SPAN_SECONDS and coalesced:
             previous = coalesced[-1]
             gap = float(current.get("start", 0.0)) - float(previous.get("end", 0.0))
-            if gap <= 0.15:
+            if gap <= 0.15 and (previous.get("language") == current.get("language") or duration < 0.25):
                 previous["end"] = max(float(previous.get("end", 0.0)), float(current.get("end", 0.0)))
-                previous["text"] = (
-                    f"{str(previous.get('text') or '').rstrip()} {str(current.get('text') or '').lstrip()}"
-                ).strip()
+                previous["text"] = _merge_transcript_text(previous.get("text"), current.get("text"))
                 previous.pop("words", None)
                 continue
         coalesced.append(current)
@@ -460,12 +540,11 @@ def _coalesce_short_sentence_segments(segments: list[dict]) -> list[dict]:
         first = coalesced[0]
         first_duration = float(first.get("end", 0.0)) - float(first.get("start", 0.0))
         forward_gap = float(coalesced[1].get("start", 0.0)) - float(first.get("end", 0.0))
-        if first_duration < _MIN_SENTENCE_SPAN_SECONDS and forward_gap <= 0.15:
+        if (first_duration < _MIN_SENTENCE_SPAN_SECONDS and forward_gap <= 0.15
+                and (first.get("language") == coalesced[1].get("language") or first_duration < 0.25)):
             first = coalesced.pop(0)
             coalesced[0]["start"] = min(float(first.get("start", 0.0)), float(coalesced[0].get("start", 0.0)))
-            coalesced[0]["text"] = (
-                f"{str(first.get('text') or '').rstrip()} {str(coalesced[0].get('text') or '').lstrip()}"
-            ).strip()
+            coalesced[0]["text"] = _merge_transcript_text(first.get("text"), coalesced[0].get("text"))
             coalesced[0].pop("words", None)
     return coalesced
 
@@ -479,6 +558,9 @@ def _split_segment_proportionally(segment: dict) -> list[dict]:
     Long TTS network requests are bounded later by the TTS layer.
     """
     sentences = _split_sentence_text(segment.get("text", ""))
+    timed = _split_with_asr_words(segment, sentences) if segment.get("language") in {"ja", "ko"} else None
+    if timed:
+        return timed
     if len(sentences) <= 1:
         return [dict(segment)]
 
@@ -529,7 +611,7 @@ def _split_long_unaligned_speech(asr_model, audio, segments, batch_size, video_i
     """Split long spans without a verified word aligner at real speech pauses.
 
     WhisperX merges VAD regions into up-to-30-second transcription chunks.
-    Chinese and Vietnamese have no verified word aligner here, so a long
+    Languages without a verified word aligner use this path, so a long
     unpunctuated chunk would otherwise include every internal pause in one
     translation, subtitle and TTS slot.
     """
@@ -1350,7 +1432,8 @@ def transcribe(
         if progress_callback and not (checkpoint and checkpoint.reached("aligned")):
             progress_callback("transcribed", f"Detected {detected_language or 'unknown'} speech")
 
-        if detected_language in {"zh", "vi"} and not (checkpoint and checkpoint.reached("recognized")):
+        if (detected_language in {"zh", "vi", "ja", "ko"}
+                and not (checkpoint and checkpoint.reached("recognized"))):
             initial_segments = _split_long_unaligned_speech(
                 asr_model, audio, initial_segments, profile.whisper_batch_size, video_id,
                 detected_language,
@@ -1366,6 +1449,7 @@ def transcribe(
             sentence_segments = checkpoint.segments
         else:
             check_cancellation(video_id)
+            initial_segments = _native_unaligned_word_timing(asr_model, audio, initial_segments, video_id)
             sentence_segments = _align_segments_by_language(
                 audio, initial_segments, alignment_device, video_id, progress_callback=progress_callback,
             )

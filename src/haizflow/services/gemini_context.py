@@ -1,5 +1,7 @@
 """Bounded, project-local translation context; no additional model requests."""
 
+from haizflow.core.translation_models import is_cloud_model
+
 VERSION = "gemini-consistent-dialogue-v3-style-default-sampling"
 MAX_GUIDANCE = 4000
 STYLE_PROMPTS = {
@@ -11,17 +13,19 @@ STYLE_PROMPTS = {
 
 
 def signature_parts(video):
-    if not str(getattr(video, "translation_model", "")).startswith("gemini-"):
+    if not is_cloud_model(str(getattr(video, "translation_model", ""))):
         return ()
-    return (VERSION, str(getattr(video, "gemini_translation_instructions", "") or "").strip(),
+    parts = (VERSION, str(getattr(video, "gemini_translation_instructions", "") or "").strip(),
             str(getattr(video, "gemini_translation_glossary", "") or "").strip(),
             str(getattr(video, "gemini_translation_style", "balanced") or "balanced"))
+    effort = str(getattr(video, "translation_reasoning_effort", "") or "")
+    return parts + (("reasoning:" + effort,) if effort else ())
 
 
 def guidance(video):
     parts = signature_parts(video)
     return {"translation_instructions": parts[1], "translation_glossary": parts[2],
-            "translation_style": parts[3]} if parts else {}
+            "translation_style": parts[3], **({"reasoning_effort": parts[4][10:]} if len(parts) > 4 else {})} if parts else {}
 
 
 def request_context(texts, translations, indices):

@@ -9,6 +9,7 @@ RowLayout {
     property var options: []
     property string currentValue: ""
     signal activated(string value)
+    signal tabFocused(real left, real right)
     spacing: Theme.space24
     Repeater {
         model: root.options
@@ -26,6 +27,7 @@ RowLayout {
             Accessible.name: text
             Accessible.description: selected ? qsTr("Mục đang mở") : ""
             onClicked: root.activated(String(modelData.value))
+            onActiveFocusChanged: { if (activeFocus) root.tabFocused(tab.x, tab.x + tab.width); }
             contentItem: Text {
                 id: label
                 text: tab.text

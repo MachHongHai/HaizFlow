@@ -30,6 +30,7 @@ from haizflow.pipeline.tts import generate_voice_parts, resolve_tts_provider, vo
 from haizflow.schemas.video import SubtitleStyle
 from haizflow.services.video_store import get_video, log_to_video, update_video
 from haizflow.services.gemini_context import guidance as gemini_guidance
+from haizflow.core.translation_models import is_api_model, is_cloud_model, translation_provider
 from haizflow.services.translation import (
     is_hymt2_worker_warm,
     shutdown_hymt2_worker,
@@ -476,7 +477,7 @@ def _finish_recovered_translation(
         video.video_id,
         video.target_language,
         source_language="en",
-        provider="gemini" if str(getattr(video, "translation_model", "")).startswith("gemini-") else "hymt2",
+        provider=translation_provider(str(getattr(video, "translation_model", ""))),
         translation_model=_execution_models(video)["translation_model"],
         **gemini_guidance(video),
         progress_callback=report_translation_progress,
@@ -507,7 +508,7 @@ MANUAL_PIPELINE_STAGES = ("translation", "subtitles", "voice", "timeline", "rend
 def _translation_signature(video, video_input: str) -> str:
     from haizflow.services.gemini_context import signature_parts
 
-    using_gemini = str(getattr(video, "translation_model", "")).startswith("gemini-")
+    using_gemini = is_cloud_model(str(getattr(video, "translation_model", "")))
     return _signature(
         _file_state(video_input), TIMING_SOURCE,
         "gemini-batched-segments-v1" if using_gemini else "hymt2-semantic-source-context-retry-v21",
@@ -587,12 +588,12 @@ def process_video_sync(
         if video.mode not in {"A", "review"}:
             raise ValueError(f"Unsupported workflow: {video.mode}")
 
-        if video.translator_provider not in {"hymt2", "gemini"}:
+        if video.translator_provider not in {"hymt2", "gemini", "api"}:
             log_to_video(video_id, "Migrated legacy translation setting to HY-MT2.")
             video = update_video(video_id, translator_provider="hymt2") or video
         reporter.update(3, "starting", "Preparing video")
-        using_gemini = str(getattr(video, "translation_model", "")).startswith("gemini-")
-        engine_name = "Gemini" if using_gemini else "HY-MT2"
+        using_gemini = is_cloud_model(str(getattr(video, "translation_model", "")))
+        engine_name = "API" if is_api_model(video.translation_model) else "Gemini" if using_gemini else "HY-MT2"
         if getattr(video, "runtime_recovery_step", "") and not using_gemini:
             configure_translation_model(_execution_models(video)["translation_model"])
         log_to_video(video_id, f"Processing started | Mode: Full Auto | Translator: {engine_name}")
@@ -758,7 +759,7 @@ def process_video_sync(
             video_id,
             video.target_language,
             source_language=detected_language or "en",
-            provider="gemini" if using_gemini else "hymt2",
+            provider=translation_provider(video.translation_model),
             translation_model=_execution_models(video)["translation_model"],
             **gemini_guidance(video),
             progress_callback=report_translation_progress,
@@ -926,9 +927,9 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
         if not isinstance(segment, dict) or not str(segment.get("text") or "").strip():
             raise RuntimeError(f"Translated subtitle segment {index} is missing text.")
     if effective_tts_provider == "vieneu":
-        from haizflow.core.vieneu_voices import han_text_notice
+        from haizflow.core.vieneu_voices import unsupported_text_notice
 
-        notice = han_text_notice(transcript_segments)
+        notice = unsupported_text_notice(transcript_segments)
         if notice:
             raise ValueError(notice[1])
     expected_parts = len(transcript_segments)
@@ -1106,6 +1107,9 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
         getattr(video, "watermark_text_color", "#FFFFFF"),
         getattr(video, "watermark_bold", True),
         getattr(video, "watermark_italic", True),
+        *(["watermark-fixed-v1"] if not getattr(video, "watermark_moving", True) else []),
+        *(["watermark-position-v1", video.watermark_position.model_dump()]
+          if getattr(video, "watermark_position", None) and not getattr(video, "watermark_moving", True) else []),
         manual_subtitle_layout,
         getattr(video, "export_preset", "source"),
     )
@@ -1158,6 +1162,9 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
             watermark_text_color=getattr(video, "watermark_text_color", "#FFFFFF"),
             watermark_bold=getattr(video, "watermark_bold", True),
             watermark_italic=getattr(video, "watermark_italic", True),
+            watermark_moving=getattr(video, "watermark_moving", True),
+            watermark_position=(video.watermark_position.model_dump()
+                                if getattr(video, "watermark_position", None) else None),
             encoding_quality=int(preset_settings(getattr(video, "export_preset", "source"))["crf"]),
             export_preset=getattr(video, "export_preset", "source"),
             output_speed=getattr(video, "output_speed", 1.0),

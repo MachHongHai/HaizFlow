@@ -137,8 +137,10 @@ class MediaDownloadController(QObject):
                    "preview": self._video_preview.preview_checkpoint(),
                    "audio_preview": self._audio_preview.preview_checkpoint(), "audio_source": self._audio_source}
         try:
-            project_store._write_json_atomic(
-                os.path.join(self._project_root, "downloads", "workspace.json"), payload)
+            path = os.path.join(self._project_root, "downloads", "workspace.json")
+            with project_store.project_state_write_guard(self._project_key, self._project_root, path) as writable:
+                if writable:
+                    project_store._write_json_atomic(path, payload)
         except OSError:
             logging.getLogger(__name__).warning("download workspace checkpoint could not be saved")
 

@@ -2,6 +2,89 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="en_US" sourcelanguage="vi_VN">
 <context>
+    <name>TranslationReasoningControl</name>
+    <message><source>Mức</source><translation>Level</translation></message>
+    <message><source>Mức cao hơn có thể dùng nhiều token và mất thêm thời gian.</source><translation>Higher levels may use more tokens and take longer.</translation></message>
+</context>
+<context>
+    <name>TranslationApiController</name>
+    <message><source>Không lưu được kết nối. Kiểm tra tên, API key và Base URL; dùng HTTPS cho API từ xa.</source><translation>Could not save the connection. Check the name, API key and Base URL; use HTTPS for remote APIs.</translation></message>
+    <message><source>Kết nối dịch không còn trên máy</source><translation>Translation connection is no longer on this device</translation></message>
+    <message><source>Tiết kiệm</source><translation>Economy</translation></message>
+    <message><source>API tùy chỉnh</source><translation>Custom API</translation></message>
+    <message><source>Thêm API key</source><translation>Add API key</translation></message>
+    <message><source>Kết nối dịch</source><translation>Translation connection</translation></message>
+    <message><source>Không lưu được kết nối. Kiểm tra tên, API key, Model ID và Base URL; dùng HTTPS cho API từ xa.</source><translation>Could not save the connection. Check the name, API key, Model ID and Base URL; use HTTPS for remote APIs.</translation></message>
+    <message><source>Không xóa được kết nối trên máy.</source><translation>Could not remove the local connection.</translation></message>
+</context>
+<context>
+    <name>TranslationApiEntryForm</name>
+    <message><source>Thêm API key</source><translation>Add API key</translation></message>
+    <message><source>Tên để phân biệt API key</source><translation>A name to identify this API key</translation></message>
+    <message><source>Lưu key</source><translation>Save key</translation></message>
+    <message><source>Model dịch</source><translation>Translation model</translation></message>
+    <message><source>Đang tải…</source><translation>Loading…</translation></message>
+    <message><source>Tải danh sách</source><translation>Load models</translation></message>
+    <message><source>Model đã chọn không có trong danh sách của key này. Hãy chọn lại.</source><translation>The selected model is not listed for this key. Choose another model.</translation></message>
+    <message><source>API key không hợp lệ hoặc thiếu quyền xem model.</source><translation>The API key is invalid or cannot list models.</translation></message>
+    <message><source>API này không cung cấp danh sách model. Bạn có thể nhập Model ID.</source><translation>This API does not provide a model list. You can enter a Model ID.</translation></message>
+    <message><source>Không tải được danh sách. Kiểm tra key, địa chỉ và kết nối mạng.</source><translation>Could not load models. Check the key, endpoint and network connection.</translation></message>
+    <message><source>Đã tải một phần danh sách; bạn vẫn có thể chọn các model đã có.</source><translation>Only part of the list was loaded. You can still select the available models.</translation></message>
+    <message><source>Không có model dịch phù hợp trong danh sách.</source><translation>No compatible translation models were found.</translation></message>
+    <message><source>Chọn từ danh sách</source><translation>Choose from list</translation></message>
+    <message><source>Nhập Model ID thủ công</source><translation>Enter Model ID manually</translation></message>
+    <message><source>Thêm kết nối dịch</source><translation>Add translation connection</translation></message>
+    <message><source>Tên kết nối</source><translation>Connection name</translation></message>
+    <message><source>Ví dụ: Dịch phụ đề</source><translation>Example: Subtitle translation</translation></message>
+    <message><source>Tên kết nối dịch</source><translation>Translation connection name</translation></message>
+    <message><source>API key</source><translation>API key</translation></message>
+    <message><source>Dán API key của nhà cung cấp</source><translation>Paste the provider's API key</translation></message>
+    <message><source>API key dịch</source><translation>Translation API key</translation></message>
+    <message><source>Ẩn</source><translation>Hide</translation></message>
+    <message><source>Hiện</source><translation>Show</translation></message>
+    <message><source>Model ID</source><translation>Model ID</translation></message>
+    <message><source>Mã model từ nhà cung cấp</source><translation>Model ID from your provider</translation></message>
+    <message><source>Model ID dịch</source><translation>Translation model ID</translation></message>
+    <message><source>Base URL của API dịch</source><translation>Translation API base URL</translation></message>
+    <message><source>Định dạng kết quả</source><translation>Output format</translation></message>
+    <message><source>JSON theo hướng dẫn</source><translation>Prompted JSON</translation></message>
+    <message><source>Lưu kết nối</source><translation>Save connection</translation></message>
+    <message><source>Hủy</source><translation>Cancel</translation></message>
+    <message><source>Chỉ dùng để dịch. Key lưu bằng Windows Credential Manager.</source><translation>Translation only. Keys are stored in Windows Credential Manager.</translation></message>
+</context>
+<context>
+    <name>TranslationProjectModelDialog</name>
+    <message><source>Chọn model dịch</source><translation>Choose translation model</translation></message>
+    <message><source>Model ID</source><translation>Model ID</translation></message>
+    <message><source>Mã model từ nhà cung cấp</source><translation>Model ID from your provider</translation></message>
+    <message><source>Model ID dịch</source><translation>Translation model ID</translation></message>
+    <message><source>Định dạng kết quả</source><translation>Output format</translation></message>
+    <message><source>JSON theo hướng dẫn</source><translation>Prompted JSON</translation></message>
+    <message><source>Hủy</source><translation>Cancel</translation></message>
+    <message><source>Áp dụng</source><translation>Apply</translation></message>
+    <message><source>Chọn model</source><translation>Choose model</translation></message>
+    <message><source>Model dịch</source><translation>Translation model</translation></message>
+    <message><source>Tìm tên hoặc mã model</source><translation>Search model name or ID</translation></message>
+    <message><source>Không tìm thấy model. Hãy tải danh sách hoặc nhập Model ID.</source><translation>No matching model. Load models or enter a Model ID.</translation></message>
+</context>
+<context>
+    <name>TranslationApiListRow</name>
+    <message><source>Kết nối thành công</source><translation>Connected</translation></message>
+    <message><source>API không hỗ trợ kiểm tra kết nối</source><translation>The API does not support connection checks</translation></message>
+    <message><source>Đang kiểm tra…</source><translation>Checking…</translation></message>
+    <message><source>Đã kết nối · Model có sẵn</source><translation>Connected · Model available</translation></message>
+    <message><source>Đã kết nối · Không tìm thấy Model ID</source><translation>Connected · Model ID not found</translation></message>
+    <message><source>API key không hợp lệ hoặc thiếu quyền</source><translation>Invalid API key or insufficient permissions</translation></message>
+    <message><source>API không hỗ trợ kiểm tra danh sách model</source><translation>The API does not support model-list checks</translation></message>
+    <message><source>Chưa kết nối được dịch vụ</source><translation>Could not connect to the service</translation></message>
+    <message><source>Kiểm tra</source><translation>Check</translation></message>
+    <message><source>Xóa</source><translation>Remove</translation></message>
+</context>
+<context>
+    <name>GeminiGuidanceDialog</name>
+    <message><source>Phụ đề và hướng dẫn được gửi tới nhà cung cấp đã chọn khi dịch.</source><translation>Subtitles and guidance are sent to the selected provider during translation.</translation></message>
+</context>
+<context>
     <name>DeferredActionButton</name>
     <message><source>Đang chuẩn bị…</source><translation>Preparing…</translation></message>
 </context>
@@ -216,6 +299,16 @@
 </context>
 <context>
     <name>ApiKeysPage</name>
+    <message><source>%1 API key</source><translation>%1 API key</translation></message>
+    <message><source>Chưa có API key.</source><translation>No API key yet.</translation></message>
+    <message><source>API tùy chỉnh</source><translation>Custom API</translation></message>
+    <message><source>%1 · Kết nối dịch</source><translation>%1 · Translation connections</translation></message>
+    <message><source>API tương thích OpenAI. Chỉ dùng để dịch văn bản.</source><translation>OpenAI-compatible API. Text translation only.</translation></message>
+    <message><source>Chọn kết nối trong mục Model dịch của dự án.</source><translation>Select a connection in the project's Translation model menu.</translation></message>
+    <message><source>Thêm kết nối</source><translation>Add connection</translation></message>
+    <message><source>Xóa kết nối dịch?</source><translation>Remove translation connection?</translation></message>
+    <message><source>Chỉ xóa kết nối và key trên máy. Khi dịch lại, dự án cần chọn kết nối khác.</source><translation>Only the local connection and key are removed. Select another connection before translating this project again.</translation></message>
+    <message><source>Xóa kết nối</source><translation>Remove connection</translation></message>
     <message><source>Kiểm tra thành công</source><translation>Connection successful</translation></message>
     <message><source>Kiểm tra thất bại · Key chưa đầy đủ.</source><translation>Check failed · Incomplete key.</translation></message>
     <message><source>Kiểm tra thất bại · Key không hợp lệ hoặc đã bị thu hồi.</source><translation>Check failed · The key is invalid or revoked.</translation></message>
@@ -286,6 +379,7 @@
 </context>
 <context>
     <name>AppMenuBar</name>
+    <message><source>MCP</source><translation>MCP</translation></message>
     <message>
         <location filename="../qml/AppMenuBar.qml" line="+70"/>
         <source>Quay lại</source>
@@ -713,6 +807,8 @@
 </context>
 <context>
     <name>AutoWatermarkPreviewDialog</name>
+    <message><source>Kéo để đặt vị trí · Kéo góc để đổi kích thước</source><translation>Drag to position · Drag a corner to resize</translation></message>
+    <message><source>Di chuyển</source><translation>Motion</translation></message>
     <message>
         <location filename="../qml/AutoWatermarkPreviewDialog.qml" line="+16"/>
         <source>Watermark</source>
@@ -2474,6 +2570,7 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ManualTranslationToolPanel</name>
+    <message><source>HY-MT2 chạy cục bộ. Các model API cần Internet và key riêng; nhà cung cấp có thể tính phí.</source><translation>HY-MT2 runs locally. API models require Internet access and a separate key; provider charges may apply.</translation></message>
     <message><source>Đã áp dụng bản dịch. Có %1 câu cần kiểm tra trong Phụ đề.</source><translation>Translation applied. Review %1 sentences in Subtitles.</translation></message>
     <message><source>Máy đang dùng GPU. Model GPU thường xử lý nhanh hơn; bạn vẫn có thể chọn CPU.</source><translation>GPU mode is enabled. GPU models are usually faster; you can still choose CPU.</translation></message>
     <message><source>Chế độ CPU: model GPU chưa khả dụng. Đổi bộ xử lý trong Cài đặt → Chung để sử dụng GPU.</source><translation>CPU mode: GPU models are unavailable. Change the processing device in Settings → General to use GPU.</translation></message>
@@ -2572,6 +2669,7 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ManualWatermarkToolPanel</name>
+    <message><source>Di chuyển</source><translation>Motion</translation></message>
     <message>
         <location filename="../qml/ManualWatermarkToolPanel.qml" line="+18"/>
         <source>Watermark</source>
@@ -2869,6 +2967,7 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ProcessingSettingsForm</name>
+    <message><source>HY-MT2 chạy cục bộ. Các model API cần Internet và key riêng; nhà cung cấp có thể tính phí.</source><translation>HY-MT2 runs locally. API models require Internet access and a separate key; provider charges may apply.</translation></message>
     <message><source>Chế độ GPU: có thể chọn model GPU hoặc CPU.</source><translation>GPU mode: GPU and CPU models are available.</translation></message>
     <message><source>Máy đang dùng GPU. Model GPU thường xử lý nhanh hơn; bạn vẫn có thể chọn CPU.</source><translation>GPU mode is enabled. GPU models are usually faster; you can still choose CPU.</translation></message>
     <message><source>Chế độ CPU: model GPU chưa khả dụng. Đổi bộ xử lý trong Cài đặt → Chung để sử dụng GPU.</source><translation>CPU mode: GPU models are unavailable. Change the processing device in Settings → General to use GPU.</translation></message>
@@ -3840,6 +3939,7 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>SettingsWorkspace</name>
+    <message><source>MCP</source><translation>MCP</translation></message>
     <message>
         <location filename="../qml/SettingsWorkspace.qml" line="+21"/>
         <source>Cài đặt</source>
@@ -4392,6 +4492,7 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>SubtitlePreviewDialog</name>
+    <message><source>Kéo để đặt vị trí · Kéo góc để đổi cỡ</source><translation>Drag to position · Drag a corner to resize</translation></message>
     <message><source>Chỉnh phụ đề</source><translation>Edit subtitles</translation></message>
     <message><source>Phụ đề được căn theo vùng che khi xử lý</source><translation>Subtitles follow the covered region during processing</translation></message>
     <message><source>Kéo hai bên để đổi số từ · Kéo góc để đổi cỡ</source><translation>Drag the sides to change word capacity · Drag a corner to resize</translation></message>
@@ -4538,6 +4639,27 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>TranslationModelCombo</name>
+    <message><source>Tìm model OpenRouter</source><translation>Find an OpenRouter model</translation></message>
+    <message><source>Không tìm thấy model</source><translation>No models found</translation></message>
+    <message><source>Miễn phí</source><translation>Free</translation></message>
+    <message><source>Tính phí</source><translation>Paid</translation></message>
+    <message><source>Chưa rõ phí</source><translation>Pricing unknown</translation></message>
+    <message><source>Nhập Model ID</source><translation>Enter Model ID</translation></message>
+    <message><source>Không tìm thấy model.</source><translation>No matching model.</translation></message>
+    <message><source>API tùy chỉnh</source><translation>Custom API</translation></message>
+    <message><source>Model dịch</source><translation>Translation model</translation></message>
+    <message><source>Quay lại</source><translation>Back</translation></message>
+    <message><source>Đang tải…</source><translation>Loading…</translation></message>
+    <message><source>Tải danh sách model</source><translation>Refresh models</translation></message>
+    <message><source>Quản lý API key</source><translation>Manage API keys</translation></message>
+    <message><source>Thêm API key</source><translation>Add API key</translation></message>
+    <message><source>Tìm model</source><translation>Search models</translation></message>
+    <message><source>Đã tải một phần danh sách model.</source><translation>Only part of the model list was loaded.</translation></message>
+    <message><source>Không tải được danh sách. Kiểm tra API key trong Cài đặt.</source><translation>Could not load models. Check your API key in Settings.</translation></message>
+    <message><source>Không có model dịch phù hợp.</source><translation>No compatible translation models found.</translation></message>
+    <message><source>Kết nối dịch không còn trên máy</source><translation>Translation connection is no longer on this device</translation></message>
+    <message><source>Chi phí API dịch</source><translation>Translation API costs</translation></message>
+    <message><source>Phụ đề và hướng dẫn được gửi tới nhà cung cấp đã chọn. API có thể tính phí theo mức sử dụng.</source><translation>Subtitles and guidance are sent to the selected provider. API usage may incur charges.</translation></message>
     <message>
         <location filename="../qml/TranslationModelCombo.qml" line="+13"/>
         <source>HY-MT2 CPU · Q4</source>
@@ -5138,6 +5260,7 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>WatermarkTransformOverlay</name>
+    <message><source>Vị trí và kích thước watermark</source><translation>Watermark position and size</translation></message>
     <message>
         <location filename="../qml/WatermarkTransformOverlay.qml" line="+230"/>
         <source>Kích thước watermark</source>
@@ -5400,6 +5523,8 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>BatchDetailsDialog</name>
+    <message><source>Vị trí watermark</source><translation>Watermark position</translation></message>
+    <message><source>Watermark di chuyển</source><translation>Watermark motion</translation></message>
     <message><source>Nội dung watermark</source><translation>Watermark text</translation></message>
     <message><source>Loại watermark</source><translation>Watermark type</translation></message>
     <message><source>Ảnh watermark</source><translation>Watermark image</translation></message>
@@ -5467,6 +5592,9 @@ Author and owner of HaizFlow.</translation>
     <message><source>Tiếng Việt</source><translation>Vietnamese</translation></message>
     <message><source>Tiếng Anh</source><translation>English</translation></message>
     <message><source>Tiếng Trung</source><translation>Chinese</translation></message>
+    <message><source>Tiếng Hàn</source><translation>Korean</translation></message>
+    <message><source>Tiếng Nhật</source><translation>Japanese</translation></message>
+    <message><source>Tiếng Tây Ban Nha</source><translation>Spanish</translation></message>
     <message><source>Hủy</source><translation>Cancel</translation></message>
     <message><source>Nhập</source><translation>Import</translation></message>
 </context>
@@ -5491,5 +5619,127 @@ Author and owner of HaizFlow.</translation>
     <message><source>Toàn bộ</source><translation>All captions</translation></message>
     <message><source>Câu này</source><translation>This caption</translation></message>
     <message><source>Dùng kiểu chung</source><translation>Use shared style</translation></message>
+</context>
+<context>
+    <name>SettingsMcpGroup</name>
+    <message><source>Agent xóa dự án được chỉ định ngay khi gọi lệnh, không hỏi lại trong app.</source><translation>The agent deletes the specified project immediately when called, without asking again in the app.</translation></message>
+    <message><source>Agent đăng các video được chỉ định với tài khoản và cấu hình hiện tại, không hỏi lại trong app.</source><translation>The agent publishes the specified videos using the current account and settings, without asking again in the app.</translation></message>
+    <message><source>Đang kiểm tra…</source><translation>Checking…</translation></message>
+    <message><source>Kiểm tra kết nối MCP</source><translation>Test MCP connection</translation></message>
+    <message><source>Bật MCP sẽ bật tất cả quyền bên dưới trong phiên này. Bạn có thể tắt riêng từng quyền; dịch vụ trực tuyến có thể phát sinh phí API.</source><translation>Enabling MCP turns on all permissions below for this session. You can turn each permission off; online services may incur API charges.</translation></message>
+    <message><source>Tạo dự án, chỉnh phụ đề, xử lý và xuất video. Tắt quyền này để chỉ cho đọc; các quyền còn lại cũng được tắt.</source><translation>Create projects, edit subtitles, process and export videos. Turn this off for read-only access; the other permissions will also be disabled.</translation></message>
+    <message><source>Quyền truy cập</source><translation>Permissions</translation></message>
+    <message><source>Kết nối agent · MCP</source><translation>Agent connection · MCP</translation></message>
+    <message><source>MCP cục bộ</source><translation>Local MCP</translation></message>
+    <message><source>Kết nối Claude, Codex, Antigravity qua stdio. Chỉ bật trong phiên hiện tại.</source><translation>Connect Claude, Codex and Antigravity over stdio. Enabled for this session only.</translation></message>
+    <message><source>Điều khiển và chỉnh sửa</source><translation>Control and editing</translation></message>
+    <message><source>Tạo dự án, chỉnh phụ đề, xếp hàng xử lý và xuất video.</source><translation>Create projects, edit subtitles, queue processing and export videos.</translation></message>
+    <message><source>Dịch vụ trực tuyến</source><translation>Online services</translation></message>
+    <message><source>Cho phép gọi API, tải video và gói tài nguyên; có thể phát sinh phí API.</source><translation>Allow API calls, video and resource downloads; API charges may apply.</translation></message>
+    <message><source>Xóa dự án</source><translation>Project deletion</translation></message>
+    <message><source>Mỗi yêu cầu xóa cần được bạn xác nhận bên dưới.</source><translation>Each deletion requires your confirmation below.</translation></message>
+    <message><source>Cho agent yêu cầu xóa dự án</source><translation>Allow agent deletion requests</translation></message>
+    <message><source>Đăng mạng xã hội</source><translation>Social publishing</translation></message>
+    <message><source>Duyệt video, tài khoản và nội dung trước khi agent đăng.</source><translation>Review videos, account and content before the agent publishes.</translation></message>
+    <message><source>Cho agent yêu cầu đăng mạng xã hội</source><translation>Allow agent publishing requests</translation></message>
+    <message><source>Codex</source><translation>Codex</translation></message>
+    <message><source>Claude</source><translation>Claude</translation></message>
+    <message><source>Antigravity</source><translation>Antigravity</translation></message>
+    <message><source>MCP khác</source><translation>Other MCP host</translation></message>
+    <message><source>Agent kết nối</source><translation>Agent host</translation></message>
+    <message><source>Đã sao chép</source><translation>Copied</translation></message>
+    <message><source>Sao chép cấu hình</source><translation>Copy configuration</translation></message>
+    <message><source>Chi tiết yêu cầu đăng</source><translation>Publishing request details</translation></message>
+    <message><source>Từ chối</source><translation>Reject</translation></message>
+    <message><source>Đã xác nhận · chờ agent</source><translation>Confirmed · waiting for agent</translation></message>
+    <message><source>Xác nhận yêu cầu</source><translation>Confirm request</translation></message>
+</context>
+<context>
+    <name>McpBridge</name>
+    <message><source>Đang kiểm tra giao thức MCP và kết nối tới HaizFlow…</source><translation>Checking the MCP protocol and connection to HaizFlow…</translation></message>
+    <message><source>Hãy thêm máy chủ MCP cục bộ tên haizflow vào ứng dụng agent này bằng cấu hình stdio bên dưới. Giữ nguyên các server khác; nếu đã có haizflow thì chỉ cập nhật mục đó. Không gọi API, xử lý, xóa hay đăng video trong lúc kết nối. Sau khi kết nối, gọi haizflow_status để xác minh.&#10;&#10;</source><translation>Add a local MCP server named haizflow to this agent app using the stdio configuration below. Keep other servers; if haizflow already exists, update only that entry. Do not call APIs, process, delete or publish videos while setting up the connection. Once connected, call haizflow_status to verify.&#10;&#10;</translation></message>
+    <message><source>Bật MCP cục bộ trước khi kiểm tra kết nối.</source><translation>Enable Local MCP before testing the connection.</translation></message>
+    <message><source>Kiểm tra MCP quá thời gian. Thử lại khi app đã phản hồi bình thường.</source><translation>The MCP check timed out. Try again once the app is responding normally.</translation></message>
+    <message><source>Chưa kiểm tra được MCP. Giữ HaizFlow mở, kiểm tra đường dẫn bản app và thử lại.</source><translation>Could not verify MCP. Keep HaizFlow open, check this installation's path and try again.</translation></message>
+    <message><source>MCP cục bộ hoạt động · %1 công cụ. Đây là kiểm tra nội bộ; hãy gọi haizflow_status trong agent để xác minh kết nối từ agent.</source><translation>Local MCP is working · %1 tools. This is an internal check; call haizflow_status in your agent to verify the agent connection.</translation></message>
+    <message><source>Không thể tạo khóa MCP trong thư mục dữ liệu. Kiểm tra quyền ghi và dung lượng ổ đĩa.</source><translation>Could not create the MCP lock in the data folder. Check write permissions and free disk space.</translation></message>
+    <message><source>Không thể mở MCP. Kiểm tra cửa sổ HaizFlow khác đang dùng cùng dữ liệu.</source><translation>Could not start MCP. Check for another HaizFlow window using the same data.</translation></message>
+    <message><source>Yêu cầu từ agent</source><translation>Agent request</translation></message>
+    <message><source>Mở Cài đặt → MCP để xem và xác nhận yêu cầu.</source><translation>Open Settings → MCP to review and confirm the request.</translation></message>
+    <message><source>Xóa dự án “%1” và toàn bộ tệp do dự án quản lý?</source><translation>Delete project “%1” and all its managed files?</translation></message>
+    <message><source>Đăng %1 video lên %2 với tài khoản %3?</source><translation>Publish %1 videos to %2 using account %3?</translation></message>
+    <message><source>Chạy lại video “%1” từ đầu với cấu hình hiện tại?</source><translation>Restart video “%1” from the beginning with the current settings?</translation></message>
+</context>
+<context>
+    <name>McpConnectionGuide</name>
+    <message><source>Không thấy server: kiểm tra đúng file cấu hình, cú pháp JSON/TOML và nạp lại agent.&#10;&#10;Không kết nối được với app: mở HaizFlow, bật MCP và chạy agent bằng cùng tài khoản Windows. Chỉ mở một HaizFlow dùng cùng thư mục dữ liệu.&#10;&#10;Lỗi command/không tìm thấy file: sau khi cập nhật hoặc chuyển thư mục app, sao chép lại cấu hình mới ở đây; không dùng đường dẫn của máy khác.&#10;&#10;Thiếu quyền: bật lại quyền tương ứng trong Quyền truy cập. Agent không thể tự bật các quyền này.&#10;&#10;Xử lý, xóa và đăng bài: agent thực hiện lệnh trực tiếp theo quyền đang bật, không có bước xác nhận lại trong trang MCP. Hãy nêu rõ dự án, video và nội dung trong yêu cầu của bạn.&#10;&#10;Tác vụ đã nhận nhưng chưa xong: yêu cầu agent đọc trạng thái; không gửi lặp lệnh xử lý hoặc đăng bài khi chưa biết kết quả.</source><translation>Server missing: check the configuration file, JSON/TOML syntax and reload your agent.&#10;&#10;Cannot reach the app: open HaizFlow, enable MCP and run the agent under the same Windows account. Use only one HaizFlow window for the same data folder.&#10;&#10;Command/file not found: after updating or moving the app, copy its current configuration here; do not use paths from another computer.&#10;&#10;Missing permission: enable the corresponding switch under Permissions. Agents cannot grant themselves permissions.&#10;&#10;Processing, deletion and publishing: agent commands execute directly under enabled permissions, without another confirmation in the MCP page. Specify the exact project, videos and content in your request.&#10;&#10;Accepted but not completed: ask the agent to read status; do not repeat processing or publishing commands before checking the result.</translation></message>
+    <message><source>Mở ứng dụng Codex trên máy tính → Settings → MCP servers → Add server. Đặt tên haizflow và chọn STDIO. Không chọn Streamable HTTP và không nhập URL.</source><translation>Open the Codex desktop app → Settings → MCP servers → Add server. Name it haizflow and select STDIO. Do not choose Streamable HTTP or enter a URL.</translation></message>
+    <message><source>Mở Claude Code trong ứng dụng hoặc IDE bạn đang dùng, rồi mở một cuộc trò chuyện. Sao chép yêu cầu kết nối bên dưới và gửi cho Claude để thêm MCP; bạn không cần tự viết file cấu hình.</source><translation>Open Claude Code in your app or IDE, then open a conversation. Copy the connection request below and send it to Claude to add MCP; you do not need to write a configuration file.</translation></message>
+    <message><source>Mở Claude Desktop → Settings → Desktop app → Manage cạnh Extensions → Local MCP servers. Ở giao diện cũ, mở Settings → Developer → Edit Config. Chọn Edit Config trong app để mở sẵn cấu hình, rồi dán mục haizflow bên dưới. Không dùng Add custom connector dành cho URL từ xa.</source><translation>Open Claude Desktop → Settings → Desktop app → Manage next to Extensions → Local MCP servers. In the older interface, open Settings → Developer → Edit Config. Use Edit Config in the app to open its configuration and paste the haizflow entry below. Do not use Add custom connector for remote URLs.</translation></message>
+    <message><source>Mở ứng dụng Antigravity, tại khung trò chuyện agent bấm … → MCP Servers → Manage MCP Servers → View raw config. Dán mục haizflow có sẵn bên dưới vào cấu hình mà app mở; không cần tự tìm hoặc tạo file.</source><translation>Open Antigravity. In the agent chat panel, choose … → MCP Servers → Manage MCP Servers → View raw config. Paste the ready-made haizflow entry below into the configuration opened by the app; you do not need to find or create a file yourself.</translation></message>
+    <message><source>Bấm Save trong form Add server rồi Restart cho server haizflow. Mở chat mới và xem danh sách MCP; nếu cần, thoát rồi mở lại Codex. Cho phép sử dụng công cụ khi app hỏi.</source><translation>Select Save in Add server, then Restart for haizflow. Open a new chat and check the MCP list; restart Codex if needed. Allow tool use when the app asks.</translation></message>
+    <message><source>Duyệt thay đổi thêm server nếu Claude hỏi. Mở lại cuộc trò chuyện hoặc kết nối lại MCP, nhập /mcp để kiểm tra server haizflow. Yêu cầu Claude gọi haizflow_status trước khi giao tác vụ xử lý video.</source><translation>Review the server setup change if Claude asks. Reopen the conversation or reconnect MCP, then enter /mcp to check haizflow. Ask Claude to call haizflow_status before assigning video processing.</translation></message>
+    <message><source>Mở ứng dụng AI agent và thêm MCP</source><translation>Open your AI agent app and add MCP</translation></message>
+    <message><source>Điền thông tin vào form Add server</source><translation>Fill in the Add server form</translation></message>
+    <message><source>Gửi yêu cầu kết nối cho Claude Code</source><translation>Send the connection request to Claude Code</translation></message>
+    <message><source>Dán cấu hình HaizFlow có sẵn</source><translation>Paste the ready-made HaizFlow configuration</translation></message>
+    <message><source>Dán command vào ô Command. Thêm các arguments theo đúng thứ tự bên dưới, mỗi phần tử một đối số. Đây là thông tin của bản HaizFlow trên máy bạn; không cần tự soạn file.</source><translation>Paste command into Command. Add the arguments below in order, one item per argument. These values match this HaizFlow installation; no configuration file needs to be written manually.</translation></message>
+    <message><source>Dán toàn bộ yêu cầu này vào chat Claude Code. Claude sẽ thực hiện bước thêm server bằng công cụ của nó; vẫn giữ nguyên quyền duyệt thay đổi trong ứng dụng agent.</source><translation>Paste this entire request into Claude Code chat. Claude will use its tools to add the server; your agent app's approval controls still apply.</translation></message>
+    <message><source>Sao chép cấu hình bên dưới vào màn hình mà agent vừa mở. Nếu đã có các server khác, chỉ thêm hoặc cập nhật mục haizflow trong mcpServers; không xóa phần còn lại và không tạo mục trùng.</source><translation>Copy the configuration below into the screen opened by your agent. If other servers already exist, add or update only haizflow under mcpServers; keep the rest and avoid duplicate entries.</translation></message>
+    <message><source>Ẩn cấu hình nâng cao</source><translation>Hide advanced configuration</translation></message>
+    <message><source>Xem cấu hình nâng cao</source><translation>Show advanced configuration</translation></message>
+    <message><source>Sao chép yêu cầu kết nối</source><translation>Copy connection request</translation></message>
+    <message><source>Trên Windows, nhấn Win+R và mở %USERPROFILE%\.codex, sau đó mở config.toml bằng trình soạn thảo. Tạo file nếu chưa có. Nếu bạn đã đặt CODEX_HOME riêng, dùng config.toml trong thư mục đó.</source><translation>On Windows, press Win+R and open %USERPROFILE%\.codex, then open config.toml in a text editor. Create the file if needed. If you use a custom CODEX_HOME, use config.toml in that folder.</translation></message>
+    <message><source>Mở thư mục dự án đang dùng với Claude Code. Mở hoặc tạo file .mcp.json ngay tại thư mục gốc dự án, không đặt trong thư mục .claude.</source><translation>Open the project folder you use with Claude Code. Open or create .mcp.json at the project root, not inside the .claude folder.</translation></message>
+    <message><source>Trong ứng dụng Claude Desktop, mở Settings → Developer → Edit Config. Chỉnh file JSON được ứng dụng mở, không phải phần cấu hình tài khoản trên trình duyệt.</source><translation>In the Claude Desktop app, open Settings → Developer → Edit Config. Edit the JSON file opened by the app, not your browser account settings.</translation></message>
+    <message><source>Trong khung agent của Antigravity, mở menu … → MCP Servers → Manage MCP Servers → View raw config để sửa mcp_config.json.</source><translation>In the Antigravity agent panel, open … → MCP Servers → Manage MCP Servers → View raw config to edit mcp_config.json.</translation></message>
+    <message><source>Trong ứng dụng agent trên máy này, mở phần cấu hình MCP và chọn server cục bộ dùng stdio. Nếu có ô nhập riêng, điền command và từng phần tử args từ cấu hình bên dưới; không điền URL hoặc cổng HTTP.</source><translation>In the agent app on this computer, open MCP configuration and choose a local stdio server. If it has separate fields, enter command and each args item from the configuration below; do not enter a URL or HTTP port.</translation></message>
+    <message><source>Lưu config.toml rồi kết nối lại server haizflow hoặc khởi động lại Codex. Mở một cuộc trò chuyện mới nếu chưa thấy công cụ. Nếu dùng Codex CLI, chạy codex mcp list để kiểm tra cấu hình.</source><translation>Save config.toml, then reconnect the haizflow server or restart Codex. Open a new chat if the tools are not visible yet. For Codex CLI, run codex mcp list to check the configuration.</translation></message>
+    <message><source>Lưu .mcp.json rồi mở lại Claude Code trong đúng thư mục dự án. Chấp nhận server haizflow nếu được hỏi; dùng /mcp để kiểm tra trạng thái và kết nối lại.</source><translation>Save .mcp.json, then reopen Claude Code in the correct project folder. Approve the haizflow server if asked; use /mcp to check status and reconnect.</translation></message>
+    <message><source>Lưu cấu hình, thoát hẳn Claude Desktop rồi mở lại. Kiểm tra server haizflow trong phần Developer và cho phép sử dụng công cụ nếu ứng dụng hỏi.</source><translation>Save the configuration, quit Claude Desktop completely and reopen it. Check the haizflow server in Developer settings and allow tools when prompted.</translation></message>
+    <message><source>Lưu cấu hình rồi quay lại MCP Servers, làm mới danh sách và bật server haizflow. Nếu chưa nạp công cụ, khởi động lại Antigravity và mở cuộc trò chuyện mới.</source><translation>Save the configuration, return to MCP Servers, refresh the list and enable haizflow. If tools are still missing, restart Antigravity and open a new chat.</translation></message>
+    <message><source>Lưu cấu hình và kết nối lại server haizflow. Agent sẽ tự khởi chạy tiến trình stdio; không cần chạy thêm HaizFlow, Python hay một server HTTP bằng tay.</source><translation>Save the configuration and reconnect haizflow. The agent starts the stdio process automatically; do not manually start another HaizFlow, Python process or HTTP server.</translation></message>
+    <message><source>Bật MCP và chọn quyền</source><translation>Enable MCP and choose permissions</translation></message>
+    <message><source>Bật MCP cục bộ ở phần Quyền truy cập rồi tắt những quyền bạn không muốn cấp. Giữ HaizFlow mở; kết nối chỉ dùng được trên máy này và hết hiệu lực khi đóng app.</source><translation>Enable Local MCP under Permissions, then turn off any permissions you do not want to grant. Keep HaizFlow open; the connection works only on this computer and is disabled when the app closes.</translation></message>
+    <message><source>Mở cấu hình của agent</source><translation>Open your agent configuration</translation></message>
+    <message><source>Sao chép và lưu cấu hình</source><translation>Copy and save the configuration</translation></message>
+    <message><source>File mới: dán toàn bộ cấu hình bên dưới. File đã có nội dung: chỉ thêm hoặc cập nhật mục haizflow, giữ nguyên các server khác và không tạo mục trùng. Giữ đúng command và args; đây là đường dẫn của bản HaizFlow trên máy bạn.</source><translation>New file: paste the entire configuration below. Existing file: add or update only haizflow, keep other servers and avoid duplicate entries. Keep command and args unchanged; they point to this HaizFlow installation.</translation></message>
+    <message><source>Nạp lại kết nối trong agent</source><translation>Reload the agent connection</translation></message>
+    <message><source>Thử bằng một yêu cầu chỉ đọc</source><translation>Test a read-only request</translation></message>
+    <message><source>Nhập vào chat agent: “Gọi haizflow_status và liệt kê các dự án HaizFlow, chỉ đọc dữ liệu, không chỉnh sửa, xóa hay đăng bài.” Khi nhận được trạng thái và danh sách dự án là kết nối đã hoạt động. Không cần nhập API key để thử bước này.</source><translation>Ask your agent: “Call haizflow_status and list HaizFlow projects. Read only; do not edit, delete or publish.” Receiving the status and project list confirms the connection works. No API key is needed for this test.</translation></message>
+    <message><source>Ẩn cách khắc phục</source><translation>Hide troubleshooting</translation></message>
+    <message><source>Không kết nối được?</source><translation>Cannot connect?</translation></message>
+    <message><source>Không thấy server: kiểm tra đúng file cấu hình, cú pháp JSON/TOML và nạp lại agent.&#10;&#10;Không kết nối được với app: mở HaizFlow, bật MCP và chạy agent bằng cùng tài khoản Windows. Chỉ mở một HaizFlow dùng cùng thư mục dữ liệu.&#10;&#10;Lỗi command/không tìm thấy file: sau khi cập nhật hoặc chuyển thư mục app, sao chép lại cấu hình mới ở đây; không dùng đường dẫn của máy khác.&#10;&#10;Thiếu quyền: bật lại quyền tương ứng trong Quyền truy cập. Agent không thể tự bật các quyền này.&#10;&#10;Xóa hoặc đăng bài đang chờ: xem đúng dự án, video, tài khoản và nội dung ở yêu cầu xác nhận trên trang MCP rồi xác nhận hoặc từ chối. Quyền đã bật không thay cho bước duyệt này.&#10;&#10;Tác vụ đã nhận nhưng chưa xong: yêu cầu agent đọc trạng thái; không gửi lặp lệnh xử lý hoặc đăng bài khi chưa biết kết quả.</source><translation>Server missing: check the configuration file, JSON/TOML syntax and reload your agent.&#10;&#10;Cannot reach the app: open HaizFlow, enable MCP and run the agent under the same Windows account. Use only one HaizFlow window for the same data folder.&#10;&#10;Command/file not found: after updating or moving the app, copy its current configuration here; do not use paths from another computer.&#10;&#10;Missing permission: enable the corresponding switch under Permissions. Agents cannot grant themselves permissions.&#10;&#10;Deletion/publishing pending: review the exact project, videos, account and content in the MCP confirmation request, then confirm or reject it. Enabled permissions do not bypass this review.&#10;&#10;Accepted but not completed: ask the agent to read status; do not repeat processing or publishing commands before checking the result.</translation></message>
+    <message><source>Hướng dẫn kết nối</source><translation>Connection guide</translation></message>
+    <message><source>Codex</source><translation>Codex</translation></message>
+    <message><source>Claude Code</source><translation>Claude Code</translation></message>
+    <message><source>Claude Desktop</source><translation>Claude Desktop</translation></message>
+    <message><source>Antigravity</source><translation>Antigravity</translation></message>
+    <message><source>MCP khác</source><translation>Other MCP host</translation></message>
+    <message><source>Ứng dụng agent</source><translation>Agent application</translation></message>
+    <message><source>Mở cấu hình Codex tại ~/.codex/config.toml, thêm mục [mcp_servers.haizflow] bên dưới rồi lưu. Không thay thế các cấu hình đang có.</source><translation>Open ~/.codex/config.toml, add the [mcp_servers.haizflow] section below and save. Keep your existing configuration.</translation></message>
+    <message><source>Trong thư mục dự án dùng Claude Code, mở hoặc tạo .mcp.json. Thêm haizflow vào mcpServers; nếu file đã có server khác, chỉ gộp mục haizflow.</source><translation>In your Claude Code project folder, open or create .mcp.json. Add haizflow under mcpServers; merge this entry without replacing other servers.</translation></message>
+    <message><source>Trong Claude Desktop, mở Settings → Developer → Edit Config. Thêm haizflow vào mcpServers rồi lưu; giữ nguyên các server khác.</source><translation>In Claude Desktop, open Settings → Developer → Edit Config. Add haizflow under mcpServers and save; keep other servers unchanged.</translation></message>
+    <message><source>Trong Antigravity, mở MCP Servers → Manage MCP Servers → View raw config. Thêm haizflow vào mcpServers rồi lưu.</source><translation>In Antigravity, open MCP Servers → Manage MCP Servers → View raw config. Add haizflow under mcpServers and save.</translation></message>
+    <message><source>Trong ứng dụng agent, thêm server MCP loại stdio với command và args như cấu hình bên dưới. Không dùng URL hay cổng HTTP.</source><translation>In your agent application, add a stdio MCP server using the command and args below. Do not use a URL or HTTP port.</translation></message>
+    <message><source>Bật MCP trong HaizFlow</source><translation>Enable MCP in HaizFlow</translation></message>
+    <message><source>Bật MCP cục bộ ở phần Quyền truy cập. Chỉ bật thêm những quyền agent cần; giữ HaizFlow mở khi sử dụng.</source><translation>Enable Local MCP under Permissions. Grant only the permissions the agent needs, and keep HaizFlow open.</translation></message>
+    <message><source>Thêm cấu hình vào agent</source><translation>Add the agent configuration</translation></message>
+    <message><source>Cấu hình MCP HaizFlow</source><translation>HaizFlow MCP configuration</translation></message>
+    <message><source>Tài liệu chính thức</source><translation>Official documentation</translation></message>
+    <message><source>Đã sao chép</source><translation>Copied</translation></message>
+    <message><source>Sao chép cấu hình</source><translation>Copy configuration</translation></message>
+    <message><source>Kết nối lại và kiểm tra</source><translation>Reconnect and verify</translation></message>
+    <message><source>Khởi động lại hoặc kết nối lại MCP trong agent. Yêu cầu agent gọi haizflow_status để kiểm tra; chưa cần quyền chỉnh sửa hay API key.</source><translation>Restart or reconnect MCP in your agent, then ask it to call haizflow_status. This check requires no editing permission or API key.</translation></message>
+    <message><source>Chưa kết nối được? Kiểm tra HaizFlow đang mở và MCP đã bật. Sau khi cập nhật hoặc chuyển thư mục app, sao chép lại cấu hình nếu đường dẫn đã đổi. Xóa dự án và đăng mạng xã hội vẫn cần xác nhận trong trang MCP.</source><translation>Cannot connect? Check that HaizFlow is open and MCP is enabled. After updating or moving the app, copy the configuration again if its path changed. Project deletion and publishing still require confirmation on the MCP page.</translation></message>
+</context>
+<context>
+    <name>McpLaunchFields</name>
+    <message><source>Tên server: haizflow · Loại kết nối: STDIO</source><translation>Server name: haizflow · Connection type: STDIO</translation></message>
+    <message><source>Command của máy chủ MCP</source><translation>MCP server command</translation></message>
+    <message><source>Sao chép command</source><translation>Copy command</translation></message>
+    <message><source>Arguments: mỗi dòng dưới đây là một đối số, giữ nguyên thứ tự.</source><translation>Arguments: each line below is one argument; keep their order.</translation></message>
+    <message><source>Arguments của máy chủ MCP</source><translation>MCP server arguments</translation></message>
+    <message><source>Sao chép arguments</source><translation>Copy arguments</translation></message>
 </context>
 </TS>

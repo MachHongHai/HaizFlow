@@ -130,7 +130,7 @@ FloatingToolDialog {
     expandedWidth: 1100
     expandedHeight: 760
     toolTitle: qsTr("Chỉnh phụ đề")
-    toolSubtitle: layoutLocked ? qsTr("Phụ đề được căn theo vùng che khi xử lý") : qsTr("Kéo hai bên để đổi số từ · Kéo góc để đổi cỡ")
+    toolSubtitle: qsTr("Kéo để đặt vị trí · Kéo góc để đổi cỡ")
 
     ColumnLayout {
         anchors.fill: parent
@@ -192,8 +192,8 @@ FloatingToolDialog {
                     boxHeightPercent: root.layoutLocked ? Number(root.coverLayout.boxHeightPercent || 12) : root.draftBoxHeight
                     referenceWidthPixels: root.sourceWidth
                     referenceHeightPixels: root.sourceHeight
-                    interactive: !root.layoutLocked
-                    editing: !root.layoutLocked
+                    interactive: true
+                    editing: true
                     onLayoutPreviewChanged: function (fontSize, positionX, positionY, boxWidth, boxHeight) {
                         root.draftFontSize = fontSize;
                         root.draftPositionX = positionX;
@@ -207,6 +207,8 @@ FloatingToolDialog {
                         root.draftPositionY = positionY;
                         root.draftBoxWidth = boxWidth;
                         root.draftBoxHeight = boxHeight;
+                        if (root.autoAlignToCover)
+                            root.autoAlignmentEdited(false);
                         root.subtitleLayoutEdited(fontSize, positionX, positionY, root.draftBoxWidth, root.draftBoxHeight);
                     }
                 }

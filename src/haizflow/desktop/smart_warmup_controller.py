@@ -115,6 +115,11 @@ class SmartWarmupController:
         if capability not in {"recognition", "translation", "voice", "separation", "ocr"}:
             return
         context = dict(context or {})
+        if capability == "translation":
+            from haizflow.core.translation_models import is_cloud_model
+
+            if is_cloud_model(str(context.get("translation_model") or "")):
+                return
         if capability == "voice" and (context.get("provider") == "edge"
                                       or str(context.get("provider") or "").startswith("vieneu")):
             return

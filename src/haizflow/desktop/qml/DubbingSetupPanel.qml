@@ -34,6 +34,11 @@ InspectorPanel {
                 || AppController.ttsProvider.indexOf("vieneu") === 0
             speechRecognitionModel: AppController.speechRecognitionModel
             translationModel: AppController.translationModel
+            translationReasoningEffort: AppController.translationReasoningEffort
+            onTranslationReasoningEdited: function(value) {
+                AppController.translationReasoningEffort = value;
+                root.scheduleVideoSettingsSave();
+            }
             geminiInstructions: AppController.geminiTranslationInstructions
             geminiGlossary: AppController.geminiTranslationGlossary
             geminiStyle: AppController.geminiTranslationStyle
@@ -169,6 +174,7 @@ InspectorPanel {
                 }
                 onClosed: subtitlePreviewDialogLoader.release()
                 onSubtitleLayoutEdited: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
+                    AppController.subtitleLayoutOverride = true
                     AppController.subtitleFontSize = fontSize
                     AppController.subtitlePositionXPercent = positionX
                     AppController.subtitlePositionYPercent = positionY

@@ -73,20 +73,56 @@ def native_voice(voice: str) -> str:
 
 
 def unsupported_language_notice(provider: str, language: str, ui_language: str = "vi") -> tuple[str, str] | None:
-    """Chinese is unsupported; English/Vietnamese remain user-selectable."""
-    if not str(provider).strip().lower().startswith("vieneu") or str(language).lower() not in {"zh", "chinese", "zh-cn", "zh-tw"}:
+    """Do not advertise unsupported languages simply because they use Latin text."""
+    code = str(language or "").strip().lower().replace("_", "-").split("-")[0]
+    code = {"chinese": "zh", "japanese": "ja", "korean": "ko", "spanish": "es",
+            "vietnamese": "vi", "english": "en"}.get(code, code)
+    if not str(provider).strip().lower().startswith("vieneu") or code in {"vi", "en"}:
         return None
     if ui_language == "vi":
-        label = {"zh": "tiếng Trung", "en": "tiếng Anh"}.get(language, "ngôn ngữ đã chọn")
+        label = {"zh": "tiếng Trung", "ja": "tiếng Nhật", "ko": "tiếng Hàn",
+                 "es": "tiếng Tây Ban Nha"}.get(code, "ngôn ngữ đã chọn")
         return "Ngôn ngữ chưa hỗ trợ", (
             f"VieNeu CPU/GPU không hỗ trợ giọng đọc {label}. "
             "Hãy chọn OmniVoice hoặc Edge TTS."
         )
-    label = {"zh": "Chinese", "en": "English"}.get(language, "the selected language")
+    label = {"zh": "Chinese", "ja": "Japanese", "ko": "Korean", "es": "Spanish"}.get(code, "the selected language")
     return "Unsupported voice language", (
         f"VieNeu CPU/GPU does not support {label} speech. "
         "Choose OmniVoice or Edge TTS."
     )
+
+
+def unsupported_text_notice(segments, ui_language="vi", *, imported=False):
+    """Check actual scripts too, including mixed captions labelled Vietnamese."""
+    segments = list(segments)
+    for code, pattern in (("ja", r"[\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fd-\u30ff\u31f0-\u31ff\uff66-\uff9f]+"),
+                          ("ko", r"[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7af\ud7b0-\ud7ff]+")):
+        examples = []
+        for position, segment in enumerate(segments, 1):
+            if not isinstance(segment, dict):
+                continue
+            match = re.search(pattern, str(segment.get("text") or ""))
+            if match:
+                try:
+                    index = max(1, int(segment.get("index", position)))
+                except (TypeError, ValueError):
+                    index = position
+                examples.append(f'{index}: “{match.group()[:12]}”')
+                if len(examples) == 3:
+                    break
+        if not examples:
+            continue
+        notice = unsupported_language_notice("vieneu", code, ui_language)
+        locations = "; ".join(examples)
+        if ui_language == "vi":
+            source = "SRT đã nhập" if imported else "Phụ đề"
+            return notice[0], (f"{source} chứa {'tiếng Nhật' if code == 'ja' else 'tiếng Hàn'}, ví dụ ở câu {locations}. "
+                               + notice[1] + " Hoặc sửa/dịch các câu này sang tiếng Việt trong Phụ đề.")
+        source = "The imported SRT" if imported else "The subtitles"
+        return notice[0], (f"{source} contain {'Japanese' if code == 'ja' else 'Korean'} text in cue {locations}. "
+                           + notice[1] + " Or edit/translate these captions into Vietnamese.")
+    return han_text_notice(segments, ui_language, imported=imported)
 
 
 def sample_voice_id(voice: str) -> str:

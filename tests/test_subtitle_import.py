@@ -17,6 +17,36 @@ from haizflow.services import editor_documents, manual_artifacts, subtitle_expor
 SRT = "1\n00:00:01,234 --> 00:00:02,345\nHello world\nSecond line\n\n2\n00:00:03,000 --> 00:00:04,999\n你好\n"
 
 
+@pytest.mark.parametrize("language,text", [("ko", "안녕하세요. 감사합니다!"),
+                                          ("ja", "こんにちは。ありがとうございます！"),
+                                          ("es", "¡Gracias! ¿Cómo estás?")])
+def test_new_language_import_direct_voice_and_srt_round_trip(project, language, text):
+    video, path = project
+    video.source_language = "zh"
+    video.tts_provider = "vieneu-gpu"
+    path.write_text("1\n00:00:01,234 --> 00:00:02,345\n" + text + "\n", encoding="utf-8")
+    subtitle_import.import_srt(video.video_id, str(path), language=language)
+    assert video.subtitle_language == language and video.source_language == "zh"
+    assert video.tts_provider == "omnivoice-gpu"
+    segments = manual_tools._load_segments(video)
+    for provider in ("omnivoice", "omnivoice-gpu", "edge"):
+        assert subtitle_import.voice_notice(video, provider, segments) is None
+    assert subtitle_import.voice_notice(video, "vieneu-gpu", segments)
+    document = editor_documents.load(video.video_id)
+    for exported in (subtitle_export.compose_source_srt(video, document),
+                     subtitle_export.compose_document_srt(document)):
+        cues = list(srt.parse(exported))
+        assert len(cues) == 1 and cues[0].content == text
+        assert (cues[0].start.total_seconds(), cues[0].end.total_seconds()) == (1.234, 2.345)
+
+
+def test_explicit_japanese_kanji_only_is_not_relabelled_chinese(project):
+    video, path = project
+    path.write_text("1\n00:00:01,000 --> 00:00:02,000\n東京\n", encoding="utf-8")
+    subtitle_import.import_srt(video.video_id, str(path), language="ja")
+    assert video.subtitle_language == "ja"
+
+
 @pytest.fixture
 def project(tmp_path, monkeypatch):
     config = VideoConfig(project_type="manual", enable_audio_separation=True, translation_model="q4")
@@ -362,7 +392,7 @@ def test_editor_save_failure_rolls_back_metadata_and_existing_document(project, 
     ("vi", "Xin chào", "vieneu-gpu", False), ("en", "Hello", "vieneu-cpu", False),
     ("zh", "你好", "vieneu-gpu", True), ("en", "你好", "vieneu-cpu", True),
     ("zh", "你好", "omnivoice", False), ("zh", "你好", "edge-tts", False),
-    ("und", "Bonjour", "omnivoice", True), ("en", "こんにちは", "omnivoice", True)])
+    ("und", "Bonjour", "omnivoice", True), ("en", "こんにちは", "omnivoice", False)])
 def test_direct_voice_validates_actual_srt_language(project, language, text, provider, blocked):
     video, path = project
     path.write_text(f"1\n00:00:01,000 --> 00:00:02,000\n{text}\n", encoding="utf-8")
@@ -464,7 +494,7 @@ def test_vietnamese_srt_on_chinese_source_keeps_supported_vieneu(project, provid
     subtitle_import.import_srt(video.video_id, str(path), language="vi")
     segments = manual_tools._load_segments(video)
     assert manual_subtitle_language(video, segments) == "vi"
-    assert bool(subtitle_import.voice_notice(video, provider, segments)) == ("王" in text)
+    assert bool(subtitle_import.voice_notice(video, provider, segments)) == any(token in text for token in ("王", "ユキ", "민"))
     assert video.tts_provider == provider and video.tts_voice == "vieneu:Trúc Ly"
     assert video.source_language == "zh" and video.target_language == "zh"
 

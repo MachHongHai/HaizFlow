@@ -53,12 +53,13 @@ class AudioPreviewControllerTests(unittest.TestCase):
             cached.assert_not_called()
             self.assertEqual(host._audio_preview_source, reference.as_uri())
 
-    def test_every_target_language_voice_has_a_matching_packaged_sample(self):
+    def test_packaged_language_samples_remain_complete(self):
         preview = AudioPreviewController(_host())
         languages = [code for code, _english, _native in POPULAR_TARGET_LANGUAGES]
-        self.assertEqual(languages, ["vi", "en", "zh"])
+        self.assertEqual(languages, ["vi", "en", "zh", "ko", "ja", "es"])
+        sample_languages = ("vi", "en", "zh")
         missing = []
-        for language in languages:
+        for language in sample_languages:
             missing.extend(
                 (language, voice)
                 for voice, _label, _category in OMNIVOICE_TTS_VOICES
@@ -69,14 +70,14 @@ class AudioPreviewControllerTests(unittest.TestCase):
         manifest_path = AudioPreviewController._PACKAGED_SAMPLE_DIR / "samples.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual(len([item for item in manifest["samples"] if item["provider"] == "omnivoice"]),
-                         len(languages) * len(OMNIVOICE_TTS_VOICES))
+                         len(sample_languages) * len(OMNIVOICE_TTS_VOICES))
         self.assertEqual(len(manifest["samples"]),
-                         len(languages) * len(OMNIVOICE_TTS_VOICES) + sum(map(len, EDGE_VOICES.values()))
+                         len(sample_languages) * len(OMNIVOICE_TTS_VOICES) + sum(len(EDGE_VOICES[code]) for code in sample_languages)
                          + len(VIENEU_VOICES))
-        self.assertEqual(set(manifest["sentences"]), set(languages))
+        self.assertEqual(set(manifest["sentences"]), set(sample_languages))
         packaged_audio = list(AudioPreviewController._PACKAGED_SAMPLE_DIR.rglob("*.mp3"))
         self.assertEqual(len(packaged_audio), len(manifest["samples"]))
-        self.assertEqual({path.stem for path in packaged_audio}, set(languages))
+        self.assertEqual({path.stem for path in packaged_audio}, set(sample_languages))
         self.assertEqual(
             manifest["sentences"]["vi"],
             "Ứng dụng được phát triển bởi Mạch Hồng Hải, một sinh viên Đại học Kinh tế "
@@ -85,16 +86,21 @@ class AudioPreviewControllerTests(unittest.TestCase):
             "dụng ứng dụng của tôi, chúc bạn một ngày mới tốt lành.",
         )
 
-    def test_all_edge_voices_have_exact_offline_samples_and_decode_completely(self):
+    def test_packaged_edge_voices_have_exact_offline_samples_and_decode_completely(self):
         host = _host()
         preview = AudioPreviewController(host)
         manifest = json.loads((preview._PACKAGED_SAMPLE_DIR / "samples.json").read_text(encoding="utf-8"))
         edge_entries = {(item["voice"], item["language"]): item
                         for item in manifest["samples"] if item["provider"] == "edge"}
-        self.assertEqual(len(edge_entries), sum(map(len, EDGE_VOICES.values())))
+        self.assertEqual(len(edge_entries), sum(len(EDGE_VOICES[code]) for code in ("vi", "en", "zh")))
         with patch("haizflow.pipeline.edge_tts_backend.synthesize_to_mp3") as synthesize:
             for language, voices in EDGE_VOICES.items():
                 for voice, *_labels in voices:
+                    if language in {"ko", "ja", "es"}:
+                        # Adding a processing language must never play an old
+                        # English/Vietnamese sample under the new label.
+                        self.assertFalse(preview.has_voice_sample("edge", voice, language))
+                        continue
                     with self.subTest(voice=voice, language=language):
                         self.assertTrue(preview.has_voice_sample("edge", voice, language))
                         path = Path(preview.voice_sample_path("edge", voice, language))

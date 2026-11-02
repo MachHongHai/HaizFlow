@@ -37,6 +37,16 @@ class ProcessingLifecycleController:
             else ""
         )
         needs_translation = not manual_tool or manual_tool == "translation"
+        from haizflow.core.translation_models import is_api_model
+
+        if needs_translation and is_api_model(str(getattr(video, "translation_model", ""))):
+            from haizflow.services.translation_connections import resolve
+
+            try:
+                resolve(video.translation_model, with_key=True)
+            except (OSError, ValueError) as exc:
+                host.appAlertRequested.emit("Kết nối dịch", str(exc), "warning")
+                return False
         if needs_translation and str(getattr(video, "translation_model", "")).startswith("gemini-"):
             from haizflow.services.gemini_translation import key_configured
 
@@ -338,8 +348,12 @@ class ProcessingLifecycleController:
                 # generated voice is audible immediately, without waiting for
                 # a later volume edit or reopening the project.
                 finished_video = video_store.get_video(finished_video_id)
+                from haizflow.core.vieneu_voices import unsupported_language_notice
+
+                language = str(getattr(finished_video, "subtitle_language", "") or "")
                 if (finished_video_id == str(host._selected_video_id or "") and finished_video
-                        and getattr(finished_video, "subtitle_language", "") == "zh"
+                        and language
+                        and unsupported_language_notice(getattr(host, "_tts_provider", ""), language)
                         and str(getattr(host, "_tts_provider", "")).startswith("vieneu")
                         and str(getattr(finished_video, "tts_provider", "")).startswith("omnivoice")):
                     host._tts_provider, host._tts_voice = finished_video.tts_provider, finished_video.tts_voice
@@ -347,8 +361,13 @@ class ProcessingLifecycleController:
                     host.ttsVoiceChanged.emit()
                     host.ttsProviderOptionsChanged.emit()
                     host.ttsVoiceOptionsChanged.emit()
-                    host.appAlertRequested.emit("Đã đổi công cụ giọng đọc",
-                        "Phụ đề vừa tạo là tiếng Trung. VieNeu đã được chuyển sang OmniVoice để tạo giọng.", "warning")
+                    from haizflow.desktop.presenters import language_label
+
+                    vi = getattr(host, "_settings_language", "vi") == "vi"
+                    label = language_label(language, "vi" if vi else "en")
+                    host.appAlertRequested.emit("Đã đổi công cụ giọng đọc" if vi else "Speech backend changed",
+                        f"Phụ đề vừa tạo là {label.lower()}. VieNeu đã được chuyển sang OmniVoice để tạo giọng." if vi
+                        else f"The new subtitles are in {label}. VieNeu was switched to OmniVoice for speech generation.", "warning")
                 if (
                     finished_video_id == str(host._selected_video_id or "")
                     and finished_video

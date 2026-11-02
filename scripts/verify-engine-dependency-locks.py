@@ -123,6 +123,9 @@ def validate() -> dict:
                     f"outside {requirement.specifier}."
                 )
         if profile == "vision":
+            ort_variants = {"onnxruntime", "onnxruntime-gpu", "onnxruntime-directml"}.intersection(locked)
+            if ort_variants != {"onnxruntime-directml"}:
+                raise RuntimeError("Vision engine must contain only the DirectML ONNX Runtime distribution.")
             forbidden = FORBIDDEN_VISION.intersection(locked)
             if forbidden:
                 raise RuntimeError("Vision engine lock contains AI compute packages: " + ", ".join(sorted(forbidden)))

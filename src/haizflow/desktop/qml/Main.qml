@@ -26,6 +26,7 @@ ApplicationWindow {
     readonly property string routeSettings: "settings"
     readonly property string routeApiKeys: "api-keys"
     readonly property string routePackages: "packages"
+    readonly property string routeMcp: "mcp"
     readonly property string routeSingleProjects: "single-projects"
     readonly property string routeSingleWorkspace: "single-workspace"
     readonly property string routeManualProjects: "manual-projects"
@@ -69,7 +70,7 @@ ApplicationWindow {
     readonly property bool downloadCanGoForward: routeHost.downloadCanGoForward
     readonly property bool canNavigateBack: !globalNavigationBlocked && (downloadCanGoBack || routeCanGoBack)
     readonly property bool canNavigateForward: !globalNavigationBlocked && (downloadCanGoForward || routeCanGoForward)
-    readonly property bool editScopeAvailable: currentRoute === routeSettings || currentRoute === routeApiKeys || currentRoute === routePackages
+    readonly property bool editScopeAvailable: currentRoute === routeSettings || currentRoute === routeApiKeys || currentRoute === routePackages || currentRoute === routeMcp
         || currentRoute === routeSingleWorkspace
         || currentRoute === routeManualWorkspace
         || currentRoute === routeBatchWorkspace
@@ -78,7 +79,7 @@ ApplicationWindow {
         || currentRoute === routePublishWorkspace
 
     function syncEditHistoryScope() {
-        if (currentRoute === routeSettings || currentRoute === routeApiKeys || currentRoute === routePackages) {
+        if (currentRoute === routeSettings || currentRoute === routeApiKeys || currentRoute === routePackages || currentRoute === routeMcp) {
             AppController.setEditHistoryScope("settings");
         } else if (currentRoute === routeBatchWorkspace
                 || currentRoute === routeDownloadWorkspace
@@ -104,7 +105,7 @@ ApplicationWindow {
             return "manual";
         if (currentRoute === routeBatchProjects)
             return "batch";
-        if (currentRoute === routeSettings || currentRoute === routeApiKeys || currentRoute === routePackages)
+        if (currentRoute === routeSettings || currentRoute === routeApiKeys || currentRoute === routePackages || currentRoute === routeMcp)
             return "settings";
         if (currentRoute === routeDownloadProjects)
             return "downloads";
@@ -125,7 +126,7 @@ ApplicationWindow {
     }
 
     function routeIsAvailable(route) {
-        if (route === routeHome || route === routeProjects || route === routeSettings || route === routeApiKeys || route === routePackages || route === routeSingleProjects || route === routeManualProjects || route === routeBatchProjects || route === routeDownloadProjects || route === routePublishProjects)
+        if (route === routeHome || route === routeProjects || route === routeSettings || route === routeApiKeys || route === routePackages || route === routeMcp || route === routeSingleProjects || route === routeManualProjects || route === routeBatchProjects || route === routeDownloadProjects || route === routePublishProjects)
             return true;
         if (!AppController.hasOpenProject)
             return false;
@@ -505,6 +506,7 @@ ApplicationWindow {
             onSettingsRequested: root.navigate(root.routeSettings)
             onApiKeysRequested: root.navigate(root.routeApiKeys)
             onPackagesRequested: root.navigate(root.routePackages)
+            onMcpRequested: root.navigate(root.routeMcp)
             onAboutRequested: aboutDialogLoader.invoke("open", [])
             onCopyrightRequested: copyrightDialogLoader.invoke("open", [])
         }

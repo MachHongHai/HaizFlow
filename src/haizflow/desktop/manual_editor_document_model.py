@@ -17,6 +17,7 @@ from haizflow.services import desktop_videos, editor_documents
 class ManualEditorDocumentModel(QObject):
     changed = Signal()
     clipsChanged = Signal()
+    ocrLayersChanged = Signal()
     selectionChanged = Signal()
     _waveformReady = Signal(str, str, object)
 
@@ -38,6 +39,7 @@ class ManualEditorDocumentModel(QObject):
         self._waveform_notifications.setInterval(250)
         self._waveform_notifications.timeout.connect(self.clipsChanged)
         self.changed.connect(self.clipsChanged)
+        self.changed.connect(self.ocrLayersChanged)
         self._waveformReady.connect(self._accept_waveform)
 
     @property
@@ -107,7 +109,7 @@ class ManualEditorDocumentModel(QObject):
         return [item.model_dump() for item in sorted(self._document.tracks, key=lambda value: value.order)
                 if item.kind != "ocr" or EXTRA_LAYERS_ENABLED]
 
-    @Property("QVariantList", notify=changed)
+    @Property("QVariantList", notify=ocrLayersChanged)
     def ocrLayers(self) -> list[dict]:
         if not self._document:
             return []

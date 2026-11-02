@@ -9,15 +9,21 @@ Item {
     property string provider: "gemini"
     property bool editingKey: false
     readonly property bool zernio: provider === "zernio"
-    readonly property var apiKeys: zernio ? AppController.zernioApiKeys : AppController.geminiApiKeys
+    readonly property bool externalApi: !zernio && provider !== "gemini"
+    readonly property string providerLabel: provider === "openai" ? "OpenAI" : provider === "deepseek" ? "DeepSeek"
+        : provider === "openrouter" ? "OpenRouter" : provider === "custom" ? qsTr("API tùy chỉnh")
+        : zernio ? "Zernio" : "Gemini"
+    readonly property var apiKeys: externalApi ? AppController.translationApi.profiles.filter(function(row) {
+            return row.provider === root.provider;
+        }) : zernio ? AppController.zernioApiKeys : AppController.geminiApiKeys
     readonly property bool configured: apiKeys.length > 0
     readonly property bool credentialLocked: zernio && (AppController.zernioCredentialBusy
         || AppController.tiktokPublishBusy || AppController.zernioAccountSyncing)
     readonly property string checkResult: String(AppController.zernioCredentialResult || "")
     readonly property bool checkFinished: zernio && !AppController.zernioCredentialBusy
         && checkResult.length > 0
-    onProviderChanged: { entryForm.clear(); editingKey = false; }
-    onVisibleChanged: { if (!visible) { entryForm.clear(); editingKey = false; } }
+    onProviderChanged: { entryForm.clear(); translationEntry.clear(); editingKey = false; }
+    onVisibleChanged: { if (!visible) { entryForm.clear(); translationEntry.clear(); editingKey = false; } }
     function zernioMessage() {
         if (AppController.zernioCredentialBusy) return qsTr("Đang kiểm tra kết nối…");
         switch (AppController.zernioCredentialResult) {
@@ -40,6 +46,7 @@ Item {
             root.provider = provider;
             Qt.callLater(function() {
                 if (provider === "zernio") zernioGuideLoader.invoke("open", []);
+                else if (root.externalApi) AppController.translationApi.guide(provider);
                 else geminiGuideLoader.invoke("open", []);
             });
         }
@@ -54,11 +61,31 @@ Item {
         contentMaximumWidth: 760
         contentSpacing: Theme.space20
 
-        NavigationTabs {
+        Flickable {
+            id: providerScroll
             objectName: "apiKeyProviderSelector"
-            options: [{ label: "Gemini", value: "gemini" }, { label: "Zernio", value: "zernio" }]
-            currentValue: root.provider
-            onActivated: function(value) { root.provider = value; }
+            Layout.fillWidth: true
+            Layout.preferredHeight: 44
+            contentWidth: providerTabs.width
+            contentHeight: height
+            flickableDirection: Flickable.HorizontalFlick
+            clip: true
+            NavigationTabs {
+                id: providerTabs
+                width: Math.max(implicitWidth, providerScroll.width)
+                height: providerScroll.height
+                spacing: Theme.space8
+                options: [{ label: "Gemini", value: "gemini" }, { label: "OpenAI", value: "openai" },
+                    { label: "DeepSeek", value: "deepseek" }, { label: "OpenRouter", value: "openrouter" },
+                    { label: qsTr("API tùy chỉnh"), value: "custom" }, { label: "Zernio", value: "zernio" }]
+                currentValue: root.provider
+                onActivated: function(value) { root.provider = value; }
+                onTabFocused: function(left, right) {
+                    if (left < providerScroll.contentX) providerScroll.contentX = left;
+                    else if (right > providerScroll.contentX + providerScroll.width)
+                        providerScroll.contentX = Math.max(0, right - providerScroll.width);
+                }
+            }
         }
         RowLayout {
             Layout.fillWidth: true
@@ -68,7 +95,8 @@ Item {
                 spacing: Theme.space8
                 Text {
                     Layout.fillWidth: true
-                    text: root.zernio ? qsTr("Zernio API key") : qsTr("Gemini API key")
+                    text: root.externalApi ? qsTr("%1 API key").arg(root.providerLabel)
+                        : root.zernio ? qsTr("Zernio API key") : qsTr("Gemini API key")
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: TypeScale.title
@@ -76,7 +104,9 @@ Item {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: root.zernio ? qsTr("Kết nối đăng bài. Chọn tài khoản trong dự án.")
+                    text: root.provider === "custom" ? qsTr("API tương thích OpenAI. Chỉ dùng để dịch văn bản.")
+                        : root.externalApi ? qsTr("Chọn kết nối trong mục Model dịch của dự án.")
+                        : root.zernio ? qsTr("Kết nối đăng bài. Chọn tài khoản trong dự án.")
                         : qsTr("Dịch bằng Gemini. Chọn model trong dự án.")
                     color: Theme.textMuted
                     font.family: Theme.fontFamily
@@ -87,8 +117,10 @@ Item {
             StudioButton {
                 objectName: "apiKeyGuideButton"
                 text: qsTr("Hướng dẫn")
+                visible: root.provider !== "custom"
                 onClicked: {
                     if (root.zernio) zernioGuideLoader.invoke("open", []);
+                    else if (root.externalApi) AppController.translationApi.guide(root.provider);
                     else geminiGuideLoader.invoke("open", []);
                 }
             }
@@ -101,7 +133,8 @@ Item {
             Text {
                 objectName: "credentialStatus"
                 Layout.fillWidth: true
-                text: root.zernio ? root.zernioMessage() : qsTr("Chưa có key. Bạn vẫn có thể dùng model dịch cục bộ.")
+                    text: root.zernio ? root.zernioMessage() : root.externalApi ? qsTr("Chưa có API key.")
+                        : qsTr("Chưa có key. Bạn vẫn có thể dùng model dịch cục bộ.")
                 color: Theme.textMuted
                 font.family: Theme.fontFamily
                 font.pixelSize: TypeScale.body
@@ -114,13 +147,27 @@ Item {
             visible: root.configured
             Repeater {
                 model: root.apiKeys
-                delegate: ApiKeyListRow {
+                delegate: Loader {
+                    id: credentialLoader
                     required property var modelData
                     Layout.fillWidth: true
-                    credential: modelData
-                    zernio: root.zernio
-                    locked: root.credentialLocked
-                    onRemoveRequested: function(id, label) { removeLoader.invoke("confirm", [id, label, root.zernio]); }
+                    sourceComponent: root.externalApi ? translationRow : legacyRow
+                    Component {
+                        id: translationRow
+                        TranslationApiListRow {
+                            credential: credentialLoader.modelData
+                            onRemoveRequested: function(id, label) { removeLoader.invoke("confirm", [id, label, root.provider]); }
+                        }
+                    }
+                    Component {
+                        id: legacyRow
+                        ApiKeyListRow {
+                            credential: credentialLoader.modelData
+                            zernio: root.zernio
+                            locked: root.credentialLocked
+                            onRemoveRequested: function(id, label) { removeLoader.invoke("confirm", [id, label, root.provider]); }
+                        }
+                    }
                 }
             }
         }
@@ -146,9 +193,17 @@ Item {
             id: entryForm
             objectName: "apiKeyEntryForm"
             Layout.fillWidth: true
-            visible: root.editingKey || !root.configured
+            visible: !root.externalApi && (root.editingKey || !root.configured)
             zernio: root.zernio
             locked: root.credentialLocked
+            onAccepted: root.editingKey = false
+            onCancelled: root.editingKey = false
+        }
+        TranslationApiEntryForm {
+            id: translationEntry
+            Layout.fillWidth: true
+            visible: root.externalApi && (root.editingKey || !root.configured)
+            provider: root.provider
             onAccepted: root.editingKey = false
             onCancelled: root.editingKey = false
         }
@@ -172,14 +227,17 @@ Item {
             AppDialog {
                 id: dialog
                 property string keyId: ""
-                property bool zernio: false
-                function confirm(id, label, isZernio) { keyId = id; zernio = isZernio; subtitle = label; open(); }
-                title: qsTr("Xóa API key?")
+                property string credentialProvider: "gemini"
+                function confirm(id, label, provider) { keyId = id; credentialProvider = provider; subtitle = label; open(); }
+                readonly property bool translationConnection: credentialProvider !== "gemini" && credentialProvider !== "zernio"
+                title: translationConnection ? qsTr("Xóa kết nối dịch?") : qsTr("Xóa API key?")
                 preferredWidth: 440
                 onClosed: removeLoader.release()
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("Chỉ xóa key trên máy này. Dự án và tài khoản trên dịch vụ vẫn được giữ nguyên.")
+                    text: dialog.translationConnection
+                        ? qsTr("Chỉ xóa kết nối và key trên máy. Khi dịch lại, dự án cần chọn kết nối khác.")
+                        : qsTr("Chỉ xóa key trên máy này. Dự án và tài khoản trên dịch vụ vẫn được giữ nguyên.")
                     color: Theme.textMuted
                     font.family: Theme.fontFamily
                     font.pixelSize: TypeScale.label
@@ -188,11 +246,12 @@ Item {
                 footerActions: [
                     StudioButton { text: qsTr("Hủy"); onClicked: dialog.close() },
                     StudioButton {
-                        text: qsTr("Xóa key")
+                        text: dialog.translationConnection ? qsTr("Xóa kết nối") : qsTr("Xóa key")
                         variant: "danger"
                         onClicked: {
-                            const removed = dialog.zernio ? AppController.removeZernioApiKey(dialog.keyId)
-                                : AppController.removeGeminiApiKey(dialog.keyId);
+                            const removed = dialog.credentialProvider === "zernio" ? AppController.removeZernioApiKey(dialog.keyId)
+                                : dialog.credentialProvider === "gemini" ? AppController.removeGeminiApiKey(dialog.keyId)
+                                : AppController.translationApi.remove(dialog.keyId);
                             if (removed) dialog.close();
                         }
                     }

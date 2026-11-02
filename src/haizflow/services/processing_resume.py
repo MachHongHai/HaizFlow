@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from haizflow.schemas.video import VideoConfig
+from haizflow.core.translation_models import is_cloud_model
 
 
 _IDENTITY = {"project_name", "project_directory", "project_key", "project_id", "project_type", "review_approved"}
@@ -26,18 +27,29 @@ def configuration_snapshot(video, device: str, config=None) -> dict:
     fields = set(defaults) - _IDENTITY
     if getattr(video, "project_type", "single") == "manual":
         fields = _MANUAL_FIELDS.get(tool, fields)
-    guidance_fields = {"gemini_translation_instructions", "gemini_translation_glossary", "gemini_translation_style"}
+    guidance_fields = {"gemini_translation_instructions", "gemini_translation_glossary", "gemini_translation_style",
+                       "translation_reasoning_effort"}
     model = getattr(config, "translation_model", getattr(video, "translation_model", ""))
-    if str(model).startswith("gemini-") and (not tool or tool in {"translation", "export"}):
+    if is_cloud_model(str(model)) and (not tool or tool in {"translation", "export"}):
         fields = fields | guidance_fields
     else:
         fields = fields - guidance_fields
+    if not getattr(config if config is not None else video, "translation_reasoning_effort", ""):
+        fields = fields - {"translation_reasoning_effort"}  # Preserve pre-picker paused tasks and caches.
     settings = {}
+    if not getattr(config if config is not None else video, "watermark_position", None):
+        fields = fields - {"watermark_position"}
+    if getattr(config if config is not None else video, "watermark_moving", True):
+        fields = fields - {"watermark_moving"}  # Legacy tasks already used moving watermarks.
     for field in sorted(fields):
         value = getattr(config, field, getattr(video, field, defaults[field])) if config is not None else getattr(video, field, defaults[field])
         settings[field] = value.model_dump(mode="json") if hasattr(value, "model_dump") else value
     # Normalize lightweight test fixtures and persisted models identically.
     settings = json.loads(json.dumps(settings, sort_keys=True))
+    if str(model).startswith("api:") and (not tool or tool in {"translation", "export"}):
+        from haizflow.services.translation_connections import signature_parts
+
+        settings["translation_connection"] = list(signature_parts(str(model)))
     files = dict(getattr(video, "files", {}) or {})
     assets = {"video_input"}
     if not tool or tool in {"voice", "audio", "export"}:

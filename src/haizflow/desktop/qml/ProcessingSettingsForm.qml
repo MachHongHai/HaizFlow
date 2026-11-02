@@ -20,6 +20,8 @@ GridLayout {
         3 + (availableHeight - 500) / 24))
     property string speechRecognitionModel: "small"
     property string translationModel: "q4"
+    property string translationReasoningEffort: ""
+    signal translationReasoningEdited(string value)
     property string geminiInstructions: ""
     property string geminiGlossary: ""
     property string geminiStyle: "balanced"
@@ -52,6 +54,7 @@ GridLayout {
 
     signal speechRecognitionEdited(string value)
     signal translationModelEdited(string value)
+    signal translationSetupRequested(string provider)
     signal targetLanguageEdited(string value)
     signal ttsProviderEdited(string value)
     signal ttsVoiceEdited(string value)
@@ -131,17 +134,26 @@ GridLayout {
             SettingLabel {
                 Layout.fillWidth: true
                 text: qsTr("Model dịch")
-                helpText: qsTr("HY-MT2 chạy cục bộ. Gemini cần Internet và API key riêng; Google có thể tính phí theo mức sử dụng.")
+                helpText: qsTr("HY-MT2 chạy cục bộ. Các model API cần Internet và key riêng; nhà cung cấp có thể tính phí.")
             }
             TranslationModelCombo {
                 Layout.fillWidth: true
                 enabled: root.editable && !AppController.isSwitchingProcessingDevice
                 selectedModel: root.translationModel
                 onEdited: function(value) { root.translationModelEdited(value) }
+                onSetupRequested: function(provider) { root.translationSetupRequested(provider); }
+            }
+            TranslationReasoningControl {
+                Layout.fillWidth: true
+                enabled: root.editable
+                selectedModel: root.translationModel
+                reasoningEffort: root.translationReasoningEffort
+                hasGuidance: Boolean(root.geminiInstructions || root.geminiGlossary || root.geminiStyle !== "balanced")
+                onEdited: function(value) { root.translationReasoningEdited(value); }
             }
             GeminiGuidanceButton {
                 Layout.fillWidth: true
-                visible: root.translationModel.indexOf("gemini-") === 0
+                visible: root.translationModel.indexOf("gemini-") === 0 || root.translationModel.indexOf("api:") === 0
                 enabled: root.editable
                 instructions: root.geminiInstructions
                 glossary: root.geminiGlossary

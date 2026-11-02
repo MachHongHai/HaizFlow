@@ -38,7 +38,7 @@ Button {
             AppIcon {
                 objectName: "buttonLeadingIcon"
                 width: root.showLeadingIcon ? Theme.icon : 0
-                height: parent.height
+                height: Math.max(20, root.font.pixelSize + 4)
                 visible: root.showLeadingIcon
                 glyph: root.iconGlyph
                 iconColor: root.foregroundColor

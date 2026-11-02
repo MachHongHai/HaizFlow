@@ -92,6 +92,8 @@ Rectangle {
     property color watermarkTextColor: "#FFFFFF"
     property bool watermarkBold: true
     property bool watermarkItalic: true
+    property bool watermarkMoving: true
+    property var watermarkPosition: ({})
     property int watermarkOpacityPercent: 46
     property int watermarkOutlinePercent: 100
     property int watermarkScalePercent: 100
@@ -120,6 +122,7 @@ Rectangle {
     signal watermarkEditingDismissed()
     signal watermarkScalePreviewChanged(int scalePercent)
     signal watermarkScaleCommitted(int beforeScalePercent, int afterScalePercent)
+    signal watermarkPositionCommitted(var position)
     signal editorClipSelected(string clipId)
     signal monitorSelected(string monitorId)
     signal requestUrlImport()
@@ -917,6 +920,8 @@ Rectangle {
                 textColor: root.watermarkTextColor
                 fontBold: root.watermarkBold
                 fontItalic: root.watermarkItalic
+                moving: root.watermarkMoving
+                position: root.watermarkPosition
                 opacityPercent: root.watermarkOpacityPercent
                 outlinePercent: root.watermarkOutlinePercent
                 scalePercent: root.watermarkScalePercent
@@ -939,6 +944,7 @@ Rectangle {
                 onScaleCommitted: function(beforeValue, afterValue) {
                     root.watermarkScaleCommitted(beforeValue, afterValue);
                 }
+                onPositionCommitted: function(value) { root.watermarkPositionCommitted(value); }
             }
 
             EditorOverlayLayer {
@@ -1438,6 +1444,8 @@ Rectangle {
             textColor: root.watermarkTextColor
             fontBold: root.watermarkBold
             fontItalic: root.watermarkItalic
+            moving: root.watermarkMoving
+            position: root.watermarkPosition
             opacityPercent: root.watermarkOpacityPercent
             outlinePercent: root.watermarkOutlinePercent
             scalePercent: root.watermarkScalePercent
@@ -1460,6 +1468,7 @@ Rectangle {
             onScaleCommitted: function(beforeValue, afterValue) {
                 root.watermarkScaleCommitted(beforeValue, afterValue);
             }
+            onPositionCommitted: function(value) { root.watermarkPositionCommitted(value); }
         }
 
         EditorOverlayLayer {

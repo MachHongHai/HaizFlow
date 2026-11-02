@@ -39,7 +39,8 @@ StackLayout {
             "projects": 12,
             "settings": 13,
             "api-keys": 13,
-            "packages": 13
+            "packages": 13,
+            "mcp": 13
         };
         return routes[route] === undefined ? 0 : routes[route];
     }
