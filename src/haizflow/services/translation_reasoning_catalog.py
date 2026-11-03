@@ -20,7 +20,10 @@ def advertised(reasoning):
         return None
     mandatory = reasoning.get("mandatory") is True
     if "supported_efforts" not in reasoning:
-        return {"values": [], "default": "", "mandatory": True} if mandatory else None
+        if mandatory:
+            return {"values": [], "default": "", "mandatory": True}
+        return ({"values": ["disabled", "enabled"], "default": "disabled", "toggle": True}
+                if reasoning.get("mandatory") is False else None)
     supported = reasoning["supported_efforts"]
     if supported is None:
         supported = list(_VALUES)  # OpenRouter explicitly advertises all gateway efforts with null.
@@ -29,6 +32,8 @@ def advertised(reasoning):
     values = [value for value in _VALUES if value in supported]
     if mandatory:
         values = [value for value in values if value != "none"]
+    if not values and reasoning.get("mandatory") is False:
+        return {"values": ["disabled", "enabled"], "default": "disabled", "toggle": True}
     return {"values": values, "default": values[0] if values else "", **({"mandatory": True} if mandatory else {})}
 
 
@@ -43,7 +48,13 @@ def _read():
     for model, info in list(data.items())[:1000] if isinstance(data, dict) else []:
         if not _MODEL.fullmatch(model) or not isinstance(info, dict) or not isinstance(info.get("values"), list):
             continue
+        if info.get("toggle") is True and info.get("mandatory") is not True:
+            result[model] = {"parameter": "reasoning.enabled", "values": ["disabled", "enabled"],
+                             "default": "disabled", "toggle": True}
+            continue
         values = [value for value in _VALUES if value in info["values"]]
+        if not values and info.get("mandatory") is not True:
+            continue  # Old incomplete hints must not hide newly shipped toggle metadata.
         result[model] = {"parameter": "reasoning.effort", "values": values, "default": values[0] if values else ""}
         if info.get("mandatory") is True:
             result[model]["mandatory"] = True

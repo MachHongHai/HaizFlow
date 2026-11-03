@@ -83,6 +83,10 @@ Item {
                     Item {
                         id: textOverlay
                         readonly property var styleData: overlay.modelData.style || ({})
+                        readonly property bool subtitle: String(styleData.target_type || "") === "subtitle"
+                        readonly property var captionFont: subtitle
+                            ? AppController.subtitleFontSpecForText(String(overlay.modelData.name || ""), AppController.manualVoiceLanguage)
+                            : ({})
                         readonly property var spriteData: overlay.modelData.sprite || ({})
                         readonly property bool hasSprite: String(spriteData.sourceUrl || "").length > 0
                         readonly property real referenceScale: canvas.height / Math.max(1,
@@ -136,9 +140,13 @@ Item {
                             text: String(overlay.modelData.name || "")
                             visible: !textOverlay.hasSprite
                             color: String(textOverlay.styleData.text_color || "#FFFFFF")
-                            font.family: String(textOverlay.styleData.font_family || "Bangers")
+                            font.family: textOverlay.subtitle ? String(textOverlay.captionFont.family)
+                                : String(textOverlay.styleData.font_family || "Bangers")
                             font.pixelSize: textOverlay.displayFontSize
-                            font.weight: Number(textOverlay.styleData.font_weight || 400)
+                                * (textOverlay.subtitle ? Number(textOverlay.captionFont.scale || 1) : 1)
+                            font.weight: textOverlay.subtitle
+                                ? Math.max(Number(textOverlay.captionFont.weight || 400), Number(textOverlay.styleData.font_weight || 400))
+                                : Number(textOverlay.styleData.font_weight || 400)
                             font.italic: Boolean(textOverlay.styleData.italic)
                             font.capitalization: Boolean(textOverlay.styleData.uppercase)
                                 ? Font.AllUppercase : Font.MixedCase

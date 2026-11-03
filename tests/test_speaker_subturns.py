@@ -73,6 +73,43 @@ def test_edited_caption_retains_source_subturn_voices_and_relative_windows():
         tts._speaker_utterance_plan({**segment,'text':'Đừng làm vậy, không'},mixed_source())
 
 
+@pytest.mark.parametrize("first,second,separator", [
+    ("아무것도 못 느끼는데.", "마테오!", " "),  # Actual Korean failure, caption 4.
+    ("아무것도 못 느끼는데.", "마테오!", ""),
+    ("아무것도 못 느끼는데．", "마테오!", " "),
+    ("何も感じない。", "マテオ！", ""),
+    ("何も感じない.", "マテオ！", " "),
+    ("我什么都没感觉到.", "马特奥！", ""),
+    ("我什么都没感觉到。", "马特奥！", ""),
+    ("No siento nada.", "¡Mateo!", " "),
+    ("I don't feel a thing.", "Mateo!", " "),
+    ("Tôi không cảm thấy gì cả.", "Mateo!", " "),
+])
+def test_translated_subturn_boundaries_do_not_require_latin_uppercase(first, second, separator):
+    source = mixed_source()
+    original = json.loads(json.dumps(source))
+    plan = tts._speaker_utterance_plan({'start':10., 'end':12., 'text': first + separator + second}, source)
+    assert [part['text'] for part in plan] == [first, second]
+    assert [part['speaker_id'] for part in plan] == ['speaker-1', 'speaker-2']
+    assert [part['voice'] for part in plan] == ['omnivoice:male', 'omnivoice:female']
+    assert [(part['offset_ms'], part['duration_ms']) for part in plan] == [(0, 1200), (1200, 800)]
+    assert source == original  # No source transcript or speaker-cache mutation.
+
+
+@pytest.mark.parametrize("text", ["아무것도 못 느끼는데 마테오", "何も感じないマテオ", "No siento nada, Mateo"])
+def test_multilingual_captions_without_speaker_boundaries_still_require_an_edit(text):
+    with pytest.raises(ValueError, match='ranh giới'):
+        tts._speaker_utterance_plan({'start':4., 'end':5., 'text':text}, mixed_source())
+
+
+@pytest.mark.parametrize("first,second", [("Giá là 3.14 đô.", "Không!"),
+                                        ("가격은 3.14 달러.", "아니!"),
+                                        ("El precio es 3.14 dólares.", "¡No!")])
+def test_decimal_points_do_not_create_extra_speaker_turns(first, second):
+    plan = tts._speaker_utterance_plan({'start':4., 'end':5., 'text':first + ' ' + second}, mixed_source())
+    assert [part['text'] for part in plan] == [first, second]
+
+
 def test_single_short_turn_keeps_millisecond_duration():
     segment = {'start':49.136,'end':49.516,'text':'Cảm ơn cậu.'}
     plan = tts._speaker_utterance_plan(segment,{'speaker_voice':'omnivoice:male_soft','speaker_id':'speaker-3'})
@@ -80,8 +117,14 @@ def test_single_short_turn_keeps_millisecond_duration():
     assert plan[0]['voice']=='omnivoice:male_soft'
 
 
-def test_composite_counts_one_caption_and_never_uses_default_female(tmp_path):
-    segments = [{'start':4.,'end':5.,'text':'Đừng làm vậy! Không!'}]
+@pytest.mark.parametrize("language,text", [
+    ('vi', 'Đừng làm vậy! Không!'),
+    ('ko', '아무것도 못 느끼는데. 마테오!'),
+    ('ja', '何も感じない. マテオ！'),
+    ('es', 'No siento nada. ¡Mateo!'),
+])
+def test_composite_counts_one_caption_and_never_uses_default_female(tmp_path, language, text):
+    segments = [{'start':4.,'end':5.,'text':text}]
     transcript = tmp_path/'segments.json';transcript.write_text(json.dumps(segments),encoding='utf-8')
     source = tmp_path/'source.json';source.write_text(json.dumps([mixed_source()]),encoding='utf-8')
     audio = tmp_path/'audio.wav';audio.write_bytes(b'fixture')
@@ -89,6 +132,7 @@ def test_composite_counts_one_caption_and_never_uses_default_female(tmp_path):
     progress,compositions = [],[]
     def synthesize(items,_video,**kwargs):
         assert [item['voice'] for item in items]==['omnivoice:male','omnivoice:female']
+        assert kwargs['language_id'] == language
         for i,item in enumerate(items,1):
             Path(item['output_path']).write_bytes(b'ID3'+bytes(600))
             kwargs['progress_callback'](i,len(items),'synthesizing')
@@ -100,6 +144,7 @@ def test_composite_counts_one_caption_and_never_uses_default_female(tmp_path):
           patch('haizflow.pipeline.omnivoice_tts.synthesize_batch_to_mp3',side_effect=synthesize),
           patch.object(tts,'_compose_speaker_utterances',side_effect=compose)):
         tts.generate_voice_parts(str(transcript),str(tmp_path/'parts'),'omnivoice:female','fixture',
+                                 target_language=language,
                                  status_callback=lambda _stage,current,total:progress.append((current,total)))
     assert progress[:2]==[(0,1),(1,1)]
     assert len(compositions)==1 and (tmp_path/'parts'/'voice_0001.mp3').exists()

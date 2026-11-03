@@ -1,12 +1,15 @@
 {
   "version": 2,
-  "retrieved_at": "2026-11-02",
+  "retrieved_at": "2026-11-03",
   "options": [
     {
       "value": "anthropic/claude-fable-5",
       "label": "Anthropic: Claude Fable 5",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -24,6 +27,9 @@
       "label": "Anthropic: Claude Fable 5 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -41,6 +47,9 @@
       "label": "Anthropic: Claude Fable 5.1",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -58,6 +67,9 @@
       "label": "Anthropic: Claude Fable 5.1 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -75,6 +87,9 @@
       "label": "Anthropic: Claude Fable Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -91,19 +106,44 @@
       "value": "anthropic/claude-haiku-4.5",
       "label": "Anthropic: Claude Haiku 4.5",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 200000,
+      "max_completion_tokens": 64000,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "anthropic/claude-haiku-4.5:batch",
       "label": "Anthropic: Claude Haiku 4.5 (batch)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 200000,
+      "max_completion_tokens": 64000,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "anthropic/claude-haiku-5.5",
       "label": "Anthropic: Claude Haiku 5.5",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -121,6 +161,9 @@
       "label": "Anthropic: Claude Haiku 5.5 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -138,6 +181,9 @@
       "label": "Anthropic: Claude Haiku Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -154,25 +200,61 @@
       "value": "anthropic/claude-opus-4.1:batch",
       "label": "Anthropic: Claude Opus 4.1 (batch)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 200000,
+      "max_completion_tokens": 32000,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "anthropic/claude-opus-4.5",
       "label": "Anthropic: Claude Opus 4.5",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 200000,
+      "max_completion_tokens": 64000,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "anthropic/claude-opus-4.5:batch",
       "label": "Anthropic: Claude Opus 4.5 (batch)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 200000,
+      "max_completion_tokens": 64000,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "anthropic/claude-opus-4.6",
       "label": "Anthropic: Claude Opus 4.6",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -189,6 +271,9 @@
       "label": "Anthropic: Claude Opus 4.6 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -205,6 +290,9 @@
       "label": "Anthropic: Claude Opus 4.7",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -222,6 +310,9 @@
       "label": "Anthropic: Claude Opus 4.7 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -239,6 +330,9 @@
       "label": "Anthropic: Claude Opus 4.8",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -256,6 +350,9 @@
       "label": "Anthropic: Claude Opus 4.8 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -273,6 +370,9 @@
       "label": "Anthropic: Claude Opus 5",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -290,6 +390,9 @@
       "label": "Anthropic: Claude Opus 5 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -307,6 +410,9 @@
       "label": "Anthropic: Claude Opus 5.5",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -324,6 +430,9 @@
       "label": "Anthropic: Claude Opus 5.5 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -341,6 +450,9 @@
       "label": "Anthropic: Claude Opus Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -357,19 +469,44 @@
       "value": "anthropic/claude-sonnet-4.5",
       "label": "Anthropic: Claude Sonnet 4.5",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 64000,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "anthropic/claude-sonnet-4.5:batch",
       "label": "Anthropic: Claude Sonnet 4.5 (batch)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 64000,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "anthropic/claude-sonnet-4.6",
       "label": "Anthropic: Claude Sonnet 4.6",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -386,6 +523,9 @@
       "label": "Anthropic: Claude Sonnet 4.6 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -402,6 +542,9 @@
       "label": "Anthropic: Claude Sonnet 5",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -419,6 +562,9 @@
       "label": "Anthropic: Claude Sonnet 5 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -436,6 +582,9 @@
       "label": "Anthropic: Claude Sonnet 5.5",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -453,6 +602,9 @@
       "label": "Anthropic: Claude Sonnet 5.5 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -470,6 +622,9 @@
       "label": "Anthropic: Claude Sonnet Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -486,25 +641,61 @@
       "value": "bytedance-seed/seed-1.6",
       "label": "ByteDance Seed: Seed 1.6",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 32768,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "bytedance-seed/seed-1.6-flash",
       "label": "ByteDance Seed: Seed 1.6 Flash",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 32768,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "bytedance-seed/seed-2-1-turbo",
       "label": "ByteDance Seed: Seed 2.1 Turbo",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "bytedance-seed/seed-2.0-code",
       "label": "ByteDance Seed: Seed-2.0-Code",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -520,6 +711,9 @@
       "label": "ByteDance Seed: Seed-2.0-Lite",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -536,6 +730,9 @@
       "label": "ByteDance Seed: Seed-2.0-Mini",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -548,46 +745,62 @@
       }
     },
     {
-      "value": "bytedance/ui-tars-1.5-7b",
-      "label": "ByteDance: UI-TARS 7B",
-      "pricing_kind": "paid",
-      "output_format": "json_schema"
-    },
-    {
       "value": "cohere/command-a",
       "label": "Cohere: Command A",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 256000,
+      "max_completion_tokens": 8192
     },
     {
       "value": "cohere/command-a-plus",
       "label": "Cohere: Command A+",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 192000,
+      "max_completion_tokens": 64000,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "cohere/command-r-08-2024",
       "label": "Cohere: Command R (08-2024)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 4000
     },
     {
       "value": "cohere/command-r-plus-08-2024",
       "label": "Cohere: Command R+ (08-2024)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 4000
     },
     {
       "value": "cohere/command-r7b-12-2024",
       "label": "Cohere: Command R7B (12-2024)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 4000
     },
     {
       "value": "~deepseek/deepseek-flash-latest",
       "label": "DeepSeek: DeepSeek Flash Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -603,6 +816,9 @@
       "label": "DeepSeek: DeepSeek Pro Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 393216,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -617,43 +833,94 @@
       "value": "deepseek/deepseek-chat",
       "label": "DeepSeek: DeepSeek V3",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 163840,
+      "max_completion_tokens": 16000
     },
     {
       "value": "deepseek/deepseek-chat-v3-0324",
       "label": "DeepSeek: DeepSeek V3 0324",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 163840,
+      "max_completion_tokens": 115200
     },
     {
       "value": "deepseek/deepseek-chat-v3.1",
       "label": "DeepSeek: DeepSeek V3.1",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 163840,
+      "max_completion_tokens": 147456,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "deepseek/deepseek-v3.1-terminus",
       "label": "DeepSeek: DeepSeek V3.1 Terminus",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 163840,
+      "max_completion_tokens": 147456,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "deepseek/deepseek-v3.2",
       "label": "DeepSeek: DeepSeek V3.2",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 163840,
+      "max_completion_tokens": 147456,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "deepseek/deepseek-v3.2-exp",
       "label": "DeepSeek: DeepSeek V3.2 Exp",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 163840,
+      "max_completion_tokens": 147456,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "deepseek/deepseek-v4-flash",
       "label": "DeepSeek: DeepSeek V4 Flash 0423",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943717,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -668,6 +935,9 @@
       "label": "DeepSeek: DeepSeek V4 Flash 0731",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -683,6 +953,9 @@
       "label": "DeepSeek: DeepSeek V4 Flash Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -698,6 +971,9 @@
       "label": "DeepSeek: DeepSeek V4 Flash Vision Exp",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 262144,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -713,6 +989,9 @@
       "label": "DeepSeek: DeepSeek V4 Pro 0423",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 393216,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -727,6 +1006,9 @@
       "label": "DeepSeek: DeepSeek V4 Pro 0813",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -742,6 +1024,9 @@
       "label": "DeepSeek: DeepSeek V4.1 Flash",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -757,6 +1042,9 @@
       "label": "DeepSeek: DeepSeek V4.1 Flash (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 384000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -772,6 +1060,9 @@
       "label": "DeepSeek: DeepSeek V4.1 Flash 1017",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 393216,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -787,6 +1078,9 @@
       "label": "DeepSeek: R1 0528",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 163840,
+      "max_completion_tokens": 32768,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -797,19 +1091,44 @@
       "value": "dots-studio/dots-3-note-preview:free",
       "label": "Dots Studio: Dots3-Note Preview (free)",
       "pricing_kind": "free",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 512000,
+      "max_completion_tokens": 460800,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "elorian/glimpse",
       "label": "Elorian: Glimpse",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 256000,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "fireworks/ember-1",
       "label": "Fireworks: Ember-1",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -824,19 +1143,44 @@
       "value": "google/gemini-2.5-flash",
       "label": "Google: Gemini 2.5 Flash",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65535,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "google/gemini-2.5-flash-lite",
       "label": "Google: Gemini 2.5 Flash Lite",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65535,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "google/gemini-2.5-pro",
       "label": "Google: Gemini 2.5 Pro",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -848,6 +1192,9 @@
       "label": "Google: Gemini 2.5 Pro Preview 06-05",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -859,6 +1206,9 @@
       "label": "Google: Gemini 3 Flash Preview",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -875,6 +1225,9 @@
       "label": "Google: Gemini 3 Flash Preview (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -891,6 +1244,9 @@
       "label": "Google: Gemini 3.1 Flash Lite",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -907,6 +1263,9 @@
       "label": "Google: Gemini 3.1 Flash Lite (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -923,6 +1282,9 @@
       "label": "Google: Gemini 3.1 Flash Lite Preview",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -939,6 +1301,9 @@
       "label": "Google: Gemini 3.1 Pro Preview",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -954,6 +1319,9 @@
       "label": "Google: Gemini 3.1 Pro Preview (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -969,6 +1337,9 @@
       "label": "Google: Gemini 3.1 Pro Preview Custom Tools",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -984,6 +1355,9 @@
       "label": "Google: Gemini 3.5 Flash",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -1000,6 +1374,9 @@
       "label": "Google: Gemini 3.5 Flash (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -1016,6 +1393,9 @@
       "label": "Google: Gemini 3.5 Flash Lite",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -1032,6 +1412,9 @@
       "label": "Google: Gemini 3.5 Flash Lite (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -1048,6 +1431,9 @@
       "label": "Google: Gemini 3.6 Flash",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -1064,6 +1450,9 @@
       "label": "Google: Gemini 3.6 Flash (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -1080,6 +1469,9 @@
       "label": "Google: Gemini 3.7 Flash",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1095,6 +1487,9 @@
       "label": "Google: Gemini 3.7 Flash (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1110,6 +1505,9 @@
       "label": "Google: Gemini 3.8 Flash",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1125,6 +1523,9 @@
       "label": "Google: Gemini 3.8 Flash (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1140,6 +1541,9 @@
       "label": "Google: Gemini 4 Argon",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1155,6 +1559,9 @@
       "label": "Google: Gemini 4 Argon (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1170,6 +1577,9 @@
       "label": "Google: Gemini Flash Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1185,6 +1595,9 @@
       "label": "Google: Gemini Pro Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1196,58 +1609,108 @@
       }
     },
     {
-      "value": "google/gemma-2-27b-it",
-      "label": "Google: Gemma 2 27B",
-      "pricing_kind": "paid",
-      "output_format": "json_schema"
-    },
-    {
       "value": "google/gemma-3-12b-it",
       "label": "Google: Gemma 3 12B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 16384,
+      "prompt_format": "user_only"
     },
     {
       "value": "google/gemma-3-27b-it",
       "label": "Google: Gemma 3 27B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 117964,
+      "prompt_format": "user_only"
     },
     {
       "value": "google/gemma-3-4b-it",
       "label": "Google: Gemma 3 4B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 16384,
+      "prompt_format": "user_only"
     },
     {
       "value": "google/gemma-4-26b-a4b-it",
       "label": "Google: Gemma 4 26B A4B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 32768,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "google/gemma-4-26b-a4b-it:free",
       "label": "Google: Gemma 4 26B A4B (free)",
       "pricing_kind": "free",
-      "output_format": "json_object"
+      "output_format": "json_object",
+      "context_length": 262144,
+      "max_completion_tokens": 32768,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "google/gemma-4-31b-it",
       "label": "Google: Gemma 4 31B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 16384,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "google/gemma-4-31b-it:free",
       "label": "Google: Gemma 4 31B (free)",
       "pricing_kind": "free",
-      "output_format": "json_object"
+      "output_format": "json_object",
+      "context_length": 262144,
+      "max_completion_tokens": 32768,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "ibm-granite/granite-4.2-8b",
       "label": "IBM: Granite 4.2 8B",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 117964,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1262,6 +1725,9 @@
       "label": "Inception: Mercury 2",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 50000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1277,6 +1743,9 @@
       "label": "Inception: Mercury 2.5",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 260000,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1292,6 +1761,9 @@
       "label": "Inception: Mercury 3",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1306,31 +1778,44 @@
       "value": "inclusionai/ling-3.0-flash-vl",
       "label": "inclusionAI: Ling 3.0 Flash VL",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 32768,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "inclusionai/ling-3.1-flash",
       "label": "inclusionAI: Ling 3.1 Flash",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
-    },
-    {
-      "value": "inference-net/schematron-v2-small",
-      "label": "Inference.net: Schematron V2 Small",
-      "pricing_kind": "paid",
-      "output_format": "json_schema"
-    },
-    {
-      "value": "inference-net/schematron-v2-turbo",
-      "label": "Inference.net: Schematron V2 Turbo",
-      "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 262144,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "liquid/lfm-2.5-2.6b",
       "label": "LiquidAI: LFM2.5-2.6B",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 8192,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -1342,6 +1827,9 @@
       "label": "LiquidAI: LFM2.5-2.6B (free)",
       "pricing_kind": "free",
       "output_format": "json_schema",
+      "context_length": 65536,
+      "max_completion_tokens": 8192,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -1353,6 +1841,9 @@
       "label": "LiquidAI: LFM2.5-24B-A2B",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 8192,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -1363,49 +1854,58 @@
       "value": "anthracite-org/magnum-v4-72b",
       "label": "Magnum v4 72B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
-    },
-    {
-      "value": "meta-llama/llama-3.1-70b-instruct",
-      "label": "Meta: Llama 3.1 70B Instruct",
-      "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 32768,
+      "max_completion_tokens": 4096
     },
     {
       "value": "meta-llama/llama-3.1-8b-instruct",
       "label": "Meta: Llama 3.1 8B Instruct",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 117964
     },
     {
       "value": "meta-llama/llama-3.2-3b-instruct",
       "label": "Meta: Llama 3.2 3B Instruct",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 72000
     },
     {
       "value": "meta-llama/llama-3.3-70b-instruct",
       "label": "Meta: Llama 3.3 70B Instruct",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 128000
     },
     {
       "value": "meta-llama/llama-4-maverick",
       "label": "Meta: Llama 4 Maverick",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 524288,
+      "max_completion_tokens": 16384
     },
     {
       "value": "meta-llama/llama-4-scout",
       "label": "Meta: Llama 4 Scout",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1310720,
+      "max_completion_tokens": 16384
     },
     {
       "value": "meta/muse-glimmer-30b",
       "label": "Meta: Muse Glimmer 30B",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 16384,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1422,6 +1922,9 @@
       "label": "Meta: Muse Spark 1.1",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -1439,6 +1942,9 @@
       "label": "Meta: Muse Spark 1.2",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -1456,6 +1962,9 @@
       "label": "Meta: Muse Spark 1.2 Contributor",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -1473,6 +1982,9 @@
       "label": "Meta: Muse Spark 1.3",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -1491,6 +2003,9 @@
       "label": "Meta: Muse Spark 1.3 Contributor",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -1509,6 +2024,9 @@
       "label": "Meta: Muse Spark Open",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1525,6 +2043,9 @@
       "label": "Meta: Muse Wonder",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -1542,13 +2063,18 @@
       "value": "microsoft/phi-4",
       "label": "Microsoft: Phi 4",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 16384,
+      "max_completion_tokens": 14745
     },
     {
       "value": "minimax/minimax-m2.5",
       "label": "MiniMax: MiniMax M2.5",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 204800,
+      "max_completion_tokens": 32768,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -1559,13 +2085,27 @@
       "value": "minimax/minimax-m3",
       "label": "MiniMax: MiniMax M3",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 512000,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "minimax/minimax-m3.1-flash",
       "label": "MiniMax: MiniMax M3.1 Flash",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 524288,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1582,55 +2122,74 @@
       "value": "mistralai/mistral-large",
       "label": "Mistral Large",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 102400
     },
     {
       "value": "mistralai/mistral-large-2407",
       "label": "Mistral Large 2407",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 104857
     },
     {
       "value": "mistralai/codestral-2508",
       "label": "Mistral: Codestral 2508",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 256000,
+      "max_completion_tokens": 204800
     },
     {
       "value": "mistralai/devstral-2512",
       "label": "Mistral: Devstral 2 2512",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 209715
     },
     {
       "value": "mistralai/ministral-14b-2512",
       "label": "Mistral: Ministral 3 14B 2512",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 209715
     },
     {
       "value": "mistralai/ministral-3b-2512",
       "label": "Mistral: Ministral 3 3B 2512",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 104857
     },
     {
       "value": "mistralai/ministral-8b-2512",
       "label": "Mistral: Ministral 3 8B 2512",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 209715
     },
     {
       "value": "mistralai/mistral-large-2512",
       "label": "Mistral: Mistral Large 3 2512",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 209715
     },
     {
       "value": "mistralai/mistral-large-4-0",
       "label": "Mistral: Mistral Large 4",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 262144,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1643,19 +2202,26 @@
       "value": "mistralai/mistral-medium-3",
       "label": "Mistral: Mistral Medium 3",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 104857
     },
     {
       "value": "mistralai/mistral-medium-3.1",
       "label": "Mistral: Mistral Medium 3.1",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 104857
     },
     {
       "value": "mistralai/mistral-medium-3-5",
       "label": "Mistral: Mistral Medium 3.5",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 209715,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1669,6 +2235,9 @@
       "label": "Mistral: Mistral Medium 3.5 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 209715,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1681,31 +2250,42 @@
       "value": "mistralai/mistral-nemo",
       "label": "Mistral: Mistral Nemo",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 16384
     },
     {
       "value": "mistralai/mistral-small-24b-instruct-2501",
       "label": "Mistral: Mistral Small 3",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 32768,
+      "max_completion_tokens": 16384
     },
     {
       "value": "mistralai/mistral-small-3.1-24b-instruct",
       "label": "Mistral: Mistral Small 3.1 24B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 102400
     },
     {
       "value": "mistralai/mistral-small-3.2-24b-instruct",
       "label": "Mistral: Mistral Small 3.2 24B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 256000,
+      "max_completion_tokens": 16384
     },
     {
       "value": "mistralai/mistral-small-2603",
       "label": "Mistral: Mistral Small 4",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 209715,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1718,31 +2298,42 @@
       "value": "mistralai/mixtral-8x22b-instruct",
       "label": "Mistral: Mixtral 8x22B Instruct",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 65536,
+      "max_completion_tokens": 52428
     },
     {
       "value": "mistralai/mistral-saba",
       "label": "Mistral: Saba",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 32768,
+      "max_completion_tokens": 26214
     },
     {
       "value": "mistralai/voxtral-small-24b-2507",
       "label": "Mistral: Voxtral Small 24B 2507",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 32768,
+      "max_completion_tokens": 26214
     },
     {
       "value": "moonshotai/kimi-k2-0905",
       "label": "MoonshotAI: Kimi K2 0905",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 98304
     },
     {
       "value": "moonshotai/kimi-k2-thinking",
       "label": "MoonshotAI: Kimi K2 Thinking",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 98304,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -1753,19 +2344,44 @@
       "value": "moonshotai/kimi-k2.5",
       "label": "MoonshotAI: Kimi K2.5",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "moonshotai/kimi-k2.6",
       "label": "MoonshotAI: Kimi K2.6",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "moonshotai/kimi-k2.7-code",
       "label": "MoonshotAI: Kimi K2.7 Code",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -1777,6 +2393,9 @@
       "label": "MoonshotAI: Kimi K3",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1792,6 +2411,9 @@
       "label": "MoonshotAI: Kimi K3 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 16384,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1807,6 +2429,9 @@
       "label": "MoonshotAI: Kimi K3.1 Pro",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1822,6 +2447,9 @@
       "label": "MoonshotAI: Kimi Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1836,25 +2464,34 @@
       "value": "morph/morph-v3-fast",
       "label": "Morph: Morph V3 Fast",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 131072
     },
     {
       "value": "morph/morph-v3-large",
       "label": "Morph: Morph V3 Large",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 131072
     },
     {
       "value": "gryphe/mythomax-l2-13b",
       "label": "MythoMax 13B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 8192,
+      "max_completion_tokens": 3686
     },
     {
       "value": "nex-agi/nex-n2.5-mini",
       "label": "Nex AGI: Nex-N2.5-Mini",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1869,6 +2506,9 @@
       "label": "Nex AGI: Nex-N2.5-Pro",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1882,13 +2522,27 @@
       "value": "nvidia/nemotron-3-nano-30b-a3b",
       "label": "NVIDIA: Nemotron 3 Nano 30B A3B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "nvidia/nemotron-3-super-120b-a12b",
       "label": "NVIDIA: Nemotron 3 Super",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 262144,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1903,6 +2557,9 @@
       "label": "NVIDIA: Nemotron 3 Ultra",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 182520,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1916,25 +2573,61 @@
       "value": "nvidia/nemotron-3.5-lightning",
       "label": "NVIDIA: Nemotron 3.5 Lightning",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "nvidia/nemotron-3.5-super-vl",
       "label": "NVIDIA: Nemotron 3.5 Super VL",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 235929,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "nvidia/nemotron-3.5-super-vl:free",
       "label": "NVIDIA: Nemotron 3.5 Super VL (free)",
       "pricing_kind": "free",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "~openai/gpt-astra-latest",
       "label": "OpenAI: GPT Astra Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1951,13 +2644,18 @@
       "value": "openai/gpt-chat-latest",
       "label": "OpenAI: GPT Chat Latest",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000
     },
     {
       "value": "~openai/gpt-luna-latest",
       "label": "OpenAI: GPT Luna Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1975,6 +2673,9 @@
       "label": "OpenAI: GPT Mini Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1991,6 +2692,9 @@
       "label": "OpenAI: GPT Sol Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -2008,6 +2712,9 @@
       "label": "OpenAI: GPT Terra Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2024,109 +2731,146 @@
       "value": "openai/gpt-3.5-turbo-0613",
       "label": "OpenAI: GPT-3.5 Turbo (older v0613)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 4095,
+      "max_completion_tokens": 3685
     },
     {
       "value": "openai/gpt-3.5-turbo-16k",
       "label": "OpenAI: GPT-3.5 Turbo 16k",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 16385,
+      "max_completion_tokens": 4096
     },
     {
       "value": "openai/gpt-4-turbo:batch",
       "label": "OpenAI: GPT-4 Turbo (batch)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 4096
     },
     {
       "value": "openai/gpt-4.1",
       "label": "OpenAI: GPT-4.1",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1047576,
+      "max_completion_tokens": 32768
     },
     {
       "value": "openai/gpt-4.1:batch",
       "label": "OpenAI: GPT-4.1 (batch)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1047576,
+      "max_completion_tokens": 32768
     },
     {
       "value": "openai/gpt-4.1-mini",
       "label": "OpenAI: GPT-4.1 Mini",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1047576,
+      "max_completion_tokens": 32768
     },
     {
       "value": "openai/gpt-4.1-mini:batch",
       "label": "OpenAI: GPT-4.1 Mini (batch)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1047576,
+      "max_completion_tokens": 32768
     },
     {
       "value": "openai/gpt-4.1-nano",
       "label": "OpenAI: GPT-4.1 Nano",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1047576,
+      "max_completion_tokens": 942818
     },
     {
       "value": "openai/gpt-4.1-nano:batch",
       "label": "OpenAI: GPT-4.1 Nano (batch)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1047576,
+      "max_completion_tokens": 32768
     },
     {
       "value": "openai/gpt-4o",
       "label": "OpenAI: GPT-4o",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 16384
     },
     {
       "value": "openai/gpt-4o-2024-05-13",
       "label": "OpenAI: GPT-4o (2024-05-13)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 4096
     },
     {
       "value": "openai/gpt-4o-2024-08-06",
       "label": "OpenAI: GPT-4o (2024-08-06)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 16384
     },
     {
       "value": "openai/gpt-4o-2024-11-20",
       "label": "OpenAI: GPT-4o (2024-11-20)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 16384
     },
     {
       "value": "openai/gpt-4o:batch",
       "label": "OpenAI: GPT-4o (batch)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 16384
     },
     {
       "value": "openai/gpt-4o-mini",
       "label": "OpenAI: GPT-4o-mini",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 16384
     },
     {
       "value": "openai/gpt-4o-mini-2024-07-18",
       "label": "OpenAI: GPT-4o-mini (2024-07-18)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 16384
     },
     {
       "value": "openai/gpt-4o-mini:batch",
       "label": "OpenAI: GPT-4o-mini (batch)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 16384
     },
     {
       "value": "openai/gpt-5",
       "label": "OpenAI: GPT-5",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -2143,6 +2887,9 @@
       "label": "OpenAI: GPT-5 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -2159,6 +2906,9 @@
       "label": "OpenAI: GPT-5 Mini",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -2175,6 +2925,9 @@
       "label": "OpenAI: GPT-5 Mini (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -2191,6 +2944,9 @@
       "label": "OpenAI: GPT-5 Nano",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -2207,6 +2963,9 @@
       "label": "OpenAI: GPT-5 Nano (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -2223,6 +2982,9 @@
       "label": "OpenAI: GPT-5 Pro",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "high"
@@ -2236,6 +2998,9 @@
       "label": "OpenAI: GPT-5 Pro (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "high"
@@ -2249,6 +3014,9 @@
       "label": "OpenAI: GPT-5.1",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2264,6 +3032,9 @@
       "label": "OpenAI: GPT-5.1 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2279,6 +3050,9 @@
       "label": "OpenAI: GPT-5.1-Codex",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -2294,6 +3068,9 @@
       "label": "OpenAI: GPT-5.1-Codex-Max",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -2310,6 +3087,9 @@
       "label": "OpenAI: GPT-5.1-Codex-Mini",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -2325,6 +3105,9 @@
       "label": "OpenAI: GPT-5.2",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2341,6 +3124,9 @@
       "label": "OpenAI: GPT-5.2 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2356,13 +3142,18 @@
       "value": "openai/gpt-5.2-chat",
       "label": "OpenAI: GPT-5.2 Chat",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 32000
     },
     {
       "value": "openai/gpt-5.2-pro",
       "label": "OpenAI: GPT-5.2 Pro",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "medium",
@@ -2378,6 +3169,9 @@
       "label": "OpenAI: GPT-5.2 Pro (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "medium",
@@ -2393,6 +3187,9 @@
       "label": "OpenAI: GPT-5.2-Codex",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -2409,6 +3206,9 @@
       "label": "OpenAI: GPT-5.3-Codex",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2425,6 +3225,9 @@
       "label": "OpenAI: GPT-5.4",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2441,6 +3244,9 @@
       "label": "OpenAI: GPT-5.4 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2457,6 +3263,9 @@
       "label": "OpenAI: GPT-5.4 Mini",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2473,6 +3282,9 @@
       "label": "OpenAI: GPT-5.4 Mini (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2489,6 +3301,9 @@
       "label": "OpenAI: GPT-5.4 Nano",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2505,6 +3320,9 @@
       "label": "OpenAI: GPT-5.4 Nano (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 400000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2521,6 +3339,9 @@
       "label": "OpenAI: GPT-5.4 Pro",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "medium",
@@ -2536,6 +3357,9 @@
       "label": "OpenAI: GPT-5.4 Pro (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "medium",
@@ -2551,6 +3375,9 @@
       "label": "OpenAI: GPT-5.5",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2567,6 +3394,9 @@
       "label": "OpenAI: GPT-5.5 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2583,6 +3413,9 @@
       "label": "OpenAI: GPT-5.5 Pro",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "medium",
@@ -2598,6 +3431,9 @@
       "label": "OpenAI: GPT-5.5 Pro (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "medium",
@@ -2613,6 +3449,9 @@
       "label": "OpenAI: GPT-5.6 Luna",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2630,6 +3469,9 @@
       "label": "OpenAI: GPT-5.6 Luna (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2647,6 +3489,9 @@
       "label": "OpenAI: GPT-5.6 Luna Pro",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2664,6 +3509,9 @@
       "label": "OpenAI: GPT-5.6 Luna Pro (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2681,6 +3529,9 @@
       "label": "OpenAI: GPT-5.6 Sol",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2698,6 +3549,9 @@
       "label": "OpenAI: GPT-5.6 Sol (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2715,6 +3569,9 @@
       "label": "OpenAI: GPT-5.6 Sol Pro",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2732,6 +3589,9 @@
       "label": "OpenAI: GPT-5.6 Sol Pro (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2749,6 +3609,9 @@
       "label": "OpenAI: GPT-5.6 Terra",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2766,6 +3629,9 @@
       "label": "OpenAI: GPT-5.6 Terra (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2783,6 +3649,9 @@
       "label": "OpenAI: GPT-5.6 Terra Pro",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2800,6 +3669,9 @@
       "label": "OpenAI: GPT-5.6 Terra Pro (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2817,6 +3689,9 @@
       "label": "OpenAI: GPT-6 Astra",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -2834,6 +3709,9 @@
       "label": "OpenAI: GPT-6 Astra (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -2851,6 +3729,9 @@
       "label": "OpenAI: GPT-6 Astra Pro",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -2868,6 +3749,9 @@
       "label": "OpenAI: GPT-6 Astra Pro (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -2885,6 +3769,9 @@
       "label": "OpenAI: GPT-6 Luna",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2902,6 +3789,9 @@
       "label": "OpenAI: GPT-6 Luna (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2919,6 +3809,9 @@
       "label": "OpenAI: GPT-6 Luna Pro",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2936,6 +3829,9 @@
       "label": "OpenAI: GPT-6 Luna Pro (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2953,6 +3849,9 @@
       "label": "OpenAI: GPT-6 Sol",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2970,6 +3869,9 @@
       "label": "OpenAI: GPT-6 Sol (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2987,6 +3889,9 @@
       "label": "OpenAI: GPT-6 Sol Pro",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3004,6 +3909,9 @@
       "label": "OpenAI: GPT-6 Sol Pro (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3021,6 +3929,9 @@
       "label": "OpenAI: GPT-6.1 Sol",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3038,6 +3949,9 @@
       "label": "OpenAI: GPT-6.1 Sol (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3055,6 +3969,9 @@
       "label": "OpenAI: GPT-6.1 Sol Pro",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3072,6 +3989,9 @@
       "label": "OpenAI: GPT-6.1 Sol Pro (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3089,6 +4009,9 @@
       "label": "OpenAI: GPT-6.1 Terra",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3106,6 +4029,9 @@
       "label": "OpenAI: GPT-6.1 Terra (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3123,6 +4049,9 @@
       "label": "OpenAI: GPT-6.1 Terra Pro",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3140,6 +4069,9 @@
       "label": "OpenAI: GPT-6.1 Terra Pro (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3157,6 +4089,9 @@
       "label": "OpenAI: gpt-oss-120b",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3172,6 +4107,9 @@
       "label": "OpenAI: gpt-oss-120b (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 117964,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3187,6 +4125,9 @@
       "label": "OpenAI: gpt-oss-20b",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 117964,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3202,6 +4143,9 @@
       "label": "OpenAI: gpt-oss-20b (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 117964,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3217,6 +4161,9 @@
       "label": "OpenAI: gpt-oss-safeguard-20b",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -3228,6 +4175,9 @@
       "label": "OpenAI: o3",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 200000,
+      "max_completion_tokens": 100000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -3239,6 +4189,9 @@
       "label": "OpenAI: o3 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 200000,
+      "max_completion_tokens": 100000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -3250,6 +4203,9 @@
       "label": "OpenAI: o3 Mini (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 200000,
+      "max_completion_tokens": 100000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -3261,6 +4217,9 @@
       "label": "OpenAI: o3 Pro",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 200000,
+      "max_completion_tokens": 100000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -3272,6 +4231,9 @@
       "label": "OpenAI: o4 Mini (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 200000,
+      "max_completion_tokens": 100000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -3283,6 +4245,9 @@
       "label": "Particle AI: Particle-1",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3300,13 +4265,27 @@
       "value": "perceptron/perceptron-mk1",
       "label": "Perceptron: Perceptron Mk1",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 32768,
+      "max_completion_tokens": 8192,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "perceptron/perceptron-mk1.5",
       "label": "Perceptron: Perceptron Mk1.5",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 36864,
+      "max_completion_tokens": 8192,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3323,6 +4302,9 @@
       "label": "PrismML: Ternary Bonsai 2 27B",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 32768,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3336,103 +4318,174 @@
       "value": "prism-ml/ternary-bonsai-2-9b",
       "label": "PrismML: Ternary Bonsai 2 9B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen-2.5-72b-instruct",
       "label": "Qwen2.5 72B Instruct",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 32768,
+      "max_completion_tokens": 16384
     },
     {
       "value": "qwen/qwen-plus",
       "label": "Qwen: Qwen-Plus",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 32768
     },
     {
       "value": "qwen/qwen-2.5-7b-instruct",
       "label": "Qwen: Qwen2.5 7B Instruct",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 32768,
+      "max_completion_tokens": 29491
     },
     {
       "value": "qwen/qwen2.5-vl-72b-instruct",
       "label": "Qwen: Qwen2.5 VL 72B Instruct",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 128000,
+      "max_completion_tokens": 115200
     },
     {
       "value": "qwen/qwen3-14b",
       "label": "Qwen: Qwen3 14B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 40960,
+      "max_completion_tokens": 16384,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3-235b-a22b-2507",
       "label": "Qwen: Qwen3 235B A22B Instruct 2507",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 117964
     },
     {
       "value": "qwen/qwen3-30b-a3b",
       "label": "Qwen: Qwen3 30B A3B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 40960,
+      "max_completion_tokens": 16384,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3-30b-a3b-instruct-2507",
       "label": "Qwen: Qwen3 30B A3B Instruct 2507",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929
     },
     {
       "value": "qwen/qwen3-32b",
       "label": "Qwen: Qwen3 32B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 16384,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3-coder-30b-a3b-instruct",
       "label": "Qwen: Qwen3 Coder 30B A3B Instruct",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929
     },
     {
       "value": "qwen/qwen3-coder",
       "label": "Qwen: Qwen3 Coder 480B A35B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 65536
     },
     {
       "value": "qwen/qwen3-coder-next",
       "label": "Qwen: Qwen3 Coder Next",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929
     },
     {
       "value": "qwen/qwen3-next-80b-a3b-instruct",
       "label": "Qwen: Qwen3 Next 80B A3B Instruct",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929
     },
     {
       "value": "qwen/qwen3-vl-235b-a22b-instruct",
       "label": "Qwen: Qwen3 VL 235B A22B Instruct",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 32768
     },
     {
       "value": "qwen/qwen3-vl-30b-a3b-instruct",
       "label": "Qwen: Qwen3 VL 30B A3B Instruct",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 16384
     },
     {
       "value": "qwen/qwen3-vl-30b-a3b-thinking",
       "label": "Qwen: Qwen3 VL 30B A3B Thinking",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -3443,103 +4496,273 @@
       "value": "qwen/qwen3-vl-8b-instruct",
       "label": "Qwen: Qwen3 VL 8B Instruct",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929
     },
     {
       "value": "qwen/qwen3.5-397b-a17b",
       "label": "Qwen: Qwen3.5 397B A17B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3.5-plus-02-15",
       "label": "Qwen: Qwen3.5 Plus 2026-02-15",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3.5-plus-20260420",
       "label": "Qwen: Qwen3.5 Plus 2026-04-20",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3.5-122b-a10b",
       "label": "Qwen: Qwen3.5-122B-A10B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3.5-27b",
       "label": "Qwen: Qwen3.5-27B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 81920,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3.5-35b-a3b",
       "label": "Qwen: Qwen3.5-35B-A3B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 81920,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3.5-9b",
       "label": "Qwen: Qwen3.5-9B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3.5-flash-02-23",
       "label": "Qwen: Qwen3.5-Flash",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3.6-27b",
       "label": "Qwen: Qwen3.6 27B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3.6-35b-a3b",
       "label": "Qwen: Qwen3.6 35B A3B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3.6-flash",
       "label": "Qwen: Qwen3.6 Flash",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3.6-plus",
       "label": "Qwen: Qwen3.6 Plus",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3.7-max",
       "label": "Qwen: Qwen3.7 Max",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3.7-plus",
       "label": "Qwen: Qwen3.7 Plus",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3.7-plus:batch",
       "label": "Qwen: Qwen3.7 Plus (batch)",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3.8-2.4t-a95b",
       "label": "Qwen: Qwen3.8 2.4T A95B",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3555,6 +4778,9 @@
       "label": "Qwen: Qwen3.8 27B",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1024000,
+      "max_completion_tokens": 235929,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3569,13 +4795,27 @@
       "value": "qwen/qwen3.8-flash",
       "label": "Qwen: Qwen3.8 Flash",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "qwen/qwen3.8-max-0902",
       "label": "Qwen: Qwen3.8 Max (0902)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -3593,6 +4833,9 @@
       "label": "Qwen: Qwen3.8 Max Prime",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -3609,13 +4852,27 @@
       "value": "qwen/qwen3.8-omni-flash",
       "label": "Qwen: Qwen3.8 Omni Flash",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "recursive/flint-v1.0:free",
       "label": "Recursive: Flint (free)",
       "pricing_kind": "free",
       "output_format": "json_object",
+      "context_length": 262144,
+      "max_completion_tokens": 235929,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -3627,6 +4884,9 @@
       "label": "Reflection: Beam 1.0 501B A23B",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3643,13 +4903,26 @@
       "value": "rekaai/reka-edge",
       "label": "Reka Edge",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 16384,
+      "max_completion_tokens": 14745,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "rekaai/reka-flash-3",
       "label": "Reka Flash 3",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 65536,
+      "max_completion_tokens": 58982,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -3660,13 +4933,18 @@
       "value": "undi95/remm-slerp-l2-13b",
       "label": "ReMM SLERP 13B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 6144,
+      "max_completion_tokens": 5529
     },
     {
       "value": "sakana/fugu-max",
       "label": "Sakana: Fugu Max",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "high",
@@ -3682,6 +4960,9 @@
       "label": "Sakana: Fugu Ultra",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "high",
@@ -3697,6 +4978,9 @@
       "label": "Sakana: Fugu Ultra v2",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "high",
@@ -3712,6 +4996,9 @@
       "label": "Sakana: Sakana Namazu",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3724,25 +5011,43 @@
       "value": "sao10k/l3-lunaris-8b",
       "label": "Sao10K: Llama 3 8B Lunaris",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 8192,
+      "max_completion_tokens": 7372
     },
     {
       "value": "sao10k/l3.1-euryale-70b",
       "label": "Sao10K: Llama 3.1 Euryale 70B v2.2",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 16384
     },
     {
       "value": "x-ai/grok-4.20",
       "label": "SpaceXAI: Grok 4.20",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 2000000,
+      "max_completion_tokens": 1800000,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "x-ai/grok-4.20-multi-agent",
       "label": "SpaceXAI: Grok 4.20 Multi-Agent",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 2000000,
+      "max_completion_tokens": 1800000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3759,6 +5064,9 @@
       "label": "SpaceXAI: Grok 4.3",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 900000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3774,6 +5082,9 @@
       "label": "SpaceXAI: Grok 4.3 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1000000,
+      "max_completion_tokens": 900000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3789,6 +5100,9 @@
       "label": "SpaceXAI: Grok 4.5",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 500000,
+      "max_completion_tokens": 450000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3804,6 +5118,9 @@
       "label": "SpaceXAI: Grok 4.6",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 500000,
+      "max_completion_tokens": 450000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3820,6 +5137,9 @@
       "label": "SpaceXAI: Grok 4.7",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 500000,
+      "max_completion_tokens": 450000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3836,6 +5156,9 @@
       "label": "SpaceXAI: Grok Build 0.1",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 256000,
+      "max_completion_tokens": 230400,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -3847,6 +5170,9 @@
       "label": "StepFun: Step 3.7 Flash",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 230400,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3862,6 +5188,9 @@
       "label": "StepFun: Step 5 Preview",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 64000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3876,25 +5205,43 @@
       "value": "tencent/hunyuan-a13b-instruct",
       "label": "Tencent: Hunyuan A13B Instruct",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 117964,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "tencent/hy-mt2-30b-a3b",
       "label": "Tencent: Hy-MT2-30B-A3B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 8192,
+      "max_completion_tokens": 4096
     },
     {
       "value": "tencent/hy-mt2-7b",
       "label": "Tencent: Hy-MT2-7B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 8192,
+      "max_completion_tokens": 4096
     },
     {
       "value": "tencent/hy3",
       "label": "Tencent: Hy3",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 128000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3909,6 +5256,9 @@
       "label": "Tencent: Hy4 preview",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 64000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3922,31 +5272,34 @@
       "value": "thedrummer/cydonia-24b-v4.1",
       "label": "TheDrummer: Cydonia 24B V4.1",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 131072,
+      "max_completion_tokens": 117964
     },
     {
       "value": "thedrummer/skyfall-36b-v2",
       "label": "TheDrummer: Skyfall 36B V2",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 32768,
+      "max_completion_tokens": 29491
     },
     {
       "value": "thedrummer/unslopnemo-12b",
       "label": "TheDrummer: UnslopNemo 12B",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
-    },
-    {
-      "value": "typesafe/jev-router",
-      "label": "TypeSafe: Jev Router",
-      "pricing_kind": "unknown",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1024000,
+      "max_completion_tokens": 819200
     },
     {
       "value": "upstage/solar-mini4",
       "label": "Upstage: Solar Mini 4",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 524288,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3965,6 +5318,9 @@
       "label": "Upstage: Solar Pro 4",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 524288,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3983,6 +5339,9 @@
       "label": "xAI: Grok Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 500000,
+      "max_completion_tokens": 450000,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3998,73 +5357,197 @@
       "value": "xiaomi/mimo-v2.5",
       "label": "Xiaomi: MiMo-V2.5",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 65536,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "xiaomi/mimo-v2.5-pro",
       "label": "Xiaomi: MiMo-V2.5-Pro",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 235929,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "xiaomi/mimo-v2.6-flash",
       "label": "Xiaomi: MiMo-V2.6-Flash",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "xiaomi/mimo-v2.6-pro",
       "label": "Xiaomi: MiMo-V2.6-Pro",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1050000,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "xiaomi/mimo-v2.6-pro-ultraspeed",
       "label": "Xiaomi: MiMo-V2.6-Pro-UltraSpeed",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "xingchen-agi/xing4.0-29b-a4b:free",
       "label": "XingChen: Xing4.0 29B A4B (free)",
       "pricing_kind": "free",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "z-ai/glm-4.6",
       "label": "Z.ai: GLM 4.6",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 204800,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "z-ai/glm-4.7",
       "label": "Z.ai: GLM 4.7",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 204800,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "z-ai/glm-4.7-flash",
       "label": "Z.ai: GLM 4.7 Flash",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 200000,
+      "max_completion_tokens": 117964,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "z-ai/glm-5",
       "label": "Z.ai: GLM 5",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 204800,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "z-ai/glm-5.1",
       "label": "Z.ai: GLM 5.1",
       "pricing_kind": "paid",
-      "output_format": "json_schema"
+      "output_format": "json_schema",
+      "context_length": 204800,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "z-ai/glm-5.2",
       "label": "Z.ai: GLM 5.2",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -4079,6 +5562,9 @@
       "label": "Z.ai: GLM 5.3",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -4094,6 +5580,9 @@
       "label": "Z.ai: GLM 5.3 (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -4109,6 +5598,9 @@
       "label": "Z.ai: GLM 5.3 Flash",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -4124,6 +5616,9 @@
       "label": "Z.ai: GLM 5.3 Flash (batch)",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -4139,6 +5634,9 @@
       "label": "Z.ai: GLM 5.3 FlashX Legal",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -4154,6 +5652,9 @@
       "label": "Z.ai: GLM Flash Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 131072,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -4169,6 +5670,9 @@
       "label": "Z.ai: GLM Latest",
       "pricing_kind": "paid",
       "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
       "reasoning_capabilities": {
         "values": [
           "low",

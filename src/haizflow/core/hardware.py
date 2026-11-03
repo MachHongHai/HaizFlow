@@ -89,7 +89,7 @@ class HardwareCapabilities:
 
     @property
     def heavy_gpu_models_supported(self) -> bool:
-        """Turbo and full HY-MT2 need more VRAM than the light GPU path."""
+        """Full HY-MT2 needs more VRAM than the quantized Whisper GPU path."""
         return self.gpu_supported and self.total_vram_bytes >= _HEAVY_GPU_VRAM_BYTES
 
     @property

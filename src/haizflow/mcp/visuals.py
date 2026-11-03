@@ -35,7 +35,7 @@ def geometry(context, patch=None):
     style = SubtitleStyle.model_validate({**context["style"], **(patch or {})}, strict=True)
     return resolve_subtitle_preview_layout(
         context.get("cover_region"), context["width"], context["height"], context["output_format"],
-        CropSettings(**context["crop"]), style, True,
+        CropSettings(**context["crop"]), style, True, subtitle_language=str(context.get("language") or ""),
     )
 
 
@@ -56,9 +56,10 @@ def layout_report(context, patch=None, avoid_regions=None):
         issues.append("Font may be too small at mobile viewing size.")
     from PIL import ImageFont
 
-    from haizflow.pipeline.render import subtitle_preview_frame_for_layout
-
-    font = ImageFont.truetype(str(_karaoke_font_directory() / "Bangers-Regular.ttf"), layout["fontSize"])
+    from haizflow.pipeline.render import _ass_font_em_scale, _font_path_details, subtitle_preview_frame_for_layout
+    font_path = _font_path_details(layout["fontFamily"], False, False)[0]
+    font = ImageFont.truetype(str(font_path), layout["fontSize"])
+    em_scale = _ass_font_em_scale(str(font_path))
     sampled = context["cues"][:2000]
     for cue in sampled:
         start, end = float(cue["start"]), float(cue["end"])
@@ -67,7 +68,7 @@ def layout_report(context, patch=None, avoid_regions=None):
         phrase = subtitle_preview_frame_for_layout(cue["text"], start, end, (start + end) / 2,
                                                    layout["fontSize"], bw, layout["outline"])["text"]
         lines = str(phrase).splitlines()
-        if any(font.getlength(line) + layout["outline"] * 4 > bw for line in lines):
+        if any(font.getlength(line) * em_scale + layout["outline"] * 4 > bw for line in lines):
             issues.append("At least one sampled displayed phrase may exceed the subtitle box width.")
             break
     overlaps = 0.0
@@ -161,7 +162,8 @@ def frames(context, times, view="source", patch=None):
             subtitle_path.write_text(srt.compose(cues), encoding="utf-8")
             # Controlled temporary filenames only; no agent-supplied FFmpeg filters.
             _write_positioned_ass(str(subtitle_path), str(Path(directory) / "captions.ass"), style, ow, oh,
-                                  region_layout=_manual_subtitle_layout(style, ow, oh), fixed_font_size=True)
+                                  region_layout=_manual_subtitle_layout(style, ow, oh), fixed_font_size=True,
+                                  subtitle_language=str(context.get("language") or ""))
             fontdir = str(_karaoke_font_directory()).replace("\\", "/").replace(":", "\\:")
             filters.append(f"ass=filename=captions.ass:fontsdir='{fontdir}'")
         filters.append("scale=640:640:force_original_aspect_ratio=decrease")

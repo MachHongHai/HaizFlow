@@ -186,6 +186,7 @@ def render_segment(video, document, range_ms, output, token, progress):
             subtitle_timeline_offset_seconds=start / 1000,
             original_subtitle_removal_mode=video.original_subtitle_removal_mode,
             subtitle_style_overrides=subtitle_style_overrides(cues), encoding_quality=quality,
+            subtitle_language=str(getattr(video, "subtitle_language", "") or getattr(video, "target_language", "")),
             export_preset="source" if has_overlays else video.export_preset,
             output_speed=1.0 if has_overlays else getattr(video, "output_speed", 1.0),
             **{name: getattr(video, name) for name in (

@@ -136,6 +136,13 @@ Item {
     function commit(value) {
         if (!value) return;
         popup.close();
+        if (api && api.dataCollectionRequired(value)) {
+            consentLoader.invoke("openFor", [value, selectedModel]);
+            return;
+        }
+        applyChoice(value);
+    }
+    function applyChoice(value) {
         displayButton.forceActiveFocus();
         if (value.indexOf("gemini-") === 0)
             AppController.showProjectSessionAlertOnce("gemini-cost", qsTr("Chi phí Gemini"),
@@ -406,6 +413,21 @@ Item {
                 Keys.onLeftPressed: { root.activeProvider = ""; list.currentIndex = 0; }
                 Keys.onEscapePressed: popup.close()
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            }
+        }
+    }
+    LazyDialogLoader {
+        id: consentLoader
+        sourceComponent: Component {
+            TranslationDataConsentDialog {
+                onConfirmed: function(value, original) {
+                    if (root.enabled && root.visible && root.selectedModel === original
+                            && root.api.allowDataCollection(value)) {
+                        close();
+                        root.applyChoice(value);
+                    } else close();
+                }
+                onClosed: consentLoader.release()
             }
         }
     }

@@ -211,6 +211,12 @@ def generate(
                 "| Microsoft Fluent System Icons (curated SVG subset) | Bundled | MIT | "
                 "https://github.com/microsoft/fluentui-system-icons |",
                 "| Bangers typeface | Bundled | SIL Open Font License 1.1 | https://github.com/google/fonts |",
+                "| Noto Sans SC/TC/JP/KR Black | Bundled regional subtitle fonts | SIL OFL 1.1; NotoSansCJK-OFL.txt | "
+                "https://github.com/notofonts/noto-cjk |",
+                "| Dela Gothic One | Bundled Japanese subtitle font | SIL OFL 1.1; DelaGothicOne-OFL.txt | "
+                "https://github.com/syakuzen/DelaGothic |",
+                "| Pretendard ExtraBold | Bundled Korean subtitle font | SIL OFL 1.1; Pretendard-OFL.txt | "
+                "https://github.com/orioncactus/pretendard |",
                 "| ECAPA voice-profile classifier, q8 ONNX | Bundled CPU acoustic preset classifier; "
                 "see ECAPA-Voice-Profile-MIT.txt | MIT | "
                 "https://huggingface.co/Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8 |",

@@ -15,7 +15,6 @@ from pathlib import Path
 from haizflow.desktop.catalog import OMNIVOICE_TTS_VOICES
 from haizflow.pipeline.omnivoice_tts import clear_runtime, synthesize_to_mp3
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE_ROOT = ROOT / "src" / "haizflow" / "desktop" / "assets" / "voice_samples"
 MANIFEST_PATH = SAMPLE_ROOT / "samples.json"
@@ -30,6 +29,7 @@ def main() -> int:
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--languages", default="vi,en,zh")
+    parser.add_argument("--steps", type=int, choices=(32, 48, 64), default=48)
     args = parser.parse_args()
 
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
@@ -55,7 +55,7 @@ def main() -> int:
                         "voice-sample-assets",
                         language_id=language,
                         keep_worker_warm=True,
-                        inference_steps=8,
+                        inference_steps=args.steps,
                     )
     finally:
         clear_runtime()

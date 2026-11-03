@@ -8,7 +8,13 @@ from functools import lru_cache
 from pathlib import Path
 
 from haizflow.config import RUNTIME_DATA_DIR
-from haizflow.services.translation_model_catalog import _MODEL, _NON_TEXT, _RETIRED_OPENROUTER_MODELS
+from haizflow.services.translation_model_catalog import (
+    _INCOMPATIBLE_OPENROUTER_MODELS,
+    _MODEL,
+    _NON_TEXT,
+    _NON_TRANSLATION,
+    _RETIRED_OPENROUTER_MODELS,
+)
 from haizflow.utils.atomic_file import atomic_json
 
 _PATH = Path(RUNTIME_DATA_DIR) / "translation-openrouter-models.json"
@@ -25,7 +31,8 @@ def _clean(options):
         model = row.get("value")
         if (not isinstance(model, str) or not _MODEL.fullmatch(model)
                 or _NON_TEXT.search(model) or model.startswith("openrouter/")
-                or model in _RETIRED_OPENROUTER_MODELS):
+                or model in _RETIRED_OPENROUTER_MODELS or model in _INCOMPATIBLE_OPENROUTER_MODELS
+                or _NON_TRANSLATION.search(model)):
             continue
         label = row.get("label", model)
         label = " ".join(label.split())[:120] if isinstance(label, str) else model
@@ -34,12 +41,23 @@ def _clean(options):
             item["pricing_kind"] = row["pricing_kind"]
         if isinstance(row.get("output_format"), str) and row["output_format"] in {"json_schema", "json_object"}:
             item["output_format"] = row["output_format"]
+        for field in ("context_length", "max_completion_tokens"):
+            value = row.get(field)
+            if type(value) is int and 0 < value <= 10**8:
+                item[field] = value
+        if row.get("prompt_format") == "user_only":
+            item["prompt_format"] = "user_only"
+        if row.get("reasoning_supported") is True:
+            item["reasoning_supported"] = True
         info = row.get("reasoning_capabilities")
         if isinstance(info, dict) and isinstance(info.get("values"), list):
             mandatory = info.get("mandatory") is True
             values = [value for value in _EFFORTS if value in info["values"] and not (mandatory and value == "none")]
             item["reasoning_capabilities"] = {
                 "values": values, "default": next(iter(values), ""), **({"mandatory": True} if mandatory else {})}
+            if info.get("toggle") is True and not mandatory:
+                item["reasoning_capabilities"] = {"values": ["disabled", "enabled"],
+                                                  "default": "disabled", "toggle": True}
         rows[model] = item
     return sorted(rows.values(), key=lambda item: item["label"].casefold())
 
@@ -82,23 +100,32 @@ def load():
 
 def reasoning_for(model):
     with _LOCK:
-        for row in _load():
-            if row["value"] == model and "reasoning_capabilities" in row:
-                return {"parameter": "reasoning.effort", **deepcopy(row["reasoning_capabilities"])}
+        for options in (_load(), _cached_read(_BUNDLED) or []):
+            for row in options:
+                if row["value"] == model and "reasoning_capabilities" in row:
+                    info = deepcopy(row["reasoning_capabilities"])
+                    return {"parameter": "reasoning.enabled" if info.get("toggle") else "reasoning.effort", **info}
     return None
 
 
 def format_for(model):
+    return protocol_for(model).get("output_format")
+
+
+def protocol_for(model):
     with _LOCK:
-        for row in _load():
-            if row["value"] == model:
-                return row.get("output_format")
-        # A manually entered newly supported model may be absent from an older
-        # successful refresh; the shipped snapshot can still describe it.
+        info = {}
+        fields = ("output_format", "context_length", "max_completion_tokens", "prompt_format", "reasoning_supported")
+        # Enrich an older successful cache with newly shipped protocol hints.
         for row in _cached_read(_BUNDLED) or []:
             if row["value"] == model:
-                return row.get("output_format")
-    return None
+                info.update({field: row[field] for field in fields if field in row})
+                break
+        for row in _load():
+            if row["value"] == model:
+                info.update({field: row[field] for field in fields if field in row})
+                break
+        return info
 
 
 def store(options, state, *, cancelled=None):

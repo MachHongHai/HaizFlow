@@ -75,6 +75,20 @@ def test_retired_free_models_cannot_reappear_even_with_stale_capability_metadata
     assert catalog._option("openrouter", router(model, pricing={"prompt": "0", "completion": "0"})) is None
 
 
+@pytest.mark.parametrize("model", ["google/gemma-2-27b-it", "bytedance/ui-tars-1.5-7b",
+                                 "inference-net/schematron-v2-small", "typesafe/jev-router"])
+def test_unsuitable_or_confirmed_incompatible_models_are_not_recommended(model):
+    assert catalog._option("openrouter", router(model)) is None
+
+
+def test_catalogue_keeps_bounded_protocol_metadata_for_compatible_models():
+    option = catalog._option("openrouter", router("vendor/gemma-chat", context_length=8192,
+        top_provider={"max_completion_tokens": 2048}, architecture={"input_modalities": ["text"],
+        "output_modalities": ["text"], "instruct_type": "gemma"}))
+    assert {field: option[field] for field in ("context_length", "max_completion_tokens", "prompt_format")} == {
+        "context_length": 8192, "max_completion_tokens": 2048, "prompt_format": "user_only"}
+
+
 def test_partial_catalog_is_marked_and_repeated_page_is_bounded(monkeypatch):
     data = {"data": [router(f"model-{index}") for index in range(100)]}
     request = Mock(return_value=data)

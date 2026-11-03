@@ -77,8 +77,8 @@ url = "https://github.com/rany2/edge-tts/archive/360fa8e1de354e1dda74c09bd695887
 sha256 = "470d399a288b9ff9800988538ae31c99f06e589ec0ed67cb01141b29a005ab47"
 
 [tool.setuptools.package-data]
-"haizflow" = ["assets/fonts/Bangers-Regular.ttf", "assets/translation/*.json"]
-"haizflow.desktop" = ["qml/*.qml", "qml/qmldir", "qml/icons/*.svg", "translations/*.qm", "translations/*.ts", "assets/branding/haizflow-mark.png", "assets/branding/haizflow.ico", "assets/voice_samples/**/*.mp3", "assets/voice_samples/samples.json"]
+"haizflow" = ["assets/fonts/*.ttf", "assets/fonts/*.otf", "assets/subtitle-fonts.json", "assets/translation/*.json"]
+"haizflow.desktop" = ["qml/*.qml", "qml/qmldir", "qml/icons/*.svg", "translations/*.qm", "translations/*.ts", "assets/branding/haizflow-mark.png", "assets/branding/haizflow.ico", "assets/voice_samples/**/*.mp3", "assets/voice_samples/references/omnivoice/**/*.wav", "assets/voice_samples/references/omnivoice/manifest.json", "assets/voice_samples/samples.json"]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }

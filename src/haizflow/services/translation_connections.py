@@ -190,4 +190,10 @@ def remove(identifier: str):
             if previous:
                 secure_credentials.write_secret(target, previous, username="Translation API")
             raise
+        from haizflow.services import translation_privacy
+
+        try:
+            translation_privacy.forget(identifier)
+        except OSError:
+            pass  # Removed connection IDs cannot reuse a stale consent.
         return True

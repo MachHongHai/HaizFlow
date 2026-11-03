@@ -2,12 +2,32 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="en_US" sourcelanguage="vi_VN">
 <context>
+    <name>TranslationDataConsentDialog</name>
+    <message><source>Quyền riêng tư của model</source><translation>Model privacy</translation></message>
+    <message><source>Nhà cung cấp model này có thể lưu phụ đề và hướng dẫn dịch để đánh giá, cải thiện hoặc huấn luyện dịch vụ. Không dùng với nội dung nhạy cảm.</source><translation>This model's provider may retain subtitles and translation instructions to evaluate, improve or train its services. Do not use sensitive content.</translation></message>
+    <message><source>Quyền chỉ áp dụng cho kết nối và model này. Các model khác vẫn chặn thu thập dữ liệu.</source><translation>Permission applies only to this connection and model. Data collection remains blocked for other models.</translation></message>
+    <message><source>Hủy</source><translation>Cancel</translation></message>
+    <message><source>Đồng ý và chọn</source><translation>Agree and select</translation></message>
+</context>
+<context>
     <name>TranslationReasoningControl</name>
     <message><source>Mức</source><translation>Level</translation></message>
+    <message><source>Suy luận</source><translation>Reasoning</translation></message>
+    <message><source>Bật</source><translation>Enabled</translation></message>
+    <message><source>Tắt</source><translation>Disabled</translation></message>
+    <message><source>Tắt</source><comment>reasoning effort none</comment><translation>None</translation></message>
+    <message><source>Tối thiểu</source><translation>Minimal</translation></message>
+    <message><source>Thấp</source><translation>Low</translation></message>
+    <message><source>Trung bình</source><translation>Medium</translation></message>
+    <message><source>Cao</source><translation>High</translation></message>
+    <message><source>Rất cao</source><translation>Xhigh</translation></message>
+    <message><source>Tối đa</source><translation>Max</translation></message>
     <message><source>Mức cao hơn có thể dùng nhiều token và mất thêm thời gian.</source><translation>Higher levels may use more tokens and take longer.</translation></message>
 </context>
 <context>
     <name>TranslationApiController</name>
+    <message><source>Không lưu được quyền model</source><translation>Could not save model permission</translation></message>
+    <message><source>Chưa cấp quyền thu thập dữ liệu. Hãy thử chọn lại model.</source><translation>Data collection permission was not granted. Try selecting the model again.</translation></message>
     <message><source>Không lưu được kết nối. Kiểm tra tên, API key và Base URL; dùng HTTPS cho API từ xa.</source><translation>Could not save the connection. Check the name, API key and Base URL; use HTTPS for remote APIs.</translation></message>
     <message><source>Kết nối dịch không còn trên máy</source><translation>Translation connection is no longer on this device</translation></message>
     <message><source>Tiết kiệm</source><translation>Economy</translation></message>

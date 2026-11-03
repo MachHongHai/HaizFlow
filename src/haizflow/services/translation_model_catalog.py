@@ -29,6 +29,28 @@ _NON_TEXT = re.compile(
 _RETIRED_OPENROUTER_MODELS = frozenset({
     "deepseek/deepseek-r1:free", "deepseek/deepseek-r1-0528:free",
 })
+_NON_TRANSLATION = re.compile(r"(?:^|/)(?:ui-tars|schematron|jev)(?:[-/]|$)", re.IGNORECASE)
+# The only current provider (NextBit) rejected both the old and corrected
+# subtitle JSON payload in the 2026-11-03 controlled compatibility check.
+# This is not a claim that the underlying model has been retired.
+_INCOMPATIBLE_OPENROUTER_MODELS = frozenset({"google/gemma-2-27b-it"})
+
+
+def protocol_metadata(row):
+    """Public protocol hints only, bounded independently of credentials."""
+    result = {}
+    top = row.get("top_provider")
+    top = top if isinstance(top, dict) else {}
+    for field, value in (("context_length", row.get("context_length")),
+                         ("max_completion_tokens", top.get("max_completion_tokens"))):
+        if type(value) is int and 0 < value <= 10**8:
+            result[field] = value
+    architecture = row.get("architecture")
+    if isinstance(architecture, dict) and architecture.get("instruct_type") == "gemma":
+        result["prompt_format"] = "user_only"
+    if isinstance(row.get("supported_parameters"), list) and "reasoning" in row["supported_parameters"]:
+        result["reasoning_supported"] = True
+    return result
 
 
 def presets(provider):
@@ -68,7 +90,8 @@ def _option(provider, row):
         if not supported:
             return None
     if provider == "openrouter":
-        if model in _RETIRED_OPENROUTER_MODELS:
+        if (model in _RETIRED_OPENROUTER_MODELS or model in _INCOMPATIBLE_OPENROUTER_MODELS
+                or _NON_TRANSLATION.search(model)):
             return None
         architecture = row.get("architecture")
         if not isinstance(architecture, dict):
@@ -101,6 +124,7 @@ def _option(provider, row):
         from haizflow.services.translation_reasoning_catalog import advertised
         option["pricing_kind"] = _pricing_kind(row.get("pricing"))
         option["output_format"] = output_format
+        option.update(protocol_metadata(row))
         info = advertised(row.get("reasoning"))
         if info is not None:
             option["reasoning_capabilities"] = info

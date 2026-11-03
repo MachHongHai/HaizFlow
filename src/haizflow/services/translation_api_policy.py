@@ -12,19 +12,43 @@ def output_limit(base: int, effort: str = "") -> int:
 
 
 def request_limits(provider: str, model: str, base: int, effort: str = "") -> dict:
-    """Leave visible-output headroom for mandatory reasoning without paid retries.
+    """Leave visible-output headroom when reasoning may run, without paid retries.
 
     This is a combined output ceiling, not an enforceable separate reasoning
     budget. R1 exposes neither effort levels nor reasoning.max_tokens controls.
-    Ordinary/unknown models keep their existing cost and batching policy.
+    Optional boolean controls default off; enabled or undisablable reasoning
+    receives bounded headroom. Unknown non-reasoning models keep their policy.
     """
-    mandatory = capabilities(provider, model).get("mandatory", False)
+    info = capabilities(provider, model)
+    mandatory = info.get("mandatory", False)
+    effective = effort or info.get("default", "")
+    active_reasoning = bool(mandatory or provider == "openrouter" and info
+                            and effective not in {"none", "disabled"})
+    if provider == "openrouter" and not info:
+        from haizflow.services.translation_catalog_cache import protocol_for
+
+        active_reasoning = bool(protocol_for(model).get("reasoning_supported"))
     limit = output_limit(base, effort)
-    if mandatory:
+    if active_reasoning:
         limit = min(32768, max(limit, base + 8192))
-    return {"max_tokens": limit, "sentences": 12 if mandatory else 24,
-            "characters": 2000 if mandatory else 4000, "timeout": 240 if mandatory else 90,
-            "mandatory": bool(mandatory)}
+    sentences, characters = (12, 2000) if active_reasoning else (24, 4000)
+    if provider == "openrouter":
+        from haizflow.services.translation_catalog_cache import protocol_for
+
+        protocol = protocol_for(model)
+        ceilings = [value for value in (protocol.get("max_completion_tokens"),
+                    protocol.get("context_length", 0) // 2) if type(value) is int and value > 0]
+        if ceilings:
+            ceiling = min(ceilings)
+            limit = min(limit, ceiling)
+            # Split before sending, rather than just clamping output and losing
+            # the last subtitles. Match the visible-output estimator's reserve.
+            if ceiling < 8192:
+                characters = min(characters, max(32, (ceiling - 1024) // 4))
+                sentences = min(sentences, max(1, (ceiling - 1024) // 64))
+    return {"max_tokens": limit, "sentences": sentences,
+            "characters": characters, "timeout": 240 if active_reasoning else 90,
+            "mandatory": bool(mandatory), "reasoning_active": active_reasoning}
 
 
 def capabilities(provider, model, *, has_guidance=False):
@@ -109,6 +133,8 @@ def request_options(provider: str, model: str, effort: str = "") -> dict:
         info = capabilities(provider, model)
         if not info or effort not in info["values"] + (["disabled"] if info.get("thinking") else []):
             raise ValueError("Mức reasoning không được model đang chọn hỗ trợ.")
+        if provider == "openrouter" and info.get("toggle"):
+            return {"reasoning": {"enabled": effort == "enabled", "exclude": True}}
         if provider == "deepseek":
             return {"thinking": {"type": "disabled"}} if effort == "disabled" else {
                 "thinking": {"type": "enabled"}, "reasoning_effort": effort}
@@ -120,6 +146,8 @@ def request_options(provider: str, model: str, effort: str = "") -> dict:
         return {"thinking": {"type": "disabled"}}
     if provider == "openrouter":
         info = capabilities(provider, model)
+        if info.get("toggle"):
+            return {"reasoning": {"enabled": False, "exclude": True}}
         if info.get("default"):
             return {"reasoning": {"effort": info["default"], "exclude": True}}
         if info.get("mandatory"):

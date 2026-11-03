@@ -417,6 +417,7 @@ Item {
         fontSize: activeSubtitleFontSize, outline: activeSubtitleOutline,
         positionXPercent: activeSubtitlePositionX, positionYPercent: activeSubtitlePositionY,
         fontFamily: editorSubtitleStyle.font_family || AppController.subtitleFontFamily,
+        fontLanguage: AppController.manualVoiceLanguage,
         textColor: editorSubtitleStyle.text_color || AppController.subtitleTextColor,
         karaokeColor: editorSubtitleStyle.karaoke_color || AppController.subtitleKaraokeColor,
         outlineColor: editorSubtitleStyle.outline_color || AppController.subtitleOutlineColor,

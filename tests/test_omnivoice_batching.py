@@ -224,7 +224,13 @@ class OmniVoiceBatchTests(unittest.TestCase):
                            "cpu_threads": 4}
                 path = root / "request.json"
                 path.write_text(json.dumps(request), encoding="utf-8")
-                with patch.object(voice, "_write_status_file", side_effect=lambda _path, payload: statuses.append(payload)):
+                # These artificial >1.0 marker samples encode ordering, not
+                # real loudness. Metering/peak safety has its own regression
+                # tests; isolate it here so it cannot erase marker identity.
+                with (patch.object(voice, "_write_status_file",
+                                   side_effect=lambda _path, payload: statuses.append(payload)),
+                      patch("haizflow.pipeline.tts_quality.calibrate_omnivoice_level",
+                            side_effect=lambda wave, rate: wave)):
                     self.assertEqual(voice._worker_main(str(path), runtime), 0)
                 self.assertEqual([entry[0] for entry in writes], [f"{index}.wav" for index in range(1, 6)])
                 self.assertEqual([entry[1] for entry in writes], list(range(1, 6)))

@@ -33,7 +33,7 @@ Open **Settings → General**:
 
 Choose **Apply** and review the project's models before processing. CPU users do not need a CUDA pack. Installing CUDA Toolkit manually is not necessary for the app's packaged engines.
 
-On a 4 GB GPU with 16 GB RAM, start with Whisper Small GPU, HY-MT2 CPU Q4 (or Gemini) and OmniVoice GPU. The CUDA recognition and voice stages run sequentially; voice synthesis uses one sentence at a time without changing its checkpoint, FP16 precision or 32 inference steps. Whisper Turbo and full HY-MT2 GPU are unavailable on this profile. Demucs uses shorter GPU segments. Keep other GPU/CPU memory-intensive applications closed, and allow Windows to manage the page file. These settings reduce peak memory but do not guarantee every long project or busy 4 GB machine will fit.
+On a 4 GB GPU with 16 GB RAM, start with Whisper Small GPU, HY-MT2 CPU Q4 (or a translation API) and OmniVoice GPU. Whisper Turbo is also selectable: when supported by CTranslate2, the 4 GB path uses INT8 compute and batch size 1, constructs VAD directly on CPU, and aligns timestamps on CPU. Full HY-MT2 GPU remains unavailable below 5 GiB VRAM; its verified full checkpoint alone is about 3.8 GiB, before inference allocations. The CUDA recognition and voice stages run sequentially; voice synthesis uses one sentence at a time without changing its checkpoint, FP16 precision or 32 inference steps. Demucs uses shorter GPU segments. Keep other GPU/CPU memory-intensive applications closed, and allow Windows to manage the page file. These settings reduce peak memory but do not guarantee every long project or busy 4 GB machine will fit. GTX 1650 admission is covered by simulated hardware tests, not a benchmark on that physical card.
 
 ## 4. Install the tools you need
 

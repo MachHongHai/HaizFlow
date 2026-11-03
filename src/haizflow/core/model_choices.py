@@ -43,7 +43,7 @@ def heavy_gpu_choice_blocked(app_device: str, capabilities, *, recognition: str 
     return bool(app_device == "gpu" and capabilities is not None
                 and getattr(capabilities, "gpu_supported", False)
                 and not getattr(capabilities, "heavy_gpu_models_supported", False)
-                and (recognition == "large-v3-turbo" or translation == "full"))
+                and translation == "full")
 
 
 def models_for_device(app_device: str, *, recognition: str, translation: str, voice: str,

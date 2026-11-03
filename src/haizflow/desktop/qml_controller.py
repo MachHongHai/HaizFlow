@@ -1469,9 +1469,6 @@ class HaizFlowController(QObject):
             reason = validate_processing_device("gpu", capabilities)[1] if capabilities else "GPU NVIDIA chưa khả dụng."
             self._show_app_alert("Máy không đáp ứng", reason, "warning")
             return
-        if requested == "large-v3-turbo" and not HaizFlowController._heavy_gpu_models_available(self):
-            self._show_app_alert("Máy không đáp ứng", "Card 4 GB dùng Whisper Small trên GPU.", "warning")
-            return
         if requested == "large-v3-turbo" and not getattr(self, "_whisper_turbo_model_ready", False):
             self._show_app_alert(
                 "Thiếu Whisper Turbo",
@@ -1495,7 +1492,7 @@ class HaizFlowController(QObject):
         # after the asynchronous hardware probe as well, so use its cached,
         # authoritative result instead of permanently disabling Turbo.
         gpu_available = HaizFlowController._project_gpu_available(self)
-        turbo_available = HaizFlowController._heavy_gpu_models_available(self)
+        turbo_available = gpu_available
         if getattr(self, "_settings_language", "en") == "vi":
             return [
                 {"value": "small-cpu", "label": "Whisper Small · CPU", "available": True},
@@ -2133,7 +2130,8 @@ class HaizFlowController(QObject):
 
     @Property(str, notify=subtitleSettingsChanged)
     def subtitleFontFamily(self):
-        return self._subtitle_style.font_family
+        from haizflow.core.subtitle_fonts import subtitle_font_for_text
+        return subtitle_font_for_text(language=HaizFlowController._selected_voice_language(self))
 
     @subtitleFontFamily.setter
     def subtitleFontFamily(self, value):
@@ -2248,9 +2246,25 @@ class HaizFlowController(QObject):
     def subtitlePreviewFontScale(self):
         from haizflow.pipeline.render import _ass_font_em_scale, _font_path_details
 
-        style = self._subtitle_style
+        from haizflow.core.subtitle_fonts import resolved_subtitle_style
+        style = resolved_subtitle_style(self._subtitle_style, language=HaizFlowController._selected_voice_language(self))
         path, _exact = _font_path_details(style.font_family, style.bold, style.italic)
         return _ass_font_em_scale(str(path))
+
+    @Slot(str, str, result="QVariantMap")
+    def subtitleFontSpecForText(self, text, language):
+        from haizflow.desktop.subtitle_fonts import qt_subtitle_font
+        return qt_subtitle_font(str(text or ""), str(language or ""))
+
+    @Property(str, notify=targetLanguageChanged)
+    def subtitleSamplePhrase(self):
+        return {
+            "zh": "今天的天气很好，我们一起开始新的故事吧。每一句话都应该清晰自然，让我们继续前进。",
+            "ja": "今日はいい天気ですね。一緒に新しい物語を始めましょう。一つ一つの言葉を大切にしてください。",
+            "ko": "오늘은 날씨가 참 좋아요. 함께 새로운 이야기를 시작해 봐요. 모든 문장이 선명하게 보여야 합니다.",
+            "en": "It is a beautiful day. Let us begin a new story together and discover what happens next.",
+            "es": "Hoy hace un día precioso. Vamos a comenzar una nueva historia juntos y descubrir qué sucede después.",
+        }.get(self._target_language, "Một buổi sáng, chúng tôi cùng nhau đi qua con phố nhỏ để khám phá những câu chuyện thú vị.")
 
     @Slot(str, int, int, int, int, int, result=str)
     @Slot(str, int, int, int, int, int, "QVariantMap", result=str)
@@ -2261,6 +2275,8 @@ class HaizFlowController(QObject):
 
         style = SubtitleStyle.model_validate({**self._subtitle_style.model_dump(), **(appearance or {}),
                                              "font_size": max(10, min(240, font_size))})
+        from haizflow.core.subtitle_fonts import resolved_subtitle_style
+        style = resolved_subtitle_style(style, str(text), HaizFlowController._selected_voice_language(self))
         cue = srt.Subtitle(1, timedelta(0), timedelta(seconds=10), str(text))
         parts = _subtitle_parts_for_region(cue, SubtitleRegionLayout(
             0, 0, max(24, width * box_width / 100), max(20, height * box_height / 100)),
@@ -2632,6 +2648,7 @@ class HaizFlowController(QObject):
             crop or CropSettings(),
             subtitle_style or SubtitleStyle(),
             bool(getattr(video, "subtitle_layout_override", False)),
+            subtitle_language=str(getattr(video, "subtitle_language", "") or getattr(video, "target_language", "")),
         )
         return {
             "renderedVideoSource": rendered_video_source,
@@ -2656,7 +2673,8 @@ class HaizFlowController(QObject):
                 ocr_region, max(0, int(getattr(video, "video_width", 0) or 0)),
                 max(0, int(getattr(video, "video_height", 0) or 0)),
                 str(getattr(video, "output_format", "keep_ratio") or "keep_ratio"),
-                crop or CropSettings(), subtitle_style or SubtitleStyle(), False),
+                crop or CropSettings(), subtitle_style or SubtitleStyle(), False,
+                subtitle_language=str(getattr(video, "subtitle_language", "") or getattr(video, "target_language", ""))),
             "outputFormat": str(getattr(video, "output_format", "keep_ratio") or "keep_ratio"),
             "liveOutputFormat": effective_output_format(
                 int(getattr(video, "video_width", 0) or 0), int(getattr(video, "video_height", 0) or 0),

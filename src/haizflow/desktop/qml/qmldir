@@ -1,6 +1,7 @@
 module HaizFlow
 TranslationApiEntryForm 1.0 TranslationApiEntryForm.qml
 TranslationProjectModelDialog 1.0 TranslationProjectModelDialog.qml
+TranslationDataConsentDialog 1.0 TranslationDataConsentDialog.qml
 TranslationReasoningControl 1.0 TranslationReasoningControl.qml
 TranslationApiListRow 1.0 TranslationApiListRow.qml
 SettingsMcpGroup 1.0 SettingsMcpGroup.qml

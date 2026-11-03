@@ -923,6 +923,11 @@ def _preset_reference(voice: str, language: str) -> tuple[str, str]:
     """
     if voice not in OMNIVOICE_VOICE_INSTRUCTIONS or language not in {"vi", "en", "zh", "ja", "ko", "es"}:
         return "", ""
+    from haizflow.pipeline.omnivoice_references import prepared_reference
+
+    prepared = prepared_reference(voice, language)
+    if prepared[0]:
+        return prepared
     root = Path(__file__).resolve().parents[1] / "desktop" / "assets" / "voice_samples"
     try:
         metadata = json.loads((root / "samples.json").read_text(encoding="utf-8"))
@@ -1085,8 +1090,8 @@ def synthesize_batch_to_mp3(
                                      or _narrator_anchor_text(language_id)) if speaker_mode != "multiple" else "",
             "items": request_items,
             "speaker_mode": "multiple" if speaker_mode == "multiple" else "single",
-            "inference_steps": max(8, min(32, int(inference_steps or
-                (32 if (device or processing_device_preference()) == "gpu" else 16)))),
+            "inference_steps": max(8, min(64, int(inference_steps or
+                (48 if (device or processing_device_preference()) == "gpu" else 32)))),
             "status_path": str(temp_root / "status.json"),
             # One stable latent seed per voice keeps a single narrator's
             # identity consistent across every subtitle segment in the video.
@@ -1101,12 +1106,12 @@ def synthesize_batch_to_mp3(
             )
             request["preset_reference_path"] = reference_path
             request["preset_reference_text"] = reference_text
-        if language_id in {"ja", "ko", "es"}:
+        if any(item.get("preset_reference_path") for item in request_items):
             references = sorted({Path(item["preset_reference_path"]).stem
                                  for item in request_items if item.get("preset_reference_path")})
             log_to_video(video_id, f"[TTS][REFERENCE] target={language_id} "
                          f"preset_reference_languages={','.join(references) or 'user-reference'} "
-                         "policy=packaged-preset-cross-lingual; target text/language unchanged.")
+                         "policy=verified-target-reference-or-exact-preset-fallback; target text/language unchanged.")
         request_path = temp_root / "request.json"
         request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
         log_to_video(
@@ -1246,7 +1251,7 @@ def synthesize_to_mp3(
     reference_path: str = "",
     reference_text: str = "",
     keep_worker_warm: bool = False,
-    inference_steps: int = 32,
+    inference_steps: int | None = None,
     device: str | None = None,
 ) -> None:
     synthesize_batch_to_mp3(
@@ -1423,7 +1428,7 @@ def _gpu_batch_ceiling(torch, device: str, maximum: int = 2) -> int:
         return 1  # CPU throughput is not improved by padding unlike GPU.
     free, total = torch.cuda.mem_get_info()
     # A paired utterance can spike the codec above the single-voice peak.
-    # On a 4 GB board keep the official FP16/32-step model, but synthesize
+    # On a 4 GB board keep FP16 and the requested quality steps, but synthesize
     # one sentence at a time. Larger boards keep their reclaimable budget.
     if 0 < total < 5 * 1024**3:
         return 1
@@ -1711,6 +1716,8 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
     # a later edit regenerates only one segment. The persistent worker retains
     # the prompt; multiple-speaker mode deliberately keeps per-segment voices.
     if speaker_mode != "multiple" and synthesis_items and any(not item.get("reference_path") for item in synthesis_items):
+        from haizflow.pipeline.omnivoice_references import reference_identity
+
         anchor_text = str(request.get("narrator_anchor_text") or "").strip()
         anchor_voice = str(synthesis_items[0].get("voice") or "omnivoice:female").strip().lower()
         anchor_instruction = OMNIVOICE_VOICE_INSTRUCTIONS.get(
@@ -1724,6 +1731,8 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
             anchor_voice,
             voice_seed,
             anchor_text,
+            reference_identity(str(request.get("preset_reference_path") or ""),
+                               str(request.get("preset_reference_text") or "")),
         )
         anchor_prompt = narrator_prompt_cache.get(anchor_key)
         preset_reference = str(request.get("preset_reference_path") or "")
@@ -1814,7 +1823,10 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
                         prompt_cache.pop(next(iter(prompt_cache)))
                 timings["reference_encoding"] += time.monotonic() - reference_started
         elif speaker_mode == "multiple" and item.get("preset_reference_path") and item.get("preset_reference_text"):
-            preset_key = (model_key, str(request.get("language") or ""), str(item.get("voice") or ""))
+            from haizflow.pipeline.omnivoice_references import reference_identity
+
+            preset_key = (model_key, str(request.get("language") or ""), str(item.get("voice") or ""),
+                          reference_identity(str(item["preset_reference_path"]), str(item["preset_reference_text"])))
             preset_cache = runtime.setdefault("preset_prompt_cache", {})
             voice_clone_prompt = preset_cache.get(preset_key)
             if voice_clone_prompt is None:
@@ -1885,7 +1897,7 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
             waveforms = generated
             sample_rate = int(getattr(model, "sampling_rate", None) or _SAMPLE_RATE)
             from haizflow.pipeline.tts_quality import (
-                SpeechQualityError, validate_speech_waveform, match_quiet_speech_level,
+                SpeechQualityError, validate_speech_waveform, calibrate_omnivoice_level,
             )
             for position, (entry, wave) in enumerate(zip(batch, waveforms)):
                 try:
@@ -1905,14 +1917,10 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
                             f"text={str(entry.get('text') or '')[:160]!r}. {exc}"
                         ) from exc
                     waveforms[position] = retry_wave
-                # All clearly quiet sentences need the same bounded reference
-                # calibration; the number-only policy missed ordinary short
-                # dialogue. Validation precedes gain/cache publication.
-                level_reference = (reference_path or str(entry.get("preset_reference_path") or "")
-                                   or str(request.get("preset_reference_path") or ""))
-                reference_level = _reference_speech_level(runtime, sf, level_reference,
-                                                          getattr(voice_clone_prompt, "ref_rms", 0.0))
-                waveforms[position] = match_quiet_speech_level(waveforms[position], sample_rate, reference_level)
+                # SDK reference-RMS attenuation differs by preset/language.
+                # Match VieNeu's current active-speech level with one bounded
+                # gain. Validation precedes calibration/cache publication.
+                waveforms[position] = calibrate_omnivoice_level(waveforms[position], sample_rate)
             synthesis_seconds = time.monotonic() - synthesis_started
             if not retries:
                 _record_batch_performance(profile, len(batch), synthesis_seconds,

@@ -87,6 +87,29 @@ def test_manual_model_can_use_shipped_format_when_missing_from_last_refresh(isol
     assert cache.format_for("unknown/new:free") is None
 
 
+def test_old_public_cache_is_enriched_with_new_protocol_hints_without_network(isolated):
+    cache._BUNDLED.write_text(json.dumps({"version": 2, "options": [{"value": "vendor/model",
+        "output_format": "json_schema", "context_length": 8192, "max_completion_tokens": 2048,
+        "prompt_format": "user_only"}]}), "utf-8")
+    cache.store([{"value": "vendor/model", "label": "Existing cached model"}], "ready")
+    assert cache.protocol_for("vendor/model") == {"output_format": "json_schema", "context_length": 8192,
+                                                 "max_completion_tokens": 2048, "prompt_format": "user_only"}
+    cache.store([{"value": "vendor/model", "max_completion_tokens": 4096}], "ready")
+    assert cache.protocol_for("vendor/model")["max_completion_tokens"] == 4096
+
+
+def test_optional_reasoning_toggle_survives_cache_restart_and_legacy_missing_hints(isolated):
+    row = {"value": "vendor/model", "reasoning_capabilities": {
+        "values": ["disabled", "enabled"], "default": "disabled", "toggle": True}}
+    cache._BUNDLED.write_text(json.dumps({"version": 2, "options": [row]}), "utf-8")
+    cache.store([{"value": "vendor/model"}], "ready")
+    assert cache.reasoning_for("vendor/model")["parameter"] == "reasoning.enabled"
+    cache.store([row], "ready")
+    cache._read_version.cache_clear()
+    assert cache.reasoning_for("vendor/model") == {
+        "parameter": "reasoning.enabled", **row["reasoning_capabilities"]}
+
+
 def test_controller_uses_cached_openrouter_only_and_keeps_it_during_refresh(isolated, tmp_path, monkeypatch):
     from PySide6.QtCore import QObject
     from PySide6.QtGui import QGuiApplication

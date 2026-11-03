@@ -94,7 +94,7 @@ def test_translation_picker_rejects_full_on_four_gb_even_without_resource_delega
 
 
 @pytest.mark.parametrize("project_type", ["single", "manual", "batch", None])
-@pytest.mark.parametrize("recognition,translation", [("small-gpu", "full"), ("large-v3-turbo", "q4")])
+@pytest.mark.parametrize("recognition,translation", [("small-gpu", "full"), ("large-v3-turbo", "full")])
 def test_four_gb_preflight_blocks_heavy_models_for_saved_and_new_projects(project_type, recognition, translation):
     host = SimpleNamespace(_settings_processing_device="gpu", _hardware_capabilities=gpu_caps(4),
                            _speech_recognition_model=recognition, _translation_model=translation,
@@ -411,7 +411,24 @@ def test_gpu_options_use_resolved_hardware_not_only_saved_preference(device, cud
     choices = HaizFlowController.speechRecognitionModelOptions.fget(host)
     assert choices[0]["available"]
     assert choices[1]["available"] is expected
-    assert choices[2]["available"] is (expected and (pending or vram >= 5))
+    assert choices[2]["available"] is expected
+
+
+def test_four_gb_can_select_and_run_turbo_without_enabling_full_hymt2():
+    from haizflow.core.model_choices import heavy_gpu_choice_blocked
+
+    host = SimpleNamespace(_settings_processing_device="gpu", _hardware_capabilities=gpu_caps(4),
+                           _startup_hardware_resolved=True, _speech_recognition_model="small-gpu",
+                           _whisper_turbo_model_ready=True, speechRecognitionModelChanged=Mock(),
+                           _show_app_alert=Mock(), _ensure_hardware_ready_for_action=Mock(return_value=True))
+    HaizFlowController.speechRecognitionModel.fset(host, "large-v3-turbo")
+    assert host._speech_recognition_model == "large-v3-turbo"
+    host.speechRecognitionModelChanged.emit.assert_called_once()
+    host._show_app_alert.assert_not_called()
+    assert not heavy_gpu_choice_blocked("gpu", host._hardware_capabilities,
+                                       recognition="large-v3-turbo", translation="q4")
+    assert heavy_gpu_choice_blocked("gpu", host._hardware_capabilities,
+                                   recognition="large-v3-turbo", translation="full")
 
 
 def test_api_guide_navigates_to_single_owner_before_opening():

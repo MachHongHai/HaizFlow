@@ -4,8 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from haizflow.schemas.video import SUBTITLE_FONT_FAMILY
-
+from haizflow.core.subtitle_fonts import normalise_subtitle_font
 
 EDITOR_DOCUMENT_SCHEMA_VERSION = 3
 
@@ -92,8 +91,8 @@ class EditorTextStyle(BaseModel):
 
     @model_validator(mode="after")
     def bundled_subtitle_font(self):
-        if self.target_type == "subtitle" and self.font_family != SUBTITLE_FONT_FAMILY:
-            self.font_family = SUBTITLE_FONT_FAMILY
+        if self.target_type == "subtitle" and self.font_family != normalise_subtitle_font(self.font_family):
+            self.font_family = normalise_subtitle_font(self.font_family)
             self.font_fingerprint = ""
         return self
 
@@ -140,8 +139,9 @@ class EditorClip(BaseModel):
     @model_validator(mode="after")
     def bundled_subtitle_font(self):
         if self.kind == "subtitle" and "font_family" in self.style_override:
-            if self.style_override["font_family"] != SUBTITLE_FONT_FAMILY:
-                self.style_override = {**self.style_override, "font_family": SUBTITLE_FONT_FAMILY}
+            if self.style_override["font_family"] != normalise_subtitle_font(self.style_override["font_family"]):
+                self.style_override = {**self.style_override,
+                                       "font_family": normalise_subtitle_font(self.style_override["font_family"])}
                 self.style_override.pop("font_fingerprint", None)
         return self
 

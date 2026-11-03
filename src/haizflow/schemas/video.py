@@ -1,8 +1,9 @@
-from pydantic import AfterValidator, BaseModel, Field, field_validator
 from typing import Annotated, Any, Dict, Literal, Optional
 
-from haizflow.core.translation_models import valid_translation_model
+from pydantic import AfterValidator, BaseModel, Field, field_validator
 
+from haizflow.core.subtitle_fonts import normalise_subtitle_font
+from haizflow.core.translation_models import valid_translation_model
 
 VIDEO_METADATA_SCHEMA_VERSION = 19
 VIDEO_METADATA_TYPE = "haizflow.video"
@@ -11,7 +12,9 @@ WorkflowMode = Literal["A", "review"]
 TranslatorProvider = Literal["hymt2", "gemini", "api"]
 TranslationModel = Annotated[str, AfterValidator(valid_translation_model)]
 GeminiTranslationStyle = Literal["balanced", "literal", "natural", "adaptive"]
-TranslationReasoningEffort = Literal["", "disabled", "none", "minimal", "low", "medium", "high", "xhigh", "max"]
+TranslationReasoningEffort = Literal[
+    "", "disabled", "enabled", "none", "minimal", "low", "medium", "high", "xhigh", "max",
+]
 TTSProvider = Literal["omnivoice", "omnivoice-gpu", "edge", "vieneu", "vieneu-gpu"]
 SpeechRecognitionModel = Literal["small", "small-cpu", "small-gpu", "large-v3-turbo"]
 OutputFormat = Literal["keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"]
@@ -57,7 +60,7 @@ class SubtitleStyle(BaseModel):
     @field_validator("font_family", mode="before")
     @classmethod
     def bundled_subtitle_font(cls, value):
-        return SUBTITLE_FONT_FAMILY
+        return normalise_subtitle_font(value)
 
 
 def subtitle_style_for_project(project_type: str, style: SubtitleStyle, *, overridden: bool = False) -> SubtitleStyle:

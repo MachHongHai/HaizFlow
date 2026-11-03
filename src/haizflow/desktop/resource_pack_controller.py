@@ -276,9 +276,9 @@ class ResourcePackController(QObject):
             if pack_id in {"engine-cpu-py313", "engine-cuda128-py313", "model-whisper-small", "model-whisper-turbo", "model-hymt2-cpu", "model-hymt2-gpu", "model-demucs-cpu", "model-demucs-gpu"}:
                 return False, "Chưa đọc được cấu hình máy. Hãy kiểm tra lại trước khi cài gói xử lý."
             return True, ""
-        if pack_id in {"model-whisper-turbo", "model-hymt2-gpu"} and capabilities.gpu_supported \
+        if pack_id == "model-hymt2-gpu" and capabilities.gpu_supported \
                 and not capabilities.heavy_gpu_models_supported:
-            return False, "Card 4 GB dùng Whisper Small trên GPU; chọn HY-MT2 CPU Q4 cho bước dịch."
+            return False, "HY-MT2 GPU đầy đủ cần ít nhất 5 GiB VRAM. Card 4 GB hãy chọn HY-MT2 CPU Q4."
         if pack_id in {"engine-cuda128-py313", "model-whisper-turbo", "model-hymt2-gpu", "model-demucs-gpu"}:
             return validate_processing_device("gpu", capabilities, language=getattr(self._host, "_settings_language", "vi"))
         if pack_id in {"engine-cpu-py313", "model-whisper-small", "model-hymt2-cpu", "model-demucs-cpu"}:

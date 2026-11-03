@@ -44,11 +44,12 @@ class TtsReliabilityTests(unittest.TestCase):
                      "source_start": "1", "source_end": "2.2", "source_text": "This is a short sentence."}
                 ], "test", language_id="vi", speaker_mode="multiple", device="cpu")
 
-    def test_packaged_reference_matches_preview_identity_and_transcript(self):
+    def test_packaged_reference_matches_preset_identity_and_nonempty_transcript(self):
         from haizflow.pipeline.omnivoice_tts import _preset_reference
         path, text = _preset_reference("omnivoice:male", "en")
         self.assertTrue(Path(path).is_file())
-        self.assertIn("Mạch Hồng Hải", text)
+        self.assertIn("omnivoice_male", path)
+        self.assertTrue(text.strip())
         self.assertEqual(_preset_reference("../untrusted", "en"), ("", ""))
 
     def test_completed_clips_are_committed_before_worker_pause(self):
@@ -59,7 +60,7 @@ class TtsReliabilityTests(unittest.TestCase):
             root = Path(temp_dir)
             outputs = [root / "one.mp3", root / "two.mp3"]
             def worker(_path, request, _video_id, callback):
-                self.assertEqual(request["inference_steps"], 16)
+                self.assertEqual(request["inference_steps"], 32)
                 Path(request["items"][0]["wav_path"]).write_bytes(b"RIFF" + bytes(256))
                 callback(1, 2, "synthesizing")
                 self.assertTrue(tts._is_valid_mp3(str(outputs[0])))

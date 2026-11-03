@@ -126,6 +126,37 @@ def test_quality_guard_rejects_beeps_even_with_speech_afterwards():
     validate_speech_waveform(.2 * np.sin(2*np.pi*50*t) + .05 * np.sin(2*np.pi*100*t), rate)
 
 
+@pytest.mark.parametrize("number", [2, 3])
+@pytest.mark.parametrize("gain", [.25, 1.0])
+@pytest.mark.parametrize("target_rate", [16000, 24000, 48000])
+def test_connected_japanese_vowels_are_not_repeated_codec_beeps(number, gain, target_rate):
+    import wave
+    from pathlib import Path
+
+    path = Path(__file__).parent / "fixtures/audio" / f"omnivoice-ja-voiced-prefix-{number}.wav"
+    with wave.open(str(path), "rb") as clip:
+        rate = clip.getframerate()
+        audio = np.frombuffer(clip.readframes(clip.getnframes()), dtype="<i2").astype(np.float32) / 32768
+    if rate != target_rate:
+        audio = np.interp(np.arange(round(len(audio)*target_rate/rate)) * rate / target_rate,
+                          np.arange(len(audio)), audio)
+    validate_speech_waveform(audio * gain, target_rate)
+
+
+@pytest.mark.parametrize("rate", [16000, 24000, 48000])
+@pytest.mark.parametrize("frequency", [400, 600, 1000, 3000])
+@pytest.mark.parametrize("gap_noise", [0.0, .001])
+def test_isolated_stationary_beeps_remain_blocked_across_sample_rates(rate, frequency, gap_noise):
+    rng = np.random.default_rng(42)
+    tone = .2 * np.sin(2 * np.pi * frequency * np.arange(round(rate * .12)) / rate)
+    gap = rng.normal(0, gap_noise, round(rate * .12))
+    t = np.arange(rate) / rate
+    speech = .1 * np.sin(2*np.pi*180*t) + .07 * np.sin(2*np.pi*360*t) + .03 * rng.normal(size=rate)
+    audio = np.concatenate([np.zeros(round(rate*.08)), tone, gap, tone, gap, speech])
+    with pytest.raises(RuntimeError, match="beep"):
+        validate_speech_waveform(audio, rate)
+
+
 def test_number_policy_invalidates_only_numeric_local_cache():
     from haizflow.pipeline import tts_quality
     video = SimpleNamespace(speaker_mode="single", tts_voice="omnivoice:male", tts_provider="omnivoice-gpu",
@@ -259,6 +290,51 @@ def test_worker_levels_quiet_numeric_and_regular_speech_on_cpu_and_gpu(tmp_path,
     path.write_text(json.dumps(request), encoding="utf-8")
     assert voice._worker_main(str(path), runtime) == 0
     assert len(writes) == 2
-    assert active_speech_rms(writes[0], 24000) == pytest.approx(.08, abs=.002)
-    assert active_speech_rms(writes[1], 24000) == pytest.approx(.08, abs=.002)
-    assert len(runtime['reference_loudness_cache']) == 1
+    bounded_target = min(.12, active_speech_rms(quiet, 24000) * 10 ** (9 / 20))
+    assert active_speech_rms(writes[0], 24000) == pytest.approx(bounded_target, abs=.002)
+    assert active_speech_rms(writes[1], 24000) == pytest.approx(bounded_target, abs=.002)
+
+
+@pytest.mark.parametrize('level', [.06, .10, .12, .18, .25])
+def test_omnivoice_matches_current_vieneu_active_level_without_changing_dynamics(level):
+    from haizflow.pipeline.tts_quality import calibrate_omnivoice_level
+
+    wave = fake_speech_wave()
+    wave *= level / active_speech_rms(wave, 24000)
+    output = calibrate_omnivoice_level(wave, 24000)
+    assert active_speech_rms(output, 24000) == pytest.approx(.12, abs=.002)
+    assert len(output) == len(wave) and abs(output).max() <= 10 ** (-1 / 20)
+    audible = abs(wave) > .001
+    assert np.std(output[audible] / wave[audible]) < 1e-5  # One gain, no limiter or modulation.
+
+
+def test_omnivoice_leveling_never_lifts_silence_or_exceeds_peak_headroom():
+    from haizflow.pipeline.tts_quality import calibrate_omnivoice_level
+
+    silent = np.zeros(24000, dtype=np.float32)
+    assert np.array_equal(calibrate_omnivoice_level(silent, 24000), silent)
+    wave = fake_speech_wave() * .2
+    wave[100] = .8
+    output = calibrate_omnivoice_level(wave, 24000)
+    assert abs(output).max() <= 10 ** (-1 / 20) + 1e-6
+
+
+@pytest.mark.parametrize('device,requested,expected', [('gpu', None, 48), ('cpu', None, 32),
+                                                     ('gpu', 32, 32), ('gpu', 999, 64)])
+def test_quality_step_defaults_and_explicit_comparisons_are_bounded(tmp_path, device, requested, expected):
+    def worker(_path, request, _video_id, _callback):
+        assert request['inference_steps'] == expected
+        assert request['device'] == ('cuda:0' if device == 'gpu' else 'cpu')
+        for item in request['items']:
+            from pathlib import Path
+            Path(item['wav_path']).write_bytes(b'RIFF' + bytes(256))
+        return 0, ''
+
+    with (patch.object(voice, '_prepare_isolated_runtime'),
+          patch.object(voice, 'verify_omnivoice_model', return_value=tmp_path),
+          patch.object(voice, '_sdk_root', return_value=tmp_path),
+          patch.object(voice, '_run_worker_process', side_effect=worker),
+          patch.object(voice, '_encode_mp3'), patch.object(voice, 'log_to_video')):
+        voice.synthesize_batch_to_mp3([{'text': 'Một câu thử.', 'voice': 'omnivoice:male',
+                                        'output_path': str(tmp_path / 'voice.mp3')}],
+                                      'fixture', language_id='vi', device=device, inference_steps=requested)

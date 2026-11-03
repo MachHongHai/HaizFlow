@@ -1,8 +1,8 @@
 """Transparent libass caption frames, using the export ASS writer verbatim."""
 from __future__ import annotations
 
-import hashlib
 import bisect
+import hashlib
 import json
 import logging
 import re
@@ -31,7 +31,7 @@ def timestamp(value):
 
 def sprite_key(header, body, layout):
     return hashlib.sha256((
-        "subtitle-sprite-v4\n" + header + body
+        "subtitle-sprite-v6-bundled-cjk-fonts\n" + header + body
         + json.dumps(layout, sort_keys=True, ensure_ascii=False)
     ).encode()).hexdigest()
 
@@ -120,6 +120,7 @@ def export_events(segments, layout, fixed, directory):
             region, fixed_font_size=True,
             speech_durations={i + 1: max(0.1, float(segment["_speech_end"]) - float(segment.get("start", 0)))
                               for i, segment in enumerate(members) if segment.get("_speech_end") is not None},
+            subtitle_language=str(resolved.get("fontLanguage") or ""),
         )
         text = target.read_text(encoding="utf-8")
         header = text.split("Dialogue:", 1)[0]

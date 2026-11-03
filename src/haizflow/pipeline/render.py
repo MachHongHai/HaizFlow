@@ -1,14 +1,14 @@
+import hashlib
 import math
 import os
 import re
-import subprocess
 import struct
+import subprocess
 import tempfile
 import unicodedata
-import hashlib
-from functools import lru_cache
 from dataclasses import dataclass, replace
 from datetime import timedelta
+from functools import lru_cache
 from pathlib import Path
 from threading import Event, Thread
 from typing import Callable
@@ -16,6 +16,12 @@ from typing import Callable
 import srt
 
 from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS
+from haizflow.core.subtitle_fonts import (
+    bundled_font_path,
+    caption_region,
+    covers_text,
+    resolved_subtitle_style,
+)
 from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 from haizflow.schemas.video import CropSettings, SubtitleStyle
 from haizflow.services.video_store import log_to_video
@@ -23,10 +29,9 @@ from haizflow.utils.ffmpeg import (
     get_media_stream_types,
     get_video_dimensions,
     get_video_duration,
-    preferred_video_encoder,
     mark_video_encoder_failed,
+    preferred_video_encoder,
 )
-
 
 KARAOKE_FONT_NAME = "Bangers"
 KARAOKE_FONT_FILENAME = "Bangers-Regular.ttf"
@@ -121,8 +126,11 @@ def _font_path_details(
     """Return ``(path, exact_match)`` for preview/export font parity."""
     windows_directory = Path(os.environ.get("WINDIR", r"C:\\Windows")) / "Fonts"
     family = str(font_family or "Arial").strip().lower()
-    if family == "bangers":
-        return _karaoke_font_directory() / KARAOKE_FONT_FILENAME, True
+    bundled = bundled_font_path(str(font_family or "").strip())
+    if bundled is not None:
+        if not bundled.is_file():
+            raise RuntimeError(f"Bundled subtitle font is missing: {bundled.name}")
+        return bundled, True
     variants = {
         "arial": {
             (False, False): "arial.ttf", (True, False): "arialbd.ttf",
@@ -160,8 +168,15 @@ def font_file_fingerprint(font_family: str, bold: bool = False, italic: bool = F
     path, exact = _font_path_details(font_family, bold, italic)
     if not exact or not path.is_file():
         return ""
+    stat = path.stat()
+    return _font_file_digest(str(path), stat.st_size, stat.st_mtime_ns)
+
+
+@lru_cache(maxsize=32)
+def _font_file_digest(filename: str, size: int, modified: int) -> str:
+    del size, modified
     digest = hashlib.sha256()
-    with path.open("rb") as handle:
+    with Path(filename).open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
@@ -197,6 +212,17 @@ def _karaoke_units(text: str) -> list[str]:
     normalized = " ".join(text.split())
     if not normalized:
         return []
+    if _UNSPACED_KARAOKE_SCRIPT.search(normalized):
+        # A space in Japanese/Chinese dialogue does not turn its long phrases
+        # into indivisible Latin words. Keep one geometry-independent clock;
+        # combining marks and spaces belong to the preceding glyph.
+        units = []
+        for character in normalized:
+            if units and (character.isspace() or unicodedata.category(character).startswith("M")):
+                units[-1] += character
+            else:
+                units.append(character)
+        return units
     words = normalized.split(" ")
     if len(words) > 1:
         return [word + (" " if index < len(words) - 1 else "") for index, word in enumerate(words)]
@@ -204,8 +230,6 @@ def _karaoke_units(text: str) -> list[str]:
     # ``len(words) == 1`` shortcut split it into characters, so a large font
     # (which creates more one-word visual phrases) accidentally lengthened
     # the karaoke clock. Only genuinely unspaced scripts use glyph units.
-    if _UNSPACED_KARAOKE_SCRIPT.search(normalized):
-        return list(normalized)
     return [normalized]
 
 
@@ -550,6 +574,7 @@ def _split_caption_lines_by_width(
     text: str, width: float, font_size: int, style: SubtitleStyle,
 ) -> list[str]:
     """Pack visible words by glyph advances; changing capacity never scales text."""
+    style = resolved_subtitle_style(style, text)
     font_path, _exact = _font_path_details(style.font_family, style.bold, style.italic)
     # libass normalizes \fs to Win ascent+descent, not unitsPerEm. Measuring
     # at an unadjusted EM size makes narrow fonts reject words that fit on screen.
@@ -558,6 +583,12 @@ def _split_caption_lines_by_width(
     units = _karaoke_units(text)
     if not units:
         return [""]
+    caseless = bool(_UNSPACED_KARAOKE_SCRIPT.search(text))
+    measured_text = "".join(units)
+    advances = {char: max(font.getlength(char) * advance_scale,
+                          font_size if unicodedata.east_asian_width(char) in {"W", "F"}
+                          and not covers_text(style.font_family, char) else 0)
+                for char in set(measured_text.upper() if style.uppercase else measured_text)} if caseless else {}
     # Minimum phrase count first, then avoid isolated words and balance widths.
     # This keeps a wider box from producing more temporal fragments.
     best = {len(units): ((0, 0, 0.0), [])}
@@ -566,7 +597,11 @@ def _split_caption_lines_by_width(
         for end in range(start + 1, len(units) + 1):
             candidate += units[end - 1]
             visible = candidate.rstrip().upper() if style.uppercase else candidate.rstrip()
-            advance = font.getlength(visible) * advance_scale + max(0, len(visible) - 1) * style.letter_spacing
+            # Measure the same bundled face selected for ASS. Only use the
+            # conservative full-em reserve for genuinely uncovered glyphs.
+            advance = (sum(advances[char] for char in visible) if caseless
+                       else font.getlength(visible) * advance_scale)
+            advance += max(0, len(visible) - 1) * style.letter_spacing
             if advance > width and end > start + 1:
                 break
             tail_cost, tail_lines = best[end]
@@ -742,6 +777,7 @@ def _write_positioned_ass(
     fixed_font_size: bool = False,
     cue_styles: dict[int, tuple[SubtitleStyle, SubtitleRegionLayout]] | None = None,
     speech_durations: dict[int, float] | None = None,
+    subtitle_language: str = "",
 ):
     """Convert SRT to ASS so a dragged preview position is reproduced exactly in FFmpeg."""
     subtitle_style = SubtitleStyle.model_validate(subtitle_style.model_dump())
@@ -752,6 +788,9 @@ def _write_positioned_ass(
         subtitles = list(srt.parse(file.read()))
     if not subtitles:
         raise RuntimeError("Final render requires at least one valid subtitle cue.")
+    language = caption_region(" ".join(cue.content for cue in subtitles), subtitle_language,
+                              subtitle_style.font_family)
+    subtitle_style = resolved_subtitle_style(subtitle_style, language=language)
     style_outline = _karaoke_outline(
         subtitle_style.font_size,
         subtitle_style.outline,
@@ -792,6 +831,7 @@ def _write_positioned_ass(
             subtitle.index,
             (subtitle_style, region_layout),
         )
+        cue_style = resolved_subtitle_style(cue_style, subtitle.content, language)
         x = round(width * cue_style.position_x_percent / 100)
         y = round(height * cue_style.position_y_percent / 100)
         alignment_tag = (
@@ -852,7 +892,7 @@ def _write_positioned_ass(
             )
             lines.append(
                 f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,"
-                f"{{\\an{alignment_tag}\\pos({x},{y})\\fsp{cue_style.letter_spacing}"
+                f"{{\\an{alignment_tag}\\pos({x},{y})\\fn{cue_style.font_family}\\fsp{cue_style.letter_spacing}"
                 f"\\bord{cue_outline}\\shad{cue_style.shadow}}}{karaoke}"
             )
     with open(ass_path, "w", encoding="utf-8-sig") as file:
@@ -1105,6 +1145,7 @@ def resolve_subtitle_preview_layout(
     crop: CropSettings,
     subtitle_style: SubtitleStyle,
     subtitle_layout_override: bool,
+    subtitle_language: str = "",
 ) -> dict[str, int]:
     """Resolve the exact subtitle geometry and style used by ``render_video``.
 
@@ -1121,6 +1162,7 @@ def resolve_subtitle_preview_layout(
         subtitle_style = SubtitleStyle(**dict(subtitle_style or {}))
     else:
         subtitle_style = SubtitleStyle.model_validate(subtitle_style.model_dump())
+    subtitle_style = resolved_subtitle_style(subtitle_style, language=subtitle_language)
     _crop_x, _crop_y, cropped_width, cropped_height = _crop_geometry(
         source_width,
         source_height,
@@ -1168,6 +1210,7 @@ def resolve_subtitle_preview_layout(
         "boxWidthPercent": max(20, min(100, round(layout.width * 100 / output_width))),
         "boxHeightPercent": max(1, min(100, round(layout.height * 100 / output_height))),
         "fontFamily": effective_style.font_family,
+        "fontLanguage": subtitle_language or caption_region(requested=effective_style.font_family),
         "textColor": effective_style.text_color,
         "karaokeColor": effective_style.karaoke_color,
         "outlineColor": effective_style.outline_color,
@@ -1596,6 +1639,7 @@ def render_video(
     output_speed: float = 1.0,
     watermark_moving: bool = True,
     watermark_position: dict | None = None,
+    subtitle_language: str = "",
 ):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
     subtitle_style = SubtitleStyle.model_validate(subtitle_style.model_dump())
@@ -1712,6 +1756,7 @@ def render_video(
         # sequential phrases instead of changing font size or aspect ratio.
         fixed_font_size=True,
         cue_styles=cue_styles or None,
+        subtitle_language=subtitle_language,
     )
     rel_video = _ffmpeg_path(video_path, video_temp_dir)
     rel_voice = _ffmpeg_path(voice_wav_path, video_temp_dir)

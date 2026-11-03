@@ -57,7 +57,17 @@ Saving a connection does not require making a paid test translation.
   only connection ID, label, provider, endpoint, model and output format.
 - Translation sends the requested subtitle text plus bounded context/guidance
   to the chosen provider. OpenRouter additionally routes to its backend provider;
-  HaizFlow requests providers with `data_collection=deny` and parameter support.
+  HaizFlow requests providers with `data_collection=deny` and parameter support
+  by default. Nemotron 3.5 Super VL Free and Liquid LFM2.5 Free require data
+  collection: selecting either opens a privacy warning before changing the model.
+  Only explicit agreement stores a local grant for that connection ID and exact
+  model; only that scope sends `data_collection=allow`. Cancel, X and Escape keep
+  the old choice and create no grant. Existing selections without consent stop
+  before sending subtitle content and ask the user to reselect. The grant contains
+  no keys/media and survives restart; removing the connection removes its grants.
+  All pickers (Manual, Auto, Batch and manual Model ID) share this flow. OpenRouter
+  account-level privacy settings are not changed and can still reject routing.
+  A data-policy HTTP 404 is explained as a privacy restriction, not a retired model.
 - API charges and limits belong to the user's provider account. No automatic
   fallback to a different model/provider connection is performed. OpenRouter's
   own provider routing may use another endpoint for the same chosen model.
@@ -115,6 +125,29 @@ free model. No fallback to paid models is sent. Current compatible additions are
 `recursive/flint-v1.0:free`. Public metadata is not an inference/quality guarantee;
 provider policies, rate limits and availability still apply.
 
+Protocol metadata now also retains bounded `context_length`, provider
+`max_completion_tokens`, and a `user_only` prompt hint for Gemma chat templates.
+Before requests are sent, output ceilings also reduce source batch size so a
+smaller limit does not merely truncate the last subtitles. Small context windows
+reserve half their capacity for input. All source IDs and guidance remain intact;
+very long individual cues/guidance can still exceed a small model's window and
+require choosing a larger-context model. No tokenizer-exact context estimate is
+claimed. Gemma-family user-only prompts combine the instructions with the task
+without discarding them; other chat formats retain their system/user messages.
+Missing hints in an older public cache are enriched from the new bundled snapshot,
+without changing credentials, selections, media caches or adding background GETs.
+
+The 2026-11-03 controlled paid check used exactly two short requests to
+`google/gemma-2-27b-it` (NextBit): an old payload and a corrected 2048-token,
+user-only payload. Both returned HTTP 400. This model is therefore temporarily
+excluded from recommendations and stops before inference if still saved in a
+project; it is not described as retired or automatically replaced. Task-specific
+UI-TARS, Schematron and Jev models/routers are also omitted from this subtitle
+translation catalogue. Other models with low output limits are retained with
+adaptive batch sizes. Presence is not a live-inference guarantee for all models.
+Request logs include the exact model ID and safe rejection categories for HTTP
+400/422 (context, output limit, role or JSON compatibility), never raw server text.
+
 The 2026-11-03 endpoint audit covered all 363 shipped catalogue entries: the 344
 concrete models had serving endpoints; 18 Latest aliases and one model router
 had no direct provider entries, which does not by itself mean they are retired.
@@ -125,10 +158,15 @@ another model. Advanced manual Model ID entry remains available. Pricing labels
 reserve the checkmark column even on unselected rows so selection cannot shift them.
 
 Projects have an inline reasoning control under Model dịch in Manual, Auto and
-Batch settings. Labels are `reasoning.effort`, `reasoning_effort`, Gemini “Mức”
-(“Level” in English), and DeepSeek `thinking.type`. Choices display their official
-names with an initial capital (`High`, `Disabled`, etc.); stored/API values remain
-unchanged (`high`, `disabled`, Gemini `thinkingLevel`). Unsupported values are omitted; changing models resets to
+Batch settings. Vietnamese labels are “Mức” for effort levels and “Suy luận” for
+reasoning switches/status. Choices are localized (Tắt, Bật, Tối thiểu, Thấp,
+Trung bình, Cao, Rất cao, Tối đa); English UI keeps Level, Reasoning and the
+English choice names. Stored/API values remain unchanged (`high`, `disabled`,
+Gemini `thinkingLevel`). Switching UI language preserves the selected value.
+For OpenRouter models advertising optional reasoning without effort levels,
+Tắt/Bật maps to API booleans through `reasoning.enabled`.
+The app explicitly defaults these models to `enabled: false`; `mandatory: false`
+is not mistaken for reasoning being off. Unsupported values are omitted; changing models resets to
 its compatible low-cost default. Unknown custom capabilities are not guessed.
 OpenRouter's advertised supported efforts are kept as bounded public metadata,
 separate from credentials and project/media caches, and survive app restarts.
@@ -144,7 +182,11 @@ Models requiring reasoning, including OpenRouter's `deepseek/deepseek-r1-0528`,
 need room for thinking as well as visible JSON. These requests use at most 12
 sentences/2,000 source characters per batch, preserve the same cross-batch context
 and checkpoint IDs, and add 8,192 tokens of headroom to the visible-output estimate
-(combined ceiling 32,768; request timeout 240 seconds). This does not force the
+(combined ceiling 32,768; request timeout 240 seconds). Explicitly enabled optional
+reasoning and models advertising reasoning support without usable control metadata
+receive the same bounded reserve; optional models explicitly disabled do not.
+Model-specific output/context ceilings still take precedence (for example, Liquid
+Free's total output ceiling is 8,192). This does not force the
 model to consume that ceiling, and is not a hard separate reasoning budget.
 More batches can increase prompt overhead; actual total cost depends on the model.
 `finish_reason=length` and all-reasoning/no-visible-output responses stop with a
@@ -155,8 +197,18 @@ OpenRouter currently advertises R1 0528 with `reasoning.mandatory=true` but no
 `supported_efforts`. The project UI therefore shows only `reasoning: Enabled`,
 without a fake Low/High selector or a disable option. Mandatory state survives
 model discovery/restarts. An explicitly null `supported_efforts` means all gateway
-efforts; an absent field means no effort selector. Never treat `reasoning.exclude`
+efforts; an absent field means no effort selector, not an absence of reasoning.
+An explicitly non-mandatory model can instead expose the boolean control above.
+Never treat `reasoning.exclude`
 as disabling reasoning: it hides the reasoning text, not its token consumption.
+
+The 2026-11-03 free-catalogue audit covers all seven currently recommended free
+models: Dots3-Note, Xing4.0, Nemotron 3.5 Super VL and both Gemma 4 variants have
+optional reasoning controls; Flint V1 and LFM 2.5 2.6B require reasoning and expose
+no fictitious disable/effort controls. Verification uses public metadata and fake
+inference/native UI tests, not live generation using the user's API key. A provider
+that ignores disable and returns almost all reasoning plus a few visible tokens
+is diagnosed as reasoning-budget exhaustion, with no automatic regeneration.
 
 - Provider model IDs retain exact case in project settings, processing, and resume
   checkpoints. Built-in local/Gemini enum names may still be normalized.
@@ -175,6 +227,14 @@ as disabling reasoning: it hides the reasoning text, not its token consumption.
   category, not mislabelled as invalid subtitles. They are never automatically
   repeated because generation may already have incurred a charge. Lost/truncated
   responses also stop without blindly resubmitting; accepted batches remain saved.
+- HTTP 429 does not by itself mean the user's daily quota is exhausted. Generic
+  notices describe rate limiting/provider capacity without claiming quota exhaustion.
+  OpenRouter's existing error response can distinguish explicit free daily/minute
+  limits, insufficient-quota codes, or upstream provider hints; a bounded numeric
+  Retry-After is shown when supplied. HTTP error bodies are capped at 64 KiB and
+  only fixed local messages are displayed, never raw provider text or keys. This
+  handling makes no quota/account GET requests, adds no retries, and does not
+  change the selected model or enable a paid fallback.
 - When a provider returns usage, technical logs show allowlisted input/output/
   reasoning token counts only, never keys or raw response contents. Reasoning is
   a subset of output tokens, not an extra amount to add again. Metrics logging

@@ -108,6 +108,27 @@ class TranslationApiController(QObject):
         model = dict(PRESETS.get(provider, ())).get(profile["model"], profile["model"])
         return f"{label} · {model}"
 
+    @Slot(str, result=bool)
+    def dataCollectionRequired(self, choice):
+        from haizflow.services import translation_privacy
+
+        try:
+            return translation_privacy.required(connections.resolve(choice))
+        except ValueError:
+            return False
+
+    @Slot(str, result=bool)
+    def allowDataCollection(self, choice):
+        from haizflow.services import translation_privacy
+
+        try:
+            translation_privacy.grant(connections.resolve(choice))
+        except (OSError, ValueError):
+            self.host._show_app_alert(self.tr("Không lưu được quyền model"),
+                                     self.tr("Chưa cấp quyền thu thập dữ liệu. Hãy thử chọn lại model."), "error")
+            return False
+        return True
+
     @Slot(str)
     def loadConnectionModels(self, identifier):
         try:

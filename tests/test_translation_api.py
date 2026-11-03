@@ -14,6 +14,9 @@ from haizflow.services import translation_connections as connections
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
+    from haizflow.services import translation_privacy
+
+    monkeypatch.setattr(translation_privacy, "_PATH", tmp_path / "consent.json")
     secrets = {}
     monkeypatch.setattr(connections, "_PATH", tmp_path / "connections.json")
     monkeypatch.setattr(connections.secure_credentials, "read_secret", lambda target: secrets.get(target, ""))
@@ -89,6 +92,95 @@ def _chat(rows):
     return {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps({"translations": rows})}}]}
 
 
+def test_router_user_only_prompt_and_low_token_ceiling_keep_all_subtitles_and_guidance(store, monkeypatch):
+    from haizflow.services import translation_catalog_cache
+
+    monkeypatch.setattr(translation_catalog_cache, "protocol_for", lambda _model: {
+        "output_format": "json_schema", "max_completion_tokens": 2048, "context_length": 8192,
+        "prompt_format": "user_only"})
+    choice = "api:" + connections.add("openrouter", "A", "private", "vendor/small-chat")
+    received = []
+
+    def send(_url, _key, payload, **_kwargs):
+        assert payload["max_tokens"] <= 2048
+        assert [row["role"] for row in payload["messages"]] == ["user"]
+        user = payload["messages"][0]["content"]
+        assert "Alice → An" in user and "natural" in user
+        data = user.split("Subtitle task and context (JSON data):\n", 1)[1]
+        rows, _ = json.JSONDecoder().raw_decode(data)
+        received.append([row["id"] for row in rows])
+        return _chat([{"id": row["id"], "text": f"Bản dịch {row['id']}."} for row in rows])
+
+    monkeypatch.setattr(api, "_json_request", send)
+    saved = Mock()
+    result = api.translate_texts([f"A moderately long source subtitle number {index}." for index in range(40)],
+        model=choice, source_language="en", target_language="vi", video_id="", translation_style="natural",
+        translation_glossary="Alice → An", result_callback=saved)
+    assert [index for rows in received for index in rows] == list(range(40))
+    assert len(result) == 40 and saved.call_count == len(received) > 2
+
+
+def test_confirmed_incompatible_model_stops_before_any_billable_request(store, monkeypatch):
+    choice = "api:" + connections.add("openrouter", "Legacy model", "private", "google/gemma-2-27b-it")
+    send = Mock()
+    monkeypatch.setattr(api, "_json_request", send)
+    with pytest.raises(RuntimeError, match="app chưa gửi yêu cầu API"):
+        api.translate_texts(["Hello."], model=choice, source_language="en", target_language="vi", video_id="")
+    send.assert_not_called()
+
+
+def test_dots_two_batches_disable_optional_reasoning_and_resume_only_missing_sentences(store, monkeypatch):
+    choice = "api:" + connections.add("openrouter", "Dots", "private", "dots-studio/dots-3-note-preview:free")
+    received = []
+
+    def send(_url, _key, payload, **_kwargs):
+        assert payload["reasoning"] == {"enabled": False, "exclude": True}
+        assert payload["model"] == "dots-studio/dots-3-note-preview:free" and "models" not in payload
+        rows, _ = json.JSONDecoder().raw_decode(payload["messages"][1]["content"])
+        received.append([row["id"] for row in rows])
+        return _chat([{"id": row["id"], "text": f"Bản dịch {row['id']}."} for row in rows])
+
+    monkeypatch.setattr(api, "_json_request", send)
+    texts = [f"Sentence {index}." for index in range(40)]
+    results = api.translate_texts(texts, model=choice, source_language="en", target_language="vi", video_id="")
+    assert received == [list(range(24)), list(range(24, 40))] and len(results) == 40
+    received.clear()
+    resumed = api.translate_texts(texts, model=choice, source_language="en", target_language="vi", video_id="",
+                                 initial_translations=results[:24] + [None] * 16)
+    assert received == [list(range(24, 40))] and resumed[:24] == results[:24]
+
+
+def test_reasoning_ignored_by_provider_does_not_publish_partial_batch_or_retry(store, monkeypatch):
+    choice = "api:" + connections.add("openrouter", "Dots", "private", "dots-studio/dots-3-note-preview:free")
+    answer = {"choices": [{"finish_reason": "length", "message": {"content": '{"translations":['}}],
+              "usage": {"completion_tokens": 2156, "completion_tokens_details": {"reasoning_tokens": 2140}}}
+    assert api._token_failure(answer) == "reasoning_budget_exhausted"
+    send, saved = Mock(return_value=answer), Mock()
+    monkeypatch.setattr(api, "_json_request", send)
+    with pytest.raises(RuntimeError, match="suy luận"):
+        api.translate_texts(["One."], model=choice, source_language="en", target_language="vi",
+                            video_id="", result_callback=saved)
+    assert send.call_count == 1
+    saved.assert_not_called()
+
+
+@pytest.mark.parametrize("hint,expected", [
+    ("maximum context length exceeded PRIVATE", "giới hạn ngữ cảnh"),
+    ("max_tokens is out of range PRIVATE", "token đầu ra"),
+    ("System role is not supported PRIVATE", "kiểu prompt"),
+    ("response_format json_schema not supported PRIVATE", "định dạng JSON"),
+])
+def test_router_400_safe_diagnostics_distinguish_request_problems(store, monkeypatch, hint, expected):
+    choice = "api:" + connections.add("openrouter", "A", "private", "vendor/chat")
+    raw = json.dumps({"error": {"code": 400, "metadata": {"raw": hint}}}).encode()
+    send = Mock(side_effect=error.HTTPError("https://private", 400, "private", {}, io.BytesIO(raw)))
+    monkeypatch.setattr(api, "_json_request", send)
+    with pytest.raises(RuntimeError, match=expected) as caught:
+        api.translate_texts(["Hello."], model=choice, source_language="en", target_language="vi", video_id="fixture")
+    assert "PRIVATE" not in str(caught.value) and "PRIVATE" not in str(api.log_to_video.call_args_list)
+    assert send.call_count == 1
+
+
 @pytest.mark.parametrize("model,expected", [
     ("google/gemma-4-26b-a4b-it:free", "json_object"),
     ("google/gemma-4-31b-it:free", "json_object"),
@@ -98,9 +190,12 @@ def _chat(rows):
 ])
 def test_free_model_uses_advertised_json_protocol_without_model_fallback(store, monkeypatch, model, expected):
     from haizflow.services import translation_catalog_cache as cache
+    from haizflow.services import translation_privacy
 
     monkeypatch.setattr(cache, "_PATH", cache._PATH.parent / "missing-protocol-test.json")
     choice = "api:" + connections.add("openrouter", "Free", "private", model)
+    if translation_privacy.required(connections.resolve(choice)):
+        translation_privacy.grant(connections.resolve(choice))
     send = Mock(return_value=_chat([{"id": 0, "text": "Xin chào."}]))
     monkeypatch.setattr(api, "_json_request", send)
     assert api.translate_texts(["Hello."], model=choice, source_language="en", target_language="vi",
@@ -109,7 +204,8 @@ def test_free_model_uses_advertised_json_protocol_without_model_fallback(store, 
     assert payload["model"] == model and "models" not in payload
     assert payload["response_format"]["type"] == expected
     assert payload["provider"]["require_parameters"] is True
-    assert payload["provider"]["data_collection"] == "deny"
+    assert payload["provider"]["data_collection"] == (
+        "allow" if model in translation_privacy.COLLECTION_MODELS else "deny")
     if expected == "json_object":
         assert '"translations":[{"id":0,"text":' in payload["messages"][0]["content"]
     assert send.call_count == 1
@@ -147,6 +243,47 @@ def test_unavailable_r1_free_explains_endpoint_error_without_retry_or_paid_fallb
     assert send.call_count == 1
     payload = send.call_args.args[2]
     assert payload["model"] == "deepseek/deepseek-r1:free" and "models" not in payload
+
+
+@pytest.mark.parametrize("model", ["nvidia/nemotron-3.5-super-vl:free", "liquid/lfm-2.5-2.6b:free"])
+def test_data_collection_models_require_explicit_scoped_consent_before_sending(store, monkeypatch, model):
+    from haizflow.services import translation_privacy
+
+    identifier = connections.add("openrouter", "Free", "private", "")
+    choice = "api:" + identifier + ":" + model
+    send = Mock(return_value=_chat([{"id": 0, "text": "Xin chào."}]))
+    monkeypatch.setattr(api, "_json_request", send)
+    with pytest.raises(RuntimeError, match="quyền thu thập dữ liệu"):
+        api.translate_texts(["Hello."], model=choice, source_language="en", target_language="vi", video_id="")
+    send.assert_not_called()
+    previous_signature = connections.signature_parts(choice)
+    translation_privacy.grant(connections.resolve(choice))
+    assert connections.signature_parts(choice) == previous_signature  # Permission is not a new translation cache.
+    assert api.translate_texts(["Hello."], model=choice, source_language="en", target_language="vi",
+                               video_id="") == ["Xin chào."]
+    payload = send.call_args.args[2]
+    assert payload["model"] == model and "models" not in payload
+    assert payload["provider"] == {"require_parameters": True, "allow_fallbacks": True, "data_collection": "allow"}
+    assert send.call_count == 1
+    other = "api:" + identifier + ":dots-studio/dots-3-note-preview:free"
+    api.translate_texts(["Hello."], model=other, source_language="en", target_language="vi", video_id="")
+    assert send.call_args.args[2]["provider"]["data_collection"] == "deny"
+    assert connections.remove(identifier)
+    assert not translation_privacy.allowed({"id": identifier, "model": model, "provider": "openrouter"})
+
+
+@pytest.mark.parametrize("body_error", [False, True])
+def test_data_policy_404_is_not_misreported_as_a_retired_model_or_retried(store, monkeypatch, body_error):
+    body = {"error": {"code": 404, "message": "No endpoints found matching your data policy. PRIVATE",
+                      "metadata": {"raw": "PRIVATE"}}}
+    choice = "api:" + connections.add("openrouter", "Free", "private", "vendor/new:free")
+    send = Mock(return_value=body) if body_error else Mock(side_effect=error.HTTPError(
+        "https://private", 404, "PRIVATE", {}, io.BytesIO(json.dumps(body).encode())))
+    monkeypatch.setattr(api, "_json_request", send)
+    with pytest.raises(RuntimeError, match="quyền thu thập dữ liệu") as caught:
+        api.translate_texts(["Hello."], model=choice, source_language="en", target_language="vi", video_id="")
+    assert "PRIVATE" not in str(caught.value) and "không có endpoint" not in str(caught.value)
+    assert send.call_count == 1 and send.call_args.args[2]["provider"]["data_collection"] == "deny"
 
 
 def test_r1_batching_keeps_context_and_leaves_room_for_visible_translation(store, monkeypatch):
@@ -342,6 +479,46 @@ def test_auth_billing_rate_errors_never_leak_body_or_retry(store, monkeypatch, s
     with pytest.raises(RuntimeError) as caught:
         api.translate_texts(["a"], model=choice, source_language="en", target_language="vi", video_id="")
     assert "secret" not in str(caught.value) and str(status) in str(caught.value)
+    assert send.call_count == 1
+
+
+@pytest.mark.parametrize("body,headers,expected", [
+    ({"error": {"code": 429, "message": "PRIVATE RAW BODY"}}, {}, "Không đồng nghĩa đã dùng hết quota"),
+    ({"error": {"code": 429, "metadata": {"provider_name": "PRIVATE RAW BODY"}}}, {}, "nhà cung cấp của model"),
+    ({"error": {"code": 429, "metadata": {"provider_code": "rate_limited"}}},
+     {"Retry-After": "60"}, "sau khoảng 60 giây"),
+    ({"error": {"code": 429, "message": "Rate limit exceeded: free-models-per-day PRIVATE RAW BODY"}},
+     {}, "hạn mức request miễn phí trong ngày"),
+    ({"error": {"code": 429, "message": "Rate limit exceeded: free-models-per-min"}},
+     {}, "request miễn phí trong phút"),
+    ({"error": {"code": "insufficient_quota"}}, {}, "dịch vụ báo đã chạm hạn mức sử dụng"),
+    ({"error": {"code": 429, "message": ["bad metadata"]}},
+     {"Retry-After": "PRIVATE RAW BODY"}, "Không đồng nghĩa đã dùng hết quota"),
+])
+@pytest.mark.parametrize("body_error", [False, True])
+def test_openrouter_429_explains_only_known_hints_without_quota_fetch_or_retries(
+        store, monkeypatch, body, headers, expected, body_error):
+    choice = "api:" + connections.add("openrouter", "Free", "private-key", "vendor/model:free")
+    send = (Mock(return_value=body) if body_error else Mock(side_effect=error.HTTPError(
+        "https://private", 429, "PRIVATE RAW BODY", headers, io.BytesIO(json.dumps(body).encode()))))
+    monkeypatch.setattr(api, "_json_request", send)
+    with pytest.raises(RuntimeError) as caught:
+        api.translate_texts(["Hello."], model=choice, source_language="en", target_language="vi", video_id="")
+    message = str(caught.value)
+    if not body_error or not headers.get("Retry-After"):
+        assert expected in message
+    assert "429" in message and "PRIVATE RAW BODY" not in message and "private-key" not in message
+    assert send.call_count == 1 and send.call_args.args[0].endswith("/chat/completions")
+    assert "PRIVATE RAW BODY" not in str(api.log_to_video.call_args_list)
+
+
+@pytest.mark.parametrize("raw", [b"bad json", b"x" * (64 * 1024 + 1)], ids=["malformed", "oversized"])
+def test_openrouter_broken_rate_limit_hints_preserve_safe_original_error(store, monkeypatch, raw):
+    choice = "api:" + connections.add("openrouter", "Free", "private", "vendor/model:free")
+    send = Mock(side_effect=error.HTTPError("https://private", 429, "private", {}, io.BytesIO(raw)))
+    monkeypatch.setattr(api, "_json_request", send)
+    with pytest.raises(RuntimeError, match="Không đồng nghĩa đã dùng hết quota"):
+        api.translate_texts(["Hello."], model=choice, source_language="en", target_language="vi", video_id="")
     assert send.call_count == 1
 
 

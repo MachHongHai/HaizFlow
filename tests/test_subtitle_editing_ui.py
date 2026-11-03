@@ -726,6 +726,8 @@ function failMusic() {
         class PreviewController(QObject):
             thumbnail = ""
             renderer = None
+            targetLanguage = Property(str, lambda self: "vi", constant=True)
+            subtitleSamplePhrase = Property(str, lambda self: "Một buổi sáng, chúng tôi cùng nhau đi qua con phố nhỏ để khám phá những câu chuyện thú vị. Mỗi câu chuyện lại mở ra một hành trình mới.", constant=True)
             subtitleAppearance = Property("QVariantMap", lambda self: SubtitleStyle(font_size=68).model_dump(), constant=True)
             subtitleSampleOverlayRenderer = Property(QObject, lambda self: self.renderer, constant=True)
             reviewPreviewMedia = Property("QVariantMap", lambda self: {"videoWidth": 720, "videoHeight": 1280}, constant=True)
@@ -736,6 +738,11 @@ function failMusic() {
             subtitleOutlineColor = Property(str, lambda self: "black", constant=True)
             subtitleBold = Property(bool, lambda self: False, constant=True)
             subtitleItalic = Property(bool, lambda self: False, constant=True)
+
+            @Slot(str, str, result="QVariantMap")
+            def subtitleFontSpecForText(self, text, language):
+                from haizflow.desktop.subtitle_fonts import qt_subtitle_font
+                return qt_subtitle_font(text, language)
 
             @Slot(str, int, int, int, int, int, "QVariantMap", result=str)
             def subtitleSampleText(self, text, font, width, height, source_width, source_height, appearance):

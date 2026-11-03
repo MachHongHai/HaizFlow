@@ -370,6 +370,7 @@ class RestartCheckpointTests(unittest.TestCase):
                 mode="review",
                 review_approved=True,
                 translator_provider="hymt2",
+                translation_model="q4",
                 files={
                     "video_input": str(source),
                     "final_video": str(root / "final.mp4"),

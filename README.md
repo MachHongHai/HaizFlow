@@ -92,7 +92,7 @@ Gemini, Zernio and other external services have their own terms, limits and char
 
 Supported systems are Windows 10 version 1809 or later and Windows 11 x64, with at least 16 GB system RAM. Installer users do not need Python. Resource packs, projects and exports need additional storage; Setup and the Resource packs page show their corresponding requirements.
 
-GPU mode supports compatible NVIDIA 4 GB-class cards (at least 3.5 GiB dedicated VRAM reported by CUDA). On 4 GB, use Whisper Small GPU, HY-MT2 CPU Q4 or Gemini, and OmniVoice GPU; these heavy stages run sequentially, with one voice sentence at a time. Whisper Turbo and full HY-MT2 GPU need more VRAM. Available VRAM and system memory still matter at runtime. Windows Smart App Control or an Application Control policy may block this unsigned build; see the [installation guide](docs/install.md).
+GPU mode supports compatible NVIDIA 4 GB-class cards (at least 3.5 GiB dedicated VRAM reported by CUDA). On 4 GB, Whisper Small GPU remains the default; Whisper Turbo can also use supported INT8 compute with batch size 1 and CPU-side VAD/alignment. Use HY-MT2 CPU Q4 or a translation API: the full HY-MT2 GPU model still requires at least 5 GiB VRAM. Recognition and voice stages run sequentially, with one voice sentence at a time. Available VRAM and system memory still matter at runtime; these policies do not guarantee every project fits. Windows Smart App Control or an Application Control policy may block this unsigned build; see the [installation guide](docs/install.md).
 
 See [Installation](docs/install.md) for CPU/GPU packs, API keys and storage. See the [User guide](docs/user-guide.md) for projects, captions, dubbing and publishing.
 

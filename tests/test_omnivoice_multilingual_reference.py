@@ -14,8 +14,8 @@ from test_omnivoice_batching import fake_speech_wave, fake_torch
 
 
 @pytest.mark.parametrize("language", ["ja", "ko", "es"])
-@pytest.mark.parametrize("voice_id", ["omnivoice:female_gentle", "omnivoice:male", "omnivoice:deep"])
-def test_new_languages_use_the_exact_packaged_voice_identity_and_english_transcript(language, voice_id):
+@pytest.mark.parametrize("voice_id", ["omnivoice:female_gentle", "omnivoice:deep"])
+def test_unmigrated_presets_keep_their_exact_english_reference(language, voice_id):
     path, text = voice._preset_reference(voice_id, language)
     original_path, original_text = voice._preset_reference(voice_id, "en")
     assert path == original_path and text == original_text
@@ -75,7 +75,8 @@ def test_missing_reference_is_actionable_and_never_launches_unconditioned_worker
 
 @pytest.mark.parametrize("language,text", [("ja", "逃げただと？"), ("ko", "도망쳤다고?"), ("es", "¿Has huido?")])
 @pytest.mark.parametrize("mode", ["single", "multiple"])
-def test_worker_clones_reference_keeps_target_text_language_and_zero_fade(tmp_path, language, text, mode):
+@pytest.mark.parametrize("voice_id", ["omnivoice:female_gentle", "omnivoice:male", "omnivoice:female"])
+def test_worker_clones_reference_keeps_target_text_language_and_zero_fade(tmp_path, language, text, mode, voice_id):
     torch, calls, references, written = fake_torch(), [], [], []
     prompt = SimpleNamespace(ref_rms=0.0)
 
@@ -93,7 +94,7 @@ def test_worker_clones_reference_keeps_target_text_language_and_zero_fade(tmp_pa
         "model": model,
         "model_key": ("model", "cpu"),
     }
-    reference_path, reference_text = voice._preset_reference("omnivoice:female_gentle", language)
+    reference_path, reference_text = voice._preset_reference(voice_id, language)
     request = {
         "model_root": "model",
         "site_packages": str(tmp_path),
@@ -106,7 +107,7 @@ def test_worker_clones_reference_keeps_target_text_language_and_zero_fade(tmp_pa
         "preset_reference_text": reference_text,
         "items": [
             {
-                "voice": "omnivoice:female_gentle",
+                "voice": voice_id,
                 "text": text,
                 "wav_path": str(tmp_path / "out.wav"),
                 "preset_reference_path": reference_path,
@@ -123,6 +124,34 @@ def test_worker_clones_reference_keeps_target_text_language_and_zero_fade(tmp_pa
     assert calls[0]["fade_duration"] == 0 and calls[0]["normalize_text"] is False
     assert not {"duration", "speed", "pad_duration"} & calls[0].keys()
     assert references[0] == {"ref_audio": reference_path, "ref_text": reference_text}
+
+
+@pytest.mark.parametrize("mode", ["single", "multiple"])
+def test_warm_worker_reencodes_changed_reference_but_reuses_unchanged_one(tmp_path, mode):
+    encoded = []
+
+    def encode(**kwargs):
+        encoded.append(kwargs)
+        return SimpleNamespace(ref_rms=0.0)
+
+    model = SimpleNamespace(generate=lambda **kwargs: [fake_speech_wave()], sampling_rate=24000,
+                            create_voice_clone_prompt=encode)
+    runtime = {"modules": (np, SimpleNamespace(write=Mock()), fake_torch(), Mock()),
+               "model": model, "model_key": ("model", "cpu")}
+    first, second = tmp_path / "first.wav", tmp_path / "second.wav"
+    first.write_bytes(b"first reference")
+    second.write_bytes(b"second reference")
+    item = dict(voice="omnivoice:male", text="Tôi không biết.", wav_path=str(tmp_path / "out.wav"))
+    request = dict(model_root="model", site_packages=str(tmp_path), device="cpu", language="vi",
+                   speaker_mode=mode, narrator_anchor_text="Stable anchor.", items=[item],
+                   status_path=str(tmp_path / "status.json"))
+    path = tmp_path / "request.json"
+    for reference in (first, first, second, second):
+        request.update(preset_reference_path=str(reference), preset_reference_text="Reference transcript.")
+        item.update(preset_reference_path=str(reference), preset_reference_text="Reference transcript.")
+        path.write_text(json.dumps(request), encoding="utf-8")
+        assert voice._worker_main(str(path), runtime) == 0
+    assert [entry["ref_audio"] for entry in encoded] == [str(first), str(second)]
 
 
 def test_failed_retry_names_exact_sentence_without_publishing_artifact(tmp_path):

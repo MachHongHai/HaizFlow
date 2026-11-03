@@ -49,6 +49,15 @@ def test_deepseek_uses_native_thinking_and_effort_parameters():
         "thinking": {"type": "enabled"}, "reasoning_effort": "max"}
 
 
+def test_optional_reasoning_enabled_is_a_valid_project_and_batch_value():
+    from haizflow.services import batch_settings
+
+    config = VideoConfig(translation_reasoning_effort="enabled")
+    assert config.translation_reasoning_effort == "enabled"
+    batch = batch_settings.config_for({"translationReasoningEffort": "enabled"})
+    assert batch.translation_reasoning_effort == "enabled"
+
+
 def test_config_metadata_and_batch_defaults_keep_project_reasoning(credentials, tmp_path):
     import uuid
 

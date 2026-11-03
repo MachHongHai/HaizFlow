@@ -14,7 +14,8 @@ FloatingToolDialog {
     property var appearance: AppController.subtitleAppearance
     property var draftAppearance: ({})
     readonly property var sampleRenderer: AppController.subtitleSampleOverlayRenderer
-    readonly property string longSampleText: qsTr("Một buổi sáng, chúng tôi cùng nhau đi qua con phố nhỏ để khám phá những câu chuyện thú vị. Kéo rộng khung để hiển thị nhiều từ hơn trên mỗi dòng, hoặc kéo cao khung để xem phụ đề trên nhiều dòng.")
+    readonly property string longSampleText: AppController.subtitleSamplePhrase
+    readonly property var sampleFontSpec: AppController.subtitleFontSpecForText(longSampleText, AppController.targetLanguage)
     property bool coverEnabled: false
     property bool autoAlignToCover: false
     property var coverLayout: ({})
@@ -74,6 +75,7 @@ FloatingToolDialog {
             positionXPercent: transform.positionXPercent,
             positionYPercent: transform.positionYPercent,
             fontFamily: style.font_family || "Bangers",
+            fontLanguage: AppController.targetLanguage,
             textColor: style.text_color || "#FFFFFF",
             karaokeColor: style.karaoke_color || "#FFEF00",
             outlineColor: style.outline_color || "#000000",
@@ -179,8 +181,9 @@ FloatingToolDialog {
                     videoRect: Qt.rect(previewImage.x + (previewImage.width - previewImage.paintedWidth) / 2, previewImage.y + (previewImage.height - previewImage.paintedHeight) / 2, previewImage.paintedWidth, previewImage.paintedHeight)
                     sampleText: AppController.subtitleSampleText(root.longSampleText, fontSize, boxWidthPercent, boxHeightPercent, root.sourceWidth, root.sourceHeight, root.draftAppearance)
                     sprite: root.previewSprite(root.sampleRenderer ? root.sampleRenderer.frame : ({}))
-                    sampleFontFamily: root.draftAppearance.font_family || sampleFont.name
-                    sampleFontScale: AppController.subtitlePreviewFontScale
+                    sampleFontFamily: String(root.sampleFontSpec.family || "Bangers")
+                    sampleFontWeight: Number(root.sampleFontSpec.weight || 400)
+                    sampleFontScale: Number(root.sampleFontSpec.scale || 1)
                     sampleTextColor: root.draftAppearance.text_color || "#FFFFFF"
                     sampleOutlineColor: root.draftAppearance.outline_color || "#000000"
                     sampleBold: Boolean(root.draftAppearance.bold)
@@ -259,8 +262,4 @@ FloatingToolDialog {
         }
     }
 
-    FontLoader {
-        id: sampleFont
-        source: "../../assets/fonts/Bangers-Regular.ttf"
-    }
 }

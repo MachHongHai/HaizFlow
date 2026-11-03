@@ -273,6 +273,8 @@ if (!(Test-Path -LiteralPath $SubtitleFontPath -PathType Leaf)) {
   throw "Subtitle font is missing: $SubtitleFontPath"
 }
 $ArgsList += @("--add-data", "$SubtitleFontsPath;haizflow\assets\fonts")
+$SubtitleFontIndex = Join-Path $Root "src\haizflow\assets\subtitle-fonts.json"
+$ArgsList += @("--add-data", "$SubtitleFontIndex;haizflow\assets")
 $TranslationCatalogPath = Join-Path $Root "src\haizflow\assets\translation"
 $ArgsList += @("--add-data", "$TranslationCatalogPath;haizflow\assets\translation")
 

@@ -1139,6 +1139,7 @@ class McpCommands:
             "source_identity": [Path(source).stat().st_size, Path(source).stat().st_mtime_ns],
             "width": video.video_width, "height": video.video_height,
             "style": resolved_subtitle_style(document, video.subtitle_style).model_dump(),
+            "language": str(getattr(video, "subtitle_language", "") or getattr(video, "target_language", "")),
             "crop": video.crop.model_dump(),
             "output_format": video.output_format, "output_speed": video.output_speed,
             "cover_region": _ocr_region(video), "cues": cues,

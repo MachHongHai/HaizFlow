@@ -4,9 +4,10 @@ import unicodedata
 
 SHORT_PHRASE_VERSION = "omnivoice-short-phrase-v5-legacy-generation-zero-fade"
 NUMBER_SPEECH_VERSION = "omnivoice-vi-numbers-v3-legacy-native-text"
-VOICE_AUDIO_VERSION = "omnivoice-clean-level-v4-zero-fade-speaker-peer-median"
-MULTILINGUAL_REFERENCE_VERSION = "omnivoice-ja-ko-es-reference-v1-packaged-preset"
+VOICE_AUDIO_VERSION = "omnivoice-clean-level-v6-approved-short-references-48gpu-32cpu"
+MULTILINGUAL_REFERENCE_VERSION = "omnivoice-ja-ko-es-reference-v2-approved-target-language"
 OMNIVOICE_FADE_DURATION = 0.0
+OMNIVOICE_SPEECH_RMS = 0.12  # -18.4 dBFS active speech, current VieNeu library level.
 
 _VI_DIGITS = ("không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín")
 
@@ -174,6 +175,26 @@ def peer_speech_target(levels) -> float:
     return float(np.median(values)) if len(values) >= 3 else 0.0
 
 
+def calibrate_omnivoice_level(waveform, sample_rate: int):
+    """One bounded gain before encoding, independent of quiet clone references.
+
+    Keep intra-sentence dynamics, timing and pitch. Never clip, compress, lift
+    near-silence or alter VieNeu/Edge output. Validate speech before calling.
+    """
+    import numpy as np
+
+    wave = np.asarray(waveform, dtype=np.float32).reshape(-1)
+    level = active_speech_rms(wave, sample_rate)
+    if level < .005 or not np.isfinite(level):
+        return wave
+    gain = OMNIVOICE_SPEECH_RMS / level
+    if abs(20 * np.log10(gain)) <= 1:
+        return wave
+    peak = float(np.max(np.abs(wave))) if len(wave) else 0.0
+    gain = min(gain, 10 ** (9 / 20), 10 ** (-1 / 20) / max(peak, 1e-20))
+    return (wave * gain).astype(np.float32)
+
+
 def is_level_reference_text(text: str, language: str) -> bool:
     """Learn from ordinary dialogue, not shouts, numbers or tiny reactions."""
     return (bool(str(text).strip()) and not any(c.isdigit() for c in text)
@@ -233,8 +254,19 @@ def validate_speech_waveform(waveform, sample_rate: int) -> None:
                                 & (np.arange(len(frames)) * .04 < 1.0))
     if len(beep_frames) >= 3:
         bursts = np.split(beep_frames, np.flatnonzero(np.diff(beep_frames) > 1) + 1)
-        if len(bursts) >= 2 and np.ptp(frequencies[beep_frames]) <= 100:
-            raise SpeechQualityError("OmniVoice returned repeated beep artifacts before speech.")
+        # A narrow vowel/formant can occupy 1–2 frames, disappear during a
+        # consonant, then recur at a nearby pitch. That is connected speech,
+        # not evidence of codec beeps (reproduced on Japanese /kore wa kyou/).
+        # Require two sustained, stationary bursts AND a genuinely quiet gap.
+        # Keep the independent DC/whole-tone/high-ridge checks above intact.
+        bursts = [burst for burst in bursts
+                  if len(burst) >= 2 and np.ptp(frequencies[burst]) <= 25]
+        for first, second in zip(bursts, bursts[1:]):
+            gap = rms[first[-1] + 1:second[0]]
+            quiet_floor = max(.0005, .03 * min(float(np.median(rms[first])), float(np.median(rms[second]))))
+            if (len(gap) and np.any(gap < quiet_floor)
+                    and abs(float(np.median(frequencies[first])) - float(np.median(frequencies[second]))) <= 50):
+                raise SpeechQualityError("OmniVoice returned repeated beep artifacts before speech.")
 
 
 def validate_short_phrase_audio(waveform, text: str, language: str, sample_rate: int) -> None:

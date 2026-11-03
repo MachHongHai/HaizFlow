@@ -904,7 +904,7 @@ def export_signature(video, *, validate: bool = True) -> str:
         getattr(video, "export_preset", "source"),
         *(["output-speed-v1", video.output_speed] if getattr(video, "output_speed", 1.0) != 1.0 else []),
         *_generation_token(video, "export"),
-        "manual-export-v9-absolute-libass-font-directory",
+        "manual-export-v11-bundled-regional-fonts",
     )
 
 
@@ -2428,6 +2428,7 @@ def _run_export(video, reporter) -> None:
                 _ocr_region(video),
                 video.watermark_text,
                 subtitle_layout_override=bool(video.subtitle_layout_override),
+                subtitle_language=str(getattr(video, "subtitle_language", "") or getattr(video, "target_language", "")),
                 progress_callback=lambda fraction: reporter.update(
                     20 + round(69 * fraction), "manual_export" if fraction > 0 else "manual_export_preparing",
                     "Đang dựng video" if fraction > 0 else "Đang khởi tạo bộ mã hóa"

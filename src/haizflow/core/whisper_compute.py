@@ -6,7 +6,8 @@ from collections.abc import Collection
 _LOG = logging.getLogger(__name__)
 
 
-def whisper_compute_type(device: str, *, supported_types: Collection[str] | None = None) -> str:
+def whisper_compute_type(device: str, *, supported_types: Collection[str] | None = None,
+                         low_memory: bool = False) -> str:
     preferred = "float16" if device == "cuda" else "int8"
     if supported_types is None:
         try:
@@ -19,6 +20,10 @@ def whisper_compute_type(device: str, *, supported_types: Collection[str] | None
             _LOG.warning("Whisper compute capabilities unavailable: device=%s error=%s", device, type(exc).__name__)
             return preferred
     supported = supported_types
+    if device == "cuda" and low_memory:
+        for candidate in ("int8_float16", "int8_float32", "int8"):
+            if candidate in supported:
+                return candidate
     if preferred in supported:
         return preferred
     # Pascal (e.g. GTX 1070) has efficient INT8/FP32, not efficient FP16.

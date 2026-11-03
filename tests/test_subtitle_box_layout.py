@@ -2,6 +2,7 @@
 from datetime import timedelta
 from unittest.mock import patch
 
+import pytest
 import srt
 
 from haizflow.pipeline import render
@@ -102,3 +103,55 @@ def test_caption_width_measurement_matches_libass_font_metrics(tmp_path):
     broken_font = tmp_path / "broken.ttf"
     broken_font.write_bytes(b"invalid")
     assert render._ass_font_em_scale(str(broken_font)) == 1
+
+
+@pytest.mark.parametrize("text", [
+    "私は何も感じていません。 マテオ！今すぐ戻ってください。",
+    "あしたはとてもいいてんきですね。 おやすみなさい。",
+    "我什么都没有感觉到。 马特奥！请现在回来。",
+    "아무것도 느껴지지 않아요. 마테오! 지금 돌아오세요.",
+    "Tôi không cảm thấy gì cả. Mateo! Hãy quay lại ngay bây giờ.",
+    "I don't feel anything. Mateo! Come back right now, please.",
+    "No siento nada. ¡Mateo! Vuelve ahora mismo, por favor.",
+])
+def test_multilingual_box_width_changes_capacity_without_extending_the_speech_clock(text):
+    cue = srt.Subtitle(1, timedelta(seconds=1), timedelta(seconds=9), text)
+    style = SubtitleStyle(font_size=65)
+    counts, clocks = [], []
+    for width in (180, 360, 720):
+        parts = render._subtitle_parts_for_region(cue, render.SubtitleRegionLayout(0, 0, width, 100),
+                                                 style, fixed_font_size=True)
+        counts.append(len(parts))
+        assert parts[0][0] == cue.start and parts[-1][1] == cue.end
+        assert all(a[1] == b[0] for a, b in zip(parts, parts[1:]))
+        assert all(part[3:] == (65, 100) for part in parts)
+        assert ''.join(text.split()) == ''.join(''.join(part[2].split()) for part in parts)
+        clocks.append([duration for _, durations in render._karaoke_part_timelines(
+            text, [part[2] for part in parts], 8) for duration in durations])
+    assert counts == sorted(counts, reverse=True) and counts[0] > counts[-1]
+    assert clocks[0] == clocks[1] == clocks[2]
+
+
+@pytest.mark.parametrize("text", ["私は何も感じていません。 マテオ！今すぐ戻ってください。",
+                                 "我什么都没有感觉到。 马特奥！请现在回来。",
+                                 "아무것도 느껴지지 않아요. 마테오! 지금 돌아오세요."])
+def test_cjk_caption_raster_stays_inside_the_requested_box(tmp_path, text):
+    from haizflow.desktop.subtitle_overlay_renderer import export_events, rasterize
+
+    for width in (220, 420):
+        layout = dict(outputWidth=1080, outputHeight=1920, layoutWidth=width, layoutHeight=110,
+                      fontSize=65, outline=4, positionXPercent=50, positionYPercent=70,
+                      fontFamily="Bangers", letterSpacing=0)
+        header, events = export_events([dict(start=0, end=8, text=text)], layout, True, tmp_path)
+        assert len(events) > 1
+        for event in events[:2]:
+            frame = rasterize(header, event['body'], layout, tmp_path)
+            assert frame['width'] <= width + 8, (text, width, frame['width'])
+
+
+def test_cjk_measurement_keeps_normalized_whitespace_and_combining_marks():
+    text = "私は\n何も\t感じません。"
+    parts = render._split_caption_lines_by_width(text, 220, 65, SubtitleStyle(font_size=65))
+    assert ''.join(''.join(part.split()) for part in parts) == ''.join(text.split())
+    units = render._karaoke_units("か\u3099 もう一度")
+    assert units[0] == "か\u3099 "

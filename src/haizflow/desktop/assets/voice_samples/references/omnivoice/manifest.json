@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "references": {
+    "omnivoice:male/vi": {
+      "voice": "omnivoice:male",
+      "language": "vi",
+      "text": "Hôm nay trời rất đẹp. Chúng ta hãy cùng bắt đầu một câu chuyện mới nhé.",
+      "path": "omnivoice_male/vi.wav",
+      "inference_steps": 48,
+      "bootstrap_language": "vi",
+      "bootstrap_sha256": "a0b1c8510a791cf53ac6f24c81bfa42313558636169151f25e8892698391d465",
+      "sha256": "a17c0db86391940cf4bbb84a9bd0700cbeacf654d048fcb5410ded10f5afe79a",
+      "verification": {
+        "waveform_valid": true,
+        "character_error_rate": 0.0,
+        "asr_model": "faster-whisper-large-v3-turbo",
+        "asr_device": "cuda",
+        "transcript": "Hôm nay trời rất đẹp, chúng ta hãy cùng bắt đầu một câu chuyện mới nhé.",
+        "duration_seconds": 4.2,
+        "active_rms": 0.109812,
+        "peak": 0.5653076171875
+      }
+    },
+    "omnivoice:male/en": {
+      "voice": "omnivoice:male",
+      "language": "en",
+      "text": "It is a beautiful day today. Let us begin a new story together, and see what happens next.",
+      "path": "omnivoice_male/en.wav",
+      "inference_steps": 48,
+      "bootstrap_language": "en",
+      "bootstrap_sha256": "ffbb51f0b30463a8ac7e63605fa4a21e91921bf36a68c1748102365824768f8a",
+      "sha256": "07133d90c1be74871ac8ed010af91176f444aee3578e1f3e8cfb34cac01076c7",
+      "verification": {
+        "waveform_valid": true,
+        "character_error_rate": 0.0,
+        "asr_model": "faster-whisper-large-v3-turbo",
+        "asr_device": "cuda",
+        "transcript": "It is a beautiful day today. Let us begin a new story together and see what happens next.",
+        "duration_seconds": 4.6,
+        "active_rms": 0.119991,
+        "peak": 0.73699951171875
+      }
+    },
+    "omnivoice:male/zh": {
+      "voice": "omnivoice:male",
+      "language": "zh",
+      "text": "今天的天气真好。让我们一起开始一个新的故事，看看接下来会发生什么吧。",
+      "path": "omnivoice_male/zh.wav",
+      "inference_steps": 48,
+      "bootstrap_language": "zh",
+      "bootstrap_sha256": "eae8c507c781472cc736b0d3f12acb1c46920d9d40ad6598fed824fae29a3c13",
+      "sha256": "1b3f39b5d153a94a327d5020829a1c93b575cb995b27c7febcb93459854f3c9d",
+      "verification": {
+        "waveform_valid": true,
+        "character_error_rate": 0.0,
+        "asr_model": "faster-whisper-large-v3-turbo",
+        "asr_device": "cuda",
+        "transcript": "今天的天气真好 让我们一起开始一个新的故事 看看接下来会发生什么吧",
+        "duration_seconds": 6.52,
+        "active_rms": 0.12,
+        "peak": 0.666015625
+      }
+    },
+    "omnivoice:male/ja": {
+      "voice": "omnivoice:male",
+      "language": "ja",
+      "text": "今日はいい天気ですね。一緒に新しい物語を始めましょう。次に何が起こるのでしょうか。",
+      "path": "omnivoice_male/ja.wav",
+      "inference_steps": 48,
+      "bootstrap_language": "en",
+      "bootstrap_sha256": "ffbb51f0b30463a8ac7e63605fa4a21e91921bf36a68c1748102365824768f8a",
+      "sha256": "dcf426c5dfff7ae58b2d61e756b7129f16a22ec8c49550f5c1e6651598aefc3b",
+      "verification": {
+        "waveform_valid": true,
+        "character_error_rate": 0.0,
+        "asr_model": "faster-whisper-large-v3-turbo",
+        "asr_device": "cuda",
+        "transcript": "今日はいい天気ですね 一緒に新しい物語を始めましょう 次に何が起こるのでしょうか",
+        "duration_seconds": 5.8,
+        "active_rms": 0.12,
+        "peak": 0.7508544921875
+      }
+    },
+    "omnivoice:male/ko": {
+      "voice": "omnivoice:male",
+      "language": "ko",
+      "text": "오늘은 날씨가 참 좋아요. 함께 새로운 이야기를 시작해 봐요. 다음에는 무슨 일이 생길까요?",
+      "path": "omnivoice_male/ko.wav",
+      "inference_steps": 48,
+      "bootstrap_language": "en",
+      "bootstrap_sha256": "ffbb51f0b30463a8ac7e63605fa4a21e91921bf36a68c1748102365824768f8a",
+      "sha256": "2a635c13ec66375988f0681db266621b55bd841ba4c4d763041b1eb1552d0881",
+      "verification": {
+        "waveform_valid": true,
+        "character_error_rate": 0.0,
+        "asr_model": "faster-whisper-large-v3-turbo",
+        "asr_device": "cuda",
+        "transcript": "오늘은 날씨가 참 좋아요. 함께 새로운 이야기를 시작해봐요. 다음에는 무슨 일이 생길까요?",
+        "duration_seconds": 5.66,
+        "active_rms": 0.10736,
+        "peak": 0.619873046875
+      }
+    },
+    "omnivoice:male/es": {
+      "voice": "omnivoice:male",
+      "language": "es",
+      "text": "Hoy hace un día precioso. Vamos a empezar una nueva historia juntos y descubrir qué sucede después.",
+      "path": "omnivoice_male/es.wav",
+      "inference_steps": 48,
+      "bootstrap_language": "en",
+      "bootstrap_sha256": "ffbb51f0b30463a8ac7e63605fa4a21e91921bf36a68c1748102365824768f8a",
+      "sha256": "389f4541b78448f92435fd0144b7dc959f6014ce036ea615ea9b9bcaf00fef45",
+      "verification": {
+        "waveform_valid": true,
+        "character_error_rate": 0.0,
+        "asr_model": "faster-whisper-large-v3-turbo",
+        "asr_device": "cuda",
+        "transcript": "Hoy hace un día precioso. Vamos a empezar una nueva historia juntos y descubrir qué sucede después.",
+        "duration_seconds": 5.11,
+        "active_rms": 0.110752,
+        "peak": 0.712554931640625
+      }
+    },
+    "omnivoice:female/vi": {
+      "voice": "omnivoice:female",
+      "language": "vi",
+      "text": "Hôm nay trời rất đẹp. Chúng ta hãy cùng bắt đầu một câu chuyện mới nhé.",
+      "path": "omnivoice_female/vi.wav",
+      "inference_steps": 48,
+      "bootstrap_language": "vi",
+      "bootstrap_sha256": "aaf5cd65040db330e4961b6b6fa3f4cd52046318a402a76cbdb05dcb7cba1e29",
+      "sha256": "7b9b305f882fd24e0380ccf32bb29e5cb427ea64331a0a97e968c5e48fc7914d",
+      "verification": {
+        "waveform_valid": true,
+        "character_error_rate": 0.0,
+        "asr_model": "faster-whisper-large-v3-turbo",
+        "asr_device": "cuda",
+        "transcript": "Hôm nay trời rất đẹp. Chúng ta hãy cùng bắt đầu một câu chuyện mới nhé!",
+        "duration_seconds": 4.28,
+        "active_rms": 0.12,
+        "peak": 0.621124267578125
+      }
+    },
+    "omnivoice:female/en": {
+      "voice": "omnivoice:female",
+      "language": "en",
+      "text": "It is a beautiful day today. Let us begin a new story together, and see what happens next.",
+      "path": "omnivoice_female/en.wav",
+      "inference_steps": 48,
+      "bootstrap_language": "en",
+      "bootstrap_sha256": "3c85539a533a740f164ccb34ea62ff3fc3b2dddf550706d9cc786b9136019ea5",
+      "sha256": "701b691791551479038d421229cb0bbdb12fb011a4751d1bcc80fbca4d821c9f",
+      "verification": {
+        "waveform_valid": true,
+        "character_error_rate": 0.0,
+        "asr_model": "faster-whisper-large-v3-turbo",
+        "asr_device": "cuda",
+        "transcript": "It is a beautiful day today. Let us begin a new story together and see what happens next.",
+        "duration_seconds": 5.64,
+        "active_rms": 0.099232,
+        "peak": 0.8912353515625
+      }
+    },
+    "omnivoice:female/zh": {
+      "voice": "omnivoice:female",
+      "language": "zh",
+      "text": "今天的天气真好。让我们一起开始一个新的故事，看看接下来会发生什么吧。",
+      "path": "omnivoice_female/zh.wav",
+      "inference_steps": 48,
+      "bootstrap_language": "zh",
+      "bootstrap_sha256": "4b4019ee73bce95a6b6f501d31e7b796825a493bc6458e0ab1c841f405c4363b",
+      "sha256": "c641004bfeb57c2863f481785085006178ea222136eaf9467336a876bcb9207c",
+      "verification": {
+        "waveform_valid": true,
+        "character_error_rate": 0.0,
+        "asr_model": "faster-whisper-large-v3-turbo",
+        "asr_device": "cuda",
+        "transcript": "今天的天气真好 让我们一起开始一个新的故事 看看接下来会发生什么吧",
+        "duration_seconds": 6.56,
+        "active_rms": 0.125366,
+        "peak": 0.84271240234375
+      }
+    },
+    "omnivoice:female/ja": {
+      "voice": "omnivoice:female",
+      "language": "ja",
+      "text": "今日はいい天気ですね。一緒に新しい物語を始めましょう。次に何が起こるのでしょうか。",
+      "path": "omnivoice_female/ja.wav",
+      "inference_steps": 48,
+      "bootstrap_language": "en",
+      "bootstrap_sha256": "3c85539a533a740f164ccb34ea62ff3fc3b2dddf550706d9cc786b9136019ea5",
+      "sha256": "d78f6351a9e9a89a4b73bf2ee95d0b7c8d76c0a79bcdd5ff022667ffabdf815f",
+      "verification": {
+        "waveform_valid": true,
+        "character_error_rate": 0.0,
+        "asr_model": "faster-whisper-large-v3-turbo",
+        "asr_device": "cuda",
+        "transcript": "今日はいい天気ですね。一緒に新しい物語を始めましょう。 次に何が起こるのでしょうか。",
+        "duration_seconds": 7.05,
+        "active_rms": 0.12,
+        "peak": 0.8760986328125
+      }
+    },
+    "omnivoice:female/ko": {
+      "voice": "omnivoice:female",
+      "language": "ko",
+      "text": "오늘은 날씨가 참 좋아요. 함께 새로운 이야기를 시작해 봐요. 다음에는 무슨 일이 생길까요?",
+      "path": "omnivoice_female/ko.wav",
+      "inference_steps": 48,
+      "bootstrap_language": "en",
+      "bootstrap_sha256": "3c85539a533a740f164ccb34ea62ff3fc3b2dddf550706d9cc786b9136019ea5",
+      "sha256": "00117a0c051d805a77f0f05b6e89ac7f87df5feef8222b50b6cf5c7a53a747e0",
+      "verification": {
+        "waveform_valid": true,
+        "character_error_rate": 0.0,
+        "asr_model": "faster-whisper-large-v3-turbo",
+        "asr_device": "cuda",
+        "transcript": "오늘은 날씨가 참 좋아요. 함께 새로운 이야기를 시작해봐요. 다음에는 무슨 일이 생길까요?",
+        "duration_seconds": 7.0,
+        "active_rms": 0.113279,
+        "peak": 0.716949462890625
+      }
+    },
+    "omnivoice:female/es": {
+      "voice": "omnivoice:female",
+      "language": "es",
+      "text": "Hoy hace un día precioso. Vamos a empezar una nueva historia juntos y descubrir qué sucede después.",
+      "path": "omnivoice_female/es.wav",
+      "inference_steps": 48,
+      "bootstrap_language": "en",
+      "bootstrap_sha256": "3c85539a533a740f164ccb34ea62ff3fc3b2dddf550706d9cc786b9136019ea5",
+      "sha256": "747f42cb6c320fd68f4f2aeccd0573bbb647b6f07f11b3858eaa71e55a5e3101",
+      "verification": {
+        "waveform_valid": true,
+        "character_error_rate": 0.0,
+        "asr_model": "faster-whisper-large-v3-turbo",
+        "asr_device": "cuda",
+        "transcript": "Hoy hace un día precioso. Vamos a empezar una nueva historia juntos y descubrir qué sucede después.",
+        "duration_seconds": 6.36,
+        "active_rms": 0.109561,
+        "peak": 0.716949462890625
+      }
+    }
+  }
+}

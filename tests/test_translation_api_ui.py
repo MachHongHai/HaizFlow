@@ -18,14 +18,14 @@ def test_credentials_only_settings_and_provider_scoped_project_models(width, lar
 
 
 def exercise(width, large):
-    from PySide6.QtCore import Property, QByteArray, QObject, QUrl, Signal, Slot
+    from PySide6.QtCore import Property, QByteArray, QObject, Qt, QUrl, Signal, Slot
     from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
     from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlExpression
     from PySide6.QtQuick import QQuickItem
     from PySide6.QtTest import QTest
 
     from haizflow.desktop.translation_api_controller import TranslationApiController
-    from haizflow.services import translation_catalog_cache
+    from haizflow.services import translation_catalog_cache, translation_privacy
     from haizflow.services import translation_connections as connections
     from haizflow.services import translation_model_catalog as catalog
 
@@ -79,6 +79,7 @@ def exercise(width, large):
     with tempfile.TemporaryDirectory(prefix="translation-ui-") as directory:
         connections._PATH = Path(directory) / "profiles.json"
         translation_catalog_cache._PATH = Path(directory) / "public-models.json"
+        translation_privacy._PATH = Path(directory) / "consent.json"
         secrets = {}
         connections.secure_credentials.read_secret = lambda target: secrets.get(target, "")
         connections.secure_credentials.write_secret = lambda target, value, **_kwargs: secrets.__setitem__(
@@ -255,6 +256,31 @@ def exercise(width, large):
         free_names = [row["label"].casefold() for row in initial_models[:free_count]]
         assert free_names == sorted(free_names)
         router_id = next(row["id"] for row in connections.list_connections() if row["provider"] == "openrouter")
+        private_choice = "api:" + router_id + ":nvidia/nemotron-3.5-super-vl:free"
+        for dismiss in ("cancel", "close", "escape", "accept"):
+            previous_choice = window.property("selectedModel")
+            evaluate(f'commit("{private_choice}")')
+            QTest.qWait(180)
+            consent = window.findChild(QObject, "translationDataConsentDialog")
+            assert consent is not None and consent.property("visible")
+            assert window.property("selectedModel") == previous_choice
+            if dismiss == "accept":
+                snapshot = Path(__file__).parents[1] / "build" / f"translation-data-consent-{width}.png"
+                assert window.grabWindow().save(str(snapshot))
+                window.findChild(QQuickItem, "translationDataConsentAllow").clicked.emit()
+            elif dismiss == "cancel":
+                window.findChild(QQuickItem, "translationDataConsentCancel").clicked.emit()
+            elif dismiss == "escape":
+                QTest.keyClick(window, Qt.Key_Escape)
+            else:
+                consent.findChild(QQuickItem, "appDialogCloseButton").clicked.emit()
+            QTest.qWait(180)
+            assert window.property("selectedModel") == (private_choice if dismiss == "accept" else previous_choice)
+            assert translation_privacy.allowed(connections.resolve(private_choice)) == (dismiss == "accept")
+        window.setProperty("selectedModel", custom_choice)
+        project_button.clicked.emit()
+        QTest.qWait(20)
+        evaluate('openProvider("openrouter")')
         last_choice = "api:" + router_id + ":" + initial_models[-1]["value"]
         window.setProperty("selectedModel", last_choice)
         evaluate('openProvider("openrouter")')

@@ -62,6 +62,59 @@ def test_only_builtin_translation_enums_are_case_normalized():
     assert normalize_translation_model(None) == "auto"
 
 
+@pytest.mark.parametrize("maximum,context", [(2048, 8192), (4096, 8192), (None, 4096)])
+def test_router_small_limits_bound_requests_and_shrink_batches_before_sending(monkeypatch, maximum, context):
+    from haizflow.services import translation_catalog_cache
+
+    metadata = {"context_length": context, **({"max_completion_tokens": maximum} if maximum else {})}
+    monkeypatch.setattr(translation_catalog_cache, "protocol_for", lambda _model: metadata)
+    limits = request_limits("openrouter", "vendor/small-context", 6000)
+    assert limits["max_tokens"] <= min(maximum or context, context // 2)
+    assert limits["characters"] * 4 + 1024 <= limits["max_tokens"]
+    assert limits["sentences"] <= 24 and limits["characters"] < 4000
+
+
+def test_all_seven_free_models_use_real_toggle_or_mandatory_reasoning_metadata(tmp_path, monkeypatch):
+    from haizflow.services import translation_catalog_cache as cache
+    from haizflow.services import translation_reasoning_catalog as reasoning
+
+    monkeypatch.setattr(cache, "_PATH", tmp_path / "absent-models.json")
+    monkeypatch.setattr(reasoning, "_PATH", tmp_path / "absent-reasoning.json")
+    rows = [row for row in cache.load() if row.get("pricing_kind") == "free"]
+    assert len(rows) == 7
+    mandatory = {"recursive/flint-v1.0:free", "liquid/lfm-2.5-2.6b:free"}
+    for row in rows:
+        model = row["value"]
+        info = capabilities("openrouter", model)
+        limits = request_limits("openrouter", model, 2156)
+        assert limits["max_tokens"] <= row["max_completion_tokens"]
+        if model in mandatory:
+            assert info["mandatory"] and info["values"] == []
+            assert request_options("openrouter", model) == {"reasoning": {"exclude": True}}
+            assert limits["reasoning_active"] and limits["max_tokens"] >= 8192
+            for effort in ("disabled", "none", "enabled"):
+                with pytest.raises(ValueError):
+                    request_options("openrouter", model, effort)
+        else:
+            assert info["parameter"] == "reasoning.enabled" and info["values"] == ["disabled", "enabled"]
+            assert request_options("openrouter", model) == {"reasoning": {"enabled": False, "exclude": True}}
+            assert not limits["reasoning_active"] and limits["max_tokens"] == 2156
+            assert request_options("openrouter", model, "enabled") == {
+                "reasoning": {"enabled": True, "exclude": True}}
+            enabled = request_limits("openrouter", model, 2156, "enabled")
+            assert enabled["reasoning_active"] and enabled["max_tokens"] >= 10240
+            assert enabled["max_tokens"] <= row["max_completion_tokens"] and enabled["sentences"] <= 12
+
+
+def test_unknown_reasoning_support_reserves_headroom_without_inventing_controls(monkeypatch):
+    from haizflow.services import translation_catalog_cache, translation_reasoning_catalog
+
+    monkeypatch.setattr(translation_reasoning_catalog, "get", lambda _: None)
+    monkeypatch.setattr(translation_catalog_cache, "protocol_for", lambda _: {"reasoning_supported": True})
+    assert request_options("openrouter", "vendor/unknown-reasoner") == {}
+    assert request_limits("openrouter", "vendor/unknown-reasoner", 2048)["reasoning_active"]
+
+
 def test_batch_application_preserves_project_api_model_case(monkeypatch):
     from types import SimpleNamespace
 

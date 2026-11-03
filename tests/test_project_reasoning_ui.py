@@ -16,7 +16,7 @@ def test_project_reasoning_controls_render_and_edit_independently(width):
 
 
 def exercise(width):
-    from PySide6.QtCore import Property, QByteArray, QObject, QUrl
+    from PySide6.QtCore import Property, QByteArray, QObject, QTranslator, QUrl
     from PySide6.QtGui import QFontDatabase, QGuiApplication
     from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlExpression
     from PySide6.QtQuick import QQuickItem
@@ -127,21 +127,21 @@ def exercise(width):
         one = window.findChild(QQuickItem, "firstReasoning")
         two = window.findChild(QQuickItem, "secondReasoning")
         combo = one.findChild(QQuickItem, "translationReasoningEffortCombo")
-        assert combo.property("currentText") == "Low"
+        assert combo.property("currentText") == "Thấp"
         assert combo.property("currentValue") == "low"
         values, _ = QQmlExpression(engine.rootContext(), one, "values.join(',')").evaluate()
         assert values == "low,medium,high,xhigh,max"
         labels, _ = QQmlExpression(engine.rootContext(), one, "options.map(row => row.label).join(',')").evaluate()
-        assert labels == "Low,Medium,High,Xhigh,Max"
+        assert labels == "Thấp,Trung bình,Cao,Rất cao,Tối đa"
         gemini = window.findChild(QQuickItem, "geminiReasoning")
         assert gemini.property("effortLabel") == "Mức"
         gemini_combo = gemini.findChild(QQuickItem, "translationReasoningEffortCombo")
-        assert gemini_combo.property("currentText") == "Minimal"
+        assert gemini_combo.property("currentText") == "Tối thiểu"
         assert gemini_combo.property("currentValue") == "minimal"
         r1 = window.findChild(QQuickItem, "r1Reasoning")
         assert r1.isVisible()
         status = r1.findChild(QQuickItem, "translationReasoningMandatoryState")
-        assert status.isVisible() and status.property("text") == "Enabled"
+        assert status.isVisible() and status.property("text") == "Bật"
         assert not r1.findChild(QQuickItem, "translationReasoningEffortCombo").isVisible()
         assert not r1.findChild(QQuickItem, "translationThinkingTypeCombo").isVisible()
         assert combo.x() + combo.width() <= one.width() + 1
@@ -151,9 +151,9 @@ def exercise(width):
         QTest.qWait(25)
         assert window.property("firstEffort") == "high" and window.property("secondEffort") == ""
         thinking = two.findChild(QQuickItem, "translationThinkingTypeCombo")
-        assert combo.property("currentText") == "High" and combo.property("currentValue") == "high"
+        assert combo.property("currentText") == "Cao" and combo.property("currentValue") == "high"
         assert model_changes.count() == 0  # A selection never destroys/rebuilds the dropdown model.
-        assert thinking.property("currentText") == "Disabled"
+        assert thinking.property("currentText") == "Tắt"
         assert thinking.property("currentValue") == "disabled"
         thinking.setProperty("currentIndex", 1)
         thinking.activated.emit(1)
@@ -167,14 +167,52 @@ def exercise(width):
         deepseek_effort.activated.emit(2)
         QTest.qWait(25)
         assert window.property("secondEffort") == "max" and window.property("firstEffort") == "high"
-        assert deepseek_effort.property("currentText") == "Max"
+        assert deepseek_effort.property("currentText") == "Tối đa"
         assert deepseek_effort.property("currentValue") == "max"
+        window.setProperty("firstModel", r1_model.split(":")[0] + ":" + r1_model.split(":")[1]
+                           + ":dots-studio/dots-3-note-preview:free")
+        QTest.qWait(25)
+        assert one.property("effortLabel") == "Suy luận"
+        assert combo.property("currentText") == "Tắt" and combo.property("currentValue") == "disabled"
+        assert combo.x() + combo.width() <= one.width() + 1
+        optional_snapshot = Path(__file__).parents[1] / "build" / f"translation-reasoning-optional-{width}.png"
+        assert window.grabWindow().save(str(optional_snapshot))
+        combo.setProperty("currentIndex", 1)
+        combo.activated.emit(1)
+        QTest.qWait(25)
+        assert window.property("firstEffort") == "enabled" and window.property("secondEffort") == "max"
+        combo.setProperty("currentIndex", 0)
+        combo.activated.emit(0)
+        QTest.qWait(25)
+        assert window.property("firstEffort") == "" and combo.property("currentText") == "Tắt"
+        window.setProperty("firstModel", first)
+        window.setProperty("firstEffort", "high")
+        QTest.qWait(25)
         one.setEnabled(False)
         assert not combo.isEnabled()
         one.setEnabled(True)
         snapshot = Path(__file__).parents[1] / "build" / f"translation-reasoning-{width}.png"
         snapshot.parent.mkdir(exist_ok=True)
         assert window.grabWindow().save(str(snapshot))
+        translator = QTranslator()
+        assert translator.load(str(qml.parent / "translations" / "haizflow_en.qm"))
+        assert app.installTranslator(translator)
+        engine.retranslate()
+        QTest.qWait(25)
+        assert one.property("effortLabel") == "Level"
+        assert combo.property("currentText") == "High" and combo.property("currentValue") == "high", (
+            combo.property("currentText"), combo.property("currentValue"), window.property("firstEffort"))
+        assert status.property("text") == "Enabled"
+        assert thinking.property("currentText") == "Enabled"
+        assert window.property("firstEffort") == "high" and window.property("secondEffort") == "max"
+        app.removeTranslator(translator)
+        engine.retranslate()
+        QTest.qWait(25)
+        assert one.property("effortLabel") == "Mức"
+        assert combo.property("currentText") == "Cao" and combo.property("currentValue") == "high"
+        assert thinking.property("currentText") == "Bật"
+        assert deepseek_effort.property("currentText") == "Tối đa"
+        assert window.property("firstEffort") == "high" and window.property("secondEffort") == "max"
         assert not warnings, warnings
         window.close()
 

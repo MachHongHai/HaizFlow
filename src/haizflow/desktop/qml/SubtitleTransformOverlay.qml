@@ -14,6 +14,7 @@ Item {
     property color sampleTextColor: "white"
     property color sampleOutlineColor: "black"
     property bool sampleBold: false
+    property int sampleFontWeight: 400
     property bool sampleItalic: false
     property var sprite: ({})
     property real karaokeProgress: 0
@@ -243,10 +244,10 @@ Item {
                 styleColor: root.sampleOutlineColor
                 font.family: root.sampleFontFamily
                 font.pixelSize: root.previewFontSize
-                font.bold: root.sampleBold
+                font.weight: root.sampleBold ? Math.max(700, root.sampleFontWeight) : root.sampleFontWeight
                 font.italic: root.sampleItalic
                 width: Math.max(1, videoCanvas.width * root.draftBoxWidth / 100)
-                wrapMode: Text.WordWrap
+                wrapMode: Text.Wrap
                 horizontalAlignment: Text.AlignHCenter
                 textFormat: Text.PlainText
             }

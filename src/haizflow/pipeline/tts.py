@@ -87,7 +87,12 @@ def _speaker_utterance_plan(segment: dict, source: dict) -> list[dict]:
     if not turns:
         return [{"text":str(segment['text']),"voice":source.get('speaker_voice'),"speaker_id":source.get('speaker_id'),
                  "offset_ms":0,"duration_ms":max(1,round((float(segment.get('end',0))-float(segment.get('start',0)))*1000))}]
-    clauses = [part.strip() for part in re.split(r"(?<=[!?。！？])\s*|(?<=\.)\s+(?=[A-ZÀ-Ỹ])",str(segment['text'])) if part.strip()]
+    # Korean/CJK scripts have no uppercase letters. A translated speaker turn
+    # can follow an ASCII/fullwidth stop, with or without an inter-sentence space.
+    caseless = r"\u1100-\u11ff\u3130-\u318f\uac00-\ud7af\u3040-\u30ff\u3400-\u9fff"
+    boundary = (r"(?<=[!?。！？])\s*|(?<=[.．])\s+(?=[A-ZÀ-Ỹ¿¡" + caseless + r"])"
+                r"|(?<=[.．])(?=[" + caseless + r"])")
+    clauses = [part.strip() for part in re.split(boundary, str(segment['text'])) if part.strip()]
     if len(clauses) != len(turns):
         raise ValueError("Câu nguồn có nhiều người nói nhưng phụ đề đã mất ranh giới giữa các câu. "
                          "Hãy tách các câu bằng dấu chấm, chấm hỏi hoặc chấm than trước khi tạo giọng.")

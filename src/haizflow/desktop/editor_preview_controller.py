@@ -1316,6 +1316,7 @@ class EditorPreviewController:
                 source_duration_seconds=duration,
                 process_registry_id=process_id,
                 compatibility_preview=True,
+                subtitle_language=str(getattr(video, "subtitle_language", "") or getattr(video, "target_language", "")),
                 preview_source_scale=not segments and not watermark_text,
                 subtitle_region_override=subtitle_region_override,
                 original_subtitle_intervals=original_subtitle_intervals,

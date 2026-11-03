@@ -981,6 +981,7 @@ Module {
         Property { name: "subtitleUppercase"; type: "bool"; read: "subtitleUppercase"; write: "subtitleUppercase"; notify: "subtitleSettingsChanged" }
         Property { name: "subtitleAppearance"; type: "QVariantMap"; read: "subtitleAppearance"; isReadonly: true; notify: "subtitleSettingsChanged" }
         Property { name: "subtitlePreviewFontScale"; type: "double"; read: "subtitlePreviewFontScale"; notify: "subtitleSettingsChanged"; isReadonly: true }
+        Property { name: "subtitleSamplePhrase"; type: "QString"; read: "subtitleSamplePhrase"; notify: "targetLanguageChanged"; isReadonly: true }
         Property { name: "subtitleShadow"; type: "int"; read: "subtitleShadow"; write: "subtitleShadow"; notify: "subtitleSettingsChanged" }
         Property {
             name: "subtitleLayoutOverride"
@@ -2260,6 +2261,7 @@ Module {
         }
         Method { name: "adoptSubtitlePreviewLayout"; type: "bool" }
         Method { name: "subtitleSampleText"; type: "string"; Parameter { name: "text"; type: "string" } Parameter { name: "fontSize"; type: "int" } Parameter { name: "boxWidth"; type: "int" } Parameter { name: "boxHeight"; type: "int" } Parameter { name: "width"; type: "int" } Parameter { name: "height"; type: "int" } }
+        Method { name: "subtitleFontSpecForText"; type: "QVariantMap"; Parameter { name: "text"; type: "string" } Parameter { name: "language"; type: "string" } }
         Method { name: "subtitleSampleText"; type: "string"; Parameter { name: "text"; type: "string" } Parameter { name: "fontSize"; type: "int" } Parameter { name: "boxWidth"; type: "int" } Parameter { name: "boxHeight"; type: "int" } Parameter { name: "width"; type: "int" } Parameter { name: "height"; type: "int" } Parameter { name: "appearance"; type: "QVariantMap" } }
         Method { name: "applySubtitleAppearance"; type: "bool"; Parameter { name: "patch"; type: "QVariantMap" } }
         Method { name: "clearVoiceCloneReference"; type: "bool" }

@@ -565,7 +565,7 @@ class ProjectCommandsController:
             if heavy_gpu_choice_blocked(device, capabilities, recognition=recognition, translation=translation):
                 host.appAlertRequested.emit(
                     "GPU không đủ VRAM",
-                    "Whisper Turbo và HY-MT2 GPU đầy đủ cần ít nhất 5 GiB VRAM. Chọn Whisper Small GPU hoặc HY-MT2 CPU Q4 trước khi xử lý.",
+                    "HY-MT2 GPU đầy đủ cần ít nhất 5 GiB VRAM. Chọn HY-MT2 CPU Q4 trước khi xử lý.",
                     "warning",
                 )
                 return False
@@ -1010,7 +1010,7 @@ class ProjectCommandsController:
                                         getattr(host, "_hardware_capabilities", None),
                                         recognition=config.speech_recognition_model,
                                         translation=config.translation_model):
-                raise ValueError("GPU có dưới 5 GiB VRAM. Chọn Whisper Small GPU và HY-MT2 CPU Q4 trước khi áp dụng.")
+                raise ValueError("GPU có dưới 5 GiB VRAM. Chọn HY-MT2 CPU Q4 trước khi áp dụng.")
             normalized["subtitleStyle"] = {**config.subtitle_style.model_dump(), "manual": config.subtitle_layout_override}
             for key in batch_settings.ASSETS:
                 normalized[key] = batch_settings.stage_asset(project_key, key, str(normalized.get(key) or ""))
@@ -1134,7 +1134,7 @@ class ProjectCommandsController:
         if heavy_gpu_choice_blocked(str(getattr(host, "_settings_processing_device", "cpu")),
                                     capabilities, recognition=asr_model,
                                     translation=selected_translation_model):
-            host._show_app_alert("GPU không đủ VRAM", "GPU có dưới 5 GiB VRAM. Chọn Whisper Small GPU và HY-MT2 CPU Q4 trước khi áp dụng.", "warning")
+            host._show_app_alert("GPU không đủ VRAM", "GPU có dưới 5 GiB VRAM. Chọn HY-MT2 CPU Q4 trước khi áp dụng.", "warning")
             return False
         turbo_gpu_available = bool(
             getattr(host, "_settings_processing_device", "") == "gpu"

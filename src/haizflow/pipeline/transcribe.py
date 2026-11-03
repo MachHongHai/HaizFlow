@@ -88,10 +88,18 @@ def _whisper_model_source(model_name: str = "small") -> tuple[str, bool]:
         ) from exc
 
 
-def _load_whisper_model(device: str, compute_type: str, threads: int, model_name: str = "small"):
+def _load_whisper_model(device: str, compute_type: str, threads: int, model_name: str = "small", *, low_memory=False):
     vad_model_path = _verify_whisperx_vad_asset()
     source, local_only = _whisper_model_source(model_name)
-    return whisperx.load_model(
+    options = {}
+    if low_memory and device == "cuda":
+        from whisperx.vads.pyannote import Pyannote
+
+        # Construct directly on CPU, not on CUDA followed by a transfer: the
+        # temporary overlap can OOM before the model is returned to the caller.
+        options["vad_model"] = Pyannote(torch.device("cpu"), token=None, model_fp=str(vad_model_path),
+                                         vad_onset=0.500, vad_offset=0.363, chunk_size=30)
+    model = whisperx.load_model(
         source,
         device,
         compute_type=compute_type,
@@ -99,11 +107,19 @@ def _load_whisper_model(device: str, compute_type: str, threads: int, model_name
         download_root=os.path.join(HF_HOME, "hub"),
         local_files_only=local_only,
         vad_options={"model_fp": str(vad_model_path)},
+        **options,
     )
+    if options:
+        model._haizflow_vad_cpu = True
+    return model
+
+
+def _low_memory_whisper_gpu(profile, device):
+    return device == "cuda" and 0 < (getattr(profile, "total_vram_bytes", 0) or 0) < 5 * 1024**3
 
 
 def _constrain_four_gb_vad(asr_model, profile, device: str) -> None:
-    """Leave CUDA for Whisper Small; Pyannote VAD can run on the CPU."""
+    """Leave CUDA for Whisper; Pyannote VAD can run on the CPU."""
     total_vram_bytes = getattr(profile, "total_vram_bytes", None)
     if device != "cuda" or total_vram_bytes is None or not 0 < total_vram_bytes < 5 * 1024**3:
         return
@@ -133,9 +149,11 @@ def warm_whisperx_model(model_name: str = "small", *, device_preference: str | N
         if _WARM_ASR_MODEL is not None:
             del _WARM_ASR_MODEL
             _WARM_ASR_MODEL = None
-        compute_type = whisper_compute_type(device)
+        low_memory = _low_memory_whisper_gpu(profile, device)
+        compute_type = whisper_compute_type(device, **({"low_memory": True} if low_memory else {}))
         try:
-            model = _load_whisper_model(device, compute_type, profile.cpu_threads, model_name)
+            model = _load_whisper_model(device, compute_type, profile.cpu_threads, model_name,
+                                        **({"low_memory": True} if low_memory else {}))
             _constrain_four_gb_vad(model, profile, device)
         except Exception:
             _WARM_ASR_MODEL = None
@@ -518,6 +536,32 @@ def _native_unaligned_word_timing(asr_model, audio, segments, video_id):
                 raise
             log_to_video(video_id, f"WARNING: Native ASR word timing unavailable; keeping source timing: {exc}")
     return result
+
+
+def _restore_aligned_sentence_boundaries(segments: list[dict]) -> list[dict]:
+    """Undo provisional short-phrase merges only with verified word clocks.
+
+    A brief reply can be too short in rough ASR timing, yet have a valid span
+    after context alignment. Keep it as its own translation/subtitle cue; never
+    invent a speaker boundary or fall back to proportional timing here.
+    """
+    restored = []
+    for segment in segments:
+        sentences = _split_sentence_text(segment.get("text", ""))
+        word_ends, offset = set(), 0
+        for word in segment.get("words") or []:
+            offset += len(_spoken_characters(word.get("word")))
+            word_ends.add(offset)
+        boundaries, offset = [], 0
+        for sentence in sentences[:-1]:
+            offset += len(_spoken_characters(sentence))
+            boundaries.append(offset)
+        # An unspaced ASR token can cover several sentences. Its internal
+        # character positions are estimates, not evidence for a speaker cut.
+        exact = len(sentences) > 1 and all(boundary in word_ends for boundary in boundaries)
+        timed = _split_with_asr_words(segment, sentences) if exact else None
+        restored.extend(timed if timed else [segment])
+    return restored
 
 
 def _coalesce_short_sentence_segments(segments: list[dict]) -> list[dict]:
@@ -1258,7 +1302,11 @@ def _align_segments_by_language(audio, segments, device: str, video_id: str, pro
 
     aligned_segments = _resolve_context_alignments(alignment_candidates, video_id)
     aligned_segments.sort(key=lambda segment: float(segment.get("start", 0.0)))
-    return aligned_segments
+    restored = _restore_aligned_sentence_boundaries(aligned_segments)
+    if len(restored) > len(aligned_segments):
+        log_to_video(video_id, f"Restored {len(restored) - len(aligned_segments)} short sentence boundary/boundaries "
+                     f"from aligned word timestamps; keeping {len(restored)} separate source cues.")
+    return restored
 
 
 def _normalize_sentence_timestamps(segments: list[dict], audio_duration: float) -> int:
@@ -1361,14 +1409,13 @@ def transcribe(
 
     profile = cpu_runtime_profile(runtime_profile(), force_cpu=device_preference == "cpu")
     device = "cuda" if profile.cuda_available and device_preference != "cpu" else "cpu"
-    if model_name == "large-v3-turbo" and device == "cuda" and 0 < profile.total_vram_bytes < 5 * 1024**3:
-        raise RuntimeError("Card 4 GB dùng Whisper Small trên GPU; Whisper Turbo cần thêm VRAM.")
     if model_name == "large-v3-turbo" and device != "cuda":
         raise RuntimeError(
             "Whisper large-v3-turbo requires an available NVIDIA GPU. "
             "Choose WhisperX small for CPU or low-VRAM processing."
         )
-    compute_type = whisper_compute_type(device)
+    low_memory = _low_memory_whisper_gpu(profile, device)
+    compute_type = whisper_compute_type(device, **({"low_memory": True} if low_memory else {}))
     log_to_video(
         video_id,
         f"WhisperX device: {device}, compute type: {compute_type}, "
@@ -1404,7 +1451,8 @@ def transcribe(
                         video_id,
                         "Released the warmed WhisperX model before switching ASR models.",
                     )
-                asr_model = _load_whisper_model(device, compute_type, profile.cpu_threads, model_name)
+                asr_model = _load_whisper_model(device, compute_type, profile.cpu_threads, model_name,
+                                                **({"low_memory": True} if low_memory else {}))
         _constrain_four_gb_vad(asr_model, profile, device)
         if getattr(asr_model, "_haizflow_vad_cpu", False):
             log_to_video(video_id, "Four GB GPU profile: Whisper runs on CUDA; VAD runs on CPU.")
