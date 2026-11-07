@@ -254,7 +254,7 @@ Item {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        visible: root.matchesSource && root.downloader.channelStatus.length > 0
+                        visible: root.matchesSource && root.downloader.channelStatus.length > 0 && root.downloader.channelState !== "error"
                         Text {
                             Layout.fillWidth: true
                             text: I18n.channelImportStatus(root.downloader.channelStatus)
@@ -263,6 +263,12 @@ Item {
                             textFormat: Text.PlainText
                         }
                         StudioButton { visible: root.channelActive; text: qsTr("Hủy tải"); variant: "danger"; onClicked: root.downloader.cancel() }
+                    }
+                    UserErrorNotice {
+                        Layout.fillWidth: true
+                        title: qsTr("Quét kênh chưa hoàn tất")
+                        details: root.matchesSource && root.downloader.channelState === "error"
+                            ? root.downloader.channelStatus : ""
                     }
                     AppProgressBar {
                         Layout.fillWidth: true

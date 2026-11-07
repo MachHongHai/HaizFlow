@@ -5642,6 +5642,8 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>SettingsMcpGroup</name>
+    <message><source>Kiểm tra MCP chưa thành công</source><translation>MCP test unsuccessful</translation></message>
+    <message><source>Kết nối MCP chưa thành công</source><translation>MCP connection unsuccessful</translation></message>
     <message><source>Agent xóa dự án được chỉ định ngay khi gọi lệnh, không hỏi lại trong app.</source><translation>The agent deletes the specified project immediately when called, without asking again in the app.</translation></message>
     <message><source>Agent đăng các video được chỉ định với tài khoản và cấu hình hiện tại, không hỏi lại trong app.</source><translation>The agent publishes the specified videos using the current account and settings, without asking again in the app.</translation></message>
     <message><source>Đang kiểm tra…</source><translation>Checking…</translation></message>
@@ -5761,5 +5763,10 @@ Author and owner of HaizFlow.</translation>
     <message><source>Arguments: mỗi dòng dưới đây là một đối số, giữ nguyên thứ tự.</source><translation>Arguments: each line below is one argument; keep their order.</translation></message>
     <message><source>Arguments của máy chủ MCP</source><translation>MCP server arguments</translation></message>
     <message><source>Sao chép arguments</source><translation>Copy arguments</translation></message>
+</context>
+<context>
+    <name>ErrorPresentation</name>
+    <message><source>GPU thiếu bộ nhớ. Giải phóng VRAM hoặc chọn CPU rồi chạy lại.</source><translation>Not enough GPU memory. Free VRAM or select CPU and try again.</translation></message>
+    <message><source>GPU không khả dụng. Kiểm tra GPU hoặc chọn CPU rồi chạy lại.</source><translation>GPU is unavailable. Check your GPU or select CPU and try again.</translation></message>
 </context>
 </TS>

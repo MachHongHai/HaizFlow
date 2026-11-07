@@ -116,7 +116,8 @@ def test_real_isolated_stalled_child_is_killed_without_unbounded_wait(tmp_path, 
 
 
 @pytest.mark.parametrize("reported", [False, True])
-def test_gpu_to_cpu_retry_preserves_finished_clips_and_original_progress(tmp_path, monkeypatch, reported):
+@pytest.mark.parametrize("failure", ["CUDA out of memory", "CUDA is unavailable"])
+def test_gpu_failure_preserves_finished_clips_without_cpu_retry(tmp_path, monkeypatch, reported, failure):
     monkeypatch.setattr(voice, "_prepare_isolated_runtime", Mock())
     monkeypatch.setattr(voice, "verify_omnivoice_model", lambda _root: tmp_path)
     monkeypatch.setattr(voice, "_sdk_root", lambda: tmp_path)
@@ -142,7 +143,7 @@ def test_gpu_to_cpu_retry_preserves_finished_clips_and_original_progress(tmp_pat
             Path(request["items"][0]["wav_path"]).write_bytes(b"RIFF" + bytes(256))
             if reported:
                 callback(1, 3, "synthesizing")
-            return 1, "CUDA out of memory"
+            return 1, failure
         assert outputs[0].read_bytes() == b"verified audio"
         for index, item in enumerate(request["items"], 1):
             Path(item["wav_path"]).write_bytes(b"RIFF" + bytes(256))
@@ -151,15 +152,16 @@ def test_gpu_to_cpu_retry_preserves_finished_clips_and_original_progress(tmp_pat
 
     monkeypatch.setattr(voice, "_run_persistent_worker_process", worker)
     monkeypatch.setattr(voice, "_encode_mp3", encode)
-    voice.synthesize_batch_to_mp3(
-        [dict(text=str(index), voice="omnivoice:male", output_path=str(output))
-         for index, output in enumerate(outputs)],
-        "fixture", language_id="vi", device="gpu", keep_worker_warm=True,
-        progress_callback=lambda current, total, stage: progress.append((current, total, stage)))
-    assert [call[:2] for call in calls] == [("cuda:0", ["0", "1", "2"]), ("cpu", ["1", "2"])]
-    assert calls[0][2:] == calls[1][2:]  # Do not lower quality or change identity.
-    assert encoded == outputs  # No second encoding or generation of clip zero.
+    with pytest.raises(RuntimeError, match="GPU"):
+        voice.synthesize_batch_to_mp3(
+            [dict(text=str(index), voice="omnivoice:male", output_path=str(output))
+             for index, output in enumerate(outputs)],
+            "fixture", language_id="vi", device="gpu", keep_worker_warm=True,
+            progress_callback=lambda current, total, stage: progress.append((current, total, stage)))
+    assert [call[:2] for call in calls] == [("cuda:0", ["0", "1", "2"])]
+    assert encoded == outputs[:1]
+    assert not outputs[1].exists() and not outputs[2].exists()
     assert all(total == 3 for _, total, _ in progress)
     assert [current for current, _, _ in progress] == sorted(current for current, _, _ in progress)
-    assert (1, 3, "retrying_voice_on_cpu") in progress
+    assert not any(stage == "retrying_voice_on_cpu" for _, _, stage in progress)
 

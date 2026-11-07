@@ -233,15 +233,20 @@ AppDialog {
 
     Text {
         Layout.fillWidth: true
-        visible: subtitleEditor.saveStatus === "error" || subtitleEditor.saveStatus === "saving"
-        text: subtitleEditor.saveStatus === "error" ? subtitleEditor.errorMessage || qsTr("Không lưu được") : qsTr("Đang lưu…")
-        color: subtitleEditor.saveStatus === "error" ? Theme.danger : Theme.textMuted
+        visible: subtitleEditor.saveStatus === "saving"
+        text: qsTr("Đang lưu…")
+        color: Theme.textMuted
         font.family: Theme.fontFamily
         font.pixelSize: TypeScale.metadata
         textFormat: Text.PlainText
         elide: Text.ElideRight
     }
 
+    UserErrorNotice {
+        Layout.fillWidth: true
+        title: qsTr("Chưa lưu được phụ đề")
+        details: subtitleEditor.saveStatus === "error" ? subtitleEditor.errorMessage : ""
+    }
     footerActions: [
         StudioButton {
             text: qsTr("Xóa đoạn")

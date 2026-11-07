@@ -15,13 +15,17 @@ def test_source_cover_dialog_controls_and_preview(mode):
 
 
 def exercise(mode):
-    from PySide6.QtCore import Q_ARG, QMetaObject, QObject, QPoint, Property, Qt, QUrl, Signal
+    from PySide6.QtCore import Q_ARG, QMetaObject, QObject, QPoint, Property, Qt, QUrl, Signal, Slot
     from PySide6.QtGui import QGuiApplication, QFont, QFontDatabase
     from PySide6.QtQml import QQmlComponent, QQmlEngine
     from PySide6.QtQuick import QQuickItem
     from PySide6.QtTest import QTest
 
     class Backend(QObject):
+        @Slot(str, str, str)
+        def presentUserError(self, title, detail, log):
+            self.last_error = (title, detail, log)
+
         selectedVideoChanged = Signal()
         sourceReplacementRequested = Signal(str)
         mediaImportChanged = Signal()

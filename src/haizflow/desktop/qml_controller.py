@@ -224,6 +224,8 @@ class HaizFlowController(QObject):
     # invalidate every Zernio binding on the page.
     tiktokPublishChanged = Signal()
     appAlertRequested = Signal(str, str, str)
+    technicalErrorLogRequested = Signal(str, str)
+    userErrorRequested = Signal(str, str, str)
     resourcePacksRequested = Signal(str)
     geminiSetupRequested = Signal()
     apiKeySettingsRequested = Signal(str)
@@ -1646,6 +1648,39 @@ class HaizFlowController(QObject):
     @Slot(str, str, str)
     def showAppAlert(self, title: str, message: str, severity: str = "information") -> None:
         self._show_app_alert(title, message, severity)
+
+    @Slot(str, str)
+    @Slot(str, str, str)
+    def showErrorDetails(self, title: str, detail: str, log_text: str = "") -> None:
+        HaizFlowController.showAlertDetails(self, title, detail, "critical", log_text)
+
+    @Slot(str, str, str, str)
+    def showAlertDetails(self, title: str, detail: str, tone: str, log_text: str = "") -> None:
+        import logging
+        from datetime import UTC, datetime
+        from haizflow.core.diagnostics import redact_diagnostic_text
+
+        timestamp = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        safe = redact_diagnostic_text(str(detail or ""))
+        context = redact_diagnostic_text(str(log_text or ""))[-64000:]
+        kind = str(tone or "info").lower()
+        level = ("ERROR" if kind in {"error", "critical", "danger", "failed"}
+                 else "WARNING" if kind == "warning" else "INFO")
+        snapshot = "\n".join(f"[{timestamp}] [{level}] [APP] {line}" for line in safe.splitlines())
+        if context:
+            snapshot += "\n\n" + context
+        logging.getLogger("haizflow.user_errors").log(getattr(logging, level), "%s: %s", title, safe)
+        self.technicalErrorLogRequested.emit(str(title or "HaizFlow"), snapshot)
+
+    @Slot(str, str, str)
+    def presentUserError(self, title: str, detail: str, log_text: str = "") -> None:
+        import logging
+        from haizflow.core.diagnostics import redact_diagnostic_text
+
+        safe = redact_diagnostic_text(str(detail or ""))
+        logging.getLogger("haizflow.user_errors").error("%s: %s", str(title or "HaizFlow"), safe)
+        self.userErrorRequested.emit(str(title or "HaizFlow"), safe,
+                                     redact_diagnostic_text(str(log_text or ""))[-64000:])
 
     @Slot(str, str, str, str, result=bool)
     def showProjectSessionAlertOnce(self, notice_key: str, title: str, message: str, severity: str) -> bool:
@@ -3365,8 +3400,6 @@ class HaizFlowController(QObject):
         if value and value not in allowed:
             self._show_app_alert("Reasoning", "Mức reasoning không được model đang chọn hỗ trợ.", "warning")
             return
-        if value == info.get("default"):
-            value = ""
         if value != getattr(self, "_translation_reasoning_effort", ""):
             self._translation_reasoning_effort = value
             self.geminiGuidanceChanged.emit()
@@ -8056,8 +8089,17 @@ class HaizFlowController(QObject):
 
     def _show_app_alert(self, title: str, message: str, severity: str = "information") -> None:
         level = str(severity or "information").strip().lower()
+        if level in {"error", "danger", "failed"}:
+            level = "critical"
         if level not in {"information", "warning", "critical"}:
             level = "information"
+        if level in {"warning", "critical"}:
+            import logging
+            from haizflow.core.diagnostics import redact_diagnostic_text
+
+            logging.getLogger("haizflow.user_errors").log(
+                logging.ERROR if level == "critical" else logging.WARNING,
+                "%s: %s", str(title or "HaizFlow"), redact_diagnostic_text(str(message or "")))
         self.appAlertRequested.emit(str(title or "HaizFlow"), str(message or ""), level)
 
     def _show_app_question(self, title: str, message: str, *_args):

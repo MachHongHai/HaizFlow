@@ -39,7 +39,8 @@ def test_styles_control_language_instructions_not_sampling(model, style, monkeyp
     payload = requests[0]
     config = payload["generationConfig"]
     assert not {"temperature", "topP", "topK"} & set(config)
-    assert config["thinkingConfig"] == {"thinkingLevel": "low", "includeThoughts": False}
+    assert config["thinkingConfig"] == {
+        "thinkingLevel": "minimal" if "lite" in model else "low", "includeThoughts": False}
     system = payload["systemInstruction"]["parts"][0]["text"]
     assert gemini_context.STYLE_PROMPTS[style] in system
     assert "spelling and diacritics" in system and "correct speaker-to-addressee direction" in system

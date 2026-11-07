@@ -99,6 +99,12 @@ Module {
     Component {
         name: "HaizFlowController"
         Property { name: "mcpBridge"; type: "QObject"; isPointer: true; isReadonly: true }
+        Method { name: "showAlertDetails"
+            Parameter { name: "title"; type: "QString" }
+            Parameter { name: "detail"; type: "QString" }
+            Parameter { name: "tone"; type: "QString" }
+            Parameter { name: "log_text"; type: "QString" }
+        }
         Property { name: "manualSubtitleModel"; type: "ManualSubtitleModel"; isPointer: true; isReadonly: true }
         Property { name: "subtitleOverlayRenderer"; type: "SubtitleOverlayRenderer"; isPointer: true; isReadonly: true }
         Property { name: "subtitleSampleOverlayRenderer"; type: "SubtitleOverlayRenderer"; isPointer: true; isReadonly: true }
@@ -1918,6 +1924,11 @@ Module {
             Parameter { name: "a2"; type: "QString" }
         }
         Method { name: "enableInAppAlerts" }
+        Method { name: "showErrorDetails"; Parameter { name: "title"; type: "QString" } Parameter { name: "detail"; type: "QString" } Parameter { name: "log_text"; type: "QString" } }
+        Method { name: "showErrorDetails"; Parameter { name: "title"; type: "QString" } Parameter { name: "detail"; type: "QString" } }
+        Signal { name: "technicalErrorLogRequested"; Parameter { name: "title"; type: "QString" } Parameter { name: "text"; type: "QString" } }
+        Method { name: "presentUserError"; Parameter { name: "title"; type: "QString" } Parameter { name: "detail"; type: "QString" } Parameter { name: "log_text"; type: "QString" } }
+        Signal { name: "userErrorRequested"; Parameter { name: "title"; type: "QString" } Parameter { name: "detail"; type: "QString" } Parameter { name: "log_text"; type: "QString" } }
         Method {
             name: "respondToAppConfirmation"
             Parameter { name: "a1"; type: "bool" }

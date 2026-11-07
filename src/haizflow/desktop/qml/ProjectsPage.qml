@@ -29,22 +29,6 @@ Item {
         return qsTr("Tự động")
     }
 
-    opacity: visible ? 1 : 0
-    transform: Translate {
-        y: root.visible ? 0 : 8
-        Behavior on y {
-            NumberAnimation {
-                duration: Theme.motionStandard
-                easing.type: Easing.OutCubic
-            }
-        }
-    }
-    Behavior on opacity {
-        NumberAnimation {
-            duration: Theme.motionStandard
-        }
-    }
-
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: UiMetrics.pageMargin

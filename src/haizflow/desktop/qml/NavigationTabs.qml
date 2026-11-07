@@ -8,14 +8,16 @@ RowLayout {
     id: root
     property var options: []
     property string currentValue: ""
+    property bool showUnderline: true
     signal activated(string value)
     signal tabFocused(real left, real right)
-    spacing: Theme.space24
+    spacing: showUnderline ? Theme.space24 : Theme.space8
     Repeater {
         model: root.options
         delegate: Button {
             id: tab
             required property var modelData
+            objectName: "navigationTab_" + String(modelData.value)
             readonly property bool selected: root.currentValue === modelData.value
             text: modelData.label
             Layout.minimumWidth: implicitWidth
@@ -38,7 +40,7 @@ RowLayout {
                 verticalAlignment: Text.AlignVCenter
             }
             background: Rectangle {
-                color: tab.hovered ? Theme.surface : "transparent"
+                color: root.showUnderline && tab.hovered ? Theme.surface : "transparent"
                 radius: Theme.radiusSmall
                 border.width: tab.visualFocus ? 1 : 0
                 border.color: Theme.controlFocus
@@ -47,7 +49,7 @@ RowLayout {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     height: 2
-                    visible: tab.selected
+                    visible: root.showUnderline && tab.selected
                     color: Theme.interactive
                     Accessible.ignored: true
                 }

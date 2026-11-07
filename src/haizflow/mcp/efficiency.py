@@ -6,13 +6,15 @@ import hashlib
 import json
 
 COMMAND_AREAS = {
+    "translation": {"translation_models"},
     "projects": {"projects", "project", "open", "create", "rename", "prepare_delete", "delete"},
     "sources": {"import_video", "replace_source", "replace_url_inspect", "replace_url_start",
                 "import_url_inspect", "import_url_start", "import_url_cancel"},
     "processing": {"run", "pause", "resume", "auto_start", "prepare_restart", "restart", "manual_cancel"},
     "subtitles": {"subtitles", "srt", "import_srt", "remove_srt", "export_srt", "edit_subtitle",
                   "subtitle_timing", "merge_subtitle", "delete_subtitle", "split_subtitle", "subtitle_replace",
-                  "review", "review_save", "review_approve", "translation_context", "translation_patch"},
+                  "review", "review_save", "review_approve", "translation_context", "translation_patch",
+                  "subtitle_fonts"},
     "editor": {"editor", "undo", "redo", "clip_properties", "track_properties", "source_cover", "text_style",
                "clip_trim", "clip_move", "clip_remove", "result_split", "background_music", "background_music_clear",
                "watermark_asset", "visual_context", "subtitle_layout_apply"},
@@ -48,6 +50,7 @@ def observed(value: dict, since: str = "") -> dict:
 
 def unsettled(value: dict) -> bool:
     return bool(value.get("queued_video_ids") or value.get("active_video_id")
+                or any(job.get("busy") for job in value.get("auxiliary", {}).values())
                 or value.get("import_busy") or value.get("url_import_busy")
                 or any(row.get("status") in {"pending", "rendering", "exporting"}
                        for row in value.get("exports", []))

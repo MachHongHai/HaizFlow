@@ -150,6 +150,45 @@ checked live. No new batch-mutation command or automatic destructive retry is
 introduced. Restart HaizFlow and reconnect the agent's MCP server after updating
 to refresh both command dispatch and tool discovery.
 
+### Current translation/font discovery
+
+Use these commands through `haizflow_execute`; no additional host-visible tool
+schemas are added (compact stays at nine entry points):
+
+- `options(video_id, section="translation")` returns the selected model/style,
+  explicitly saved reasoning and its effective supported default, connection
+  IDs, and any data-collection consent requirement. It omits full guidance,
+  voices and model lists. Other sections are `voice`, `subtitles` and `export`;
+  `all` retains the combined legacy result.
+- `translation_models(provider="openrouter", connection_id="…", query="…",
+  free_only=true, offset=0, limit=25)` searches the same filtered public cache
+  used by the app. A connection ID determines its provider and returns directly
+  configurable `api:connection:model` IDs. Without a connection, non-Gemini
+  IDs are discovery only. Free models sort first; pricing, supported reasoning,
+  public token limits and data-collection warnings appear only on the requested
+  page. No keys, network requests or AI charges are involved. A cached entry is
+  not a guarantee of live endpoint availability or account quota. Refresh the
+  list in the app when needed.
+- `subtitle_fonts(video_id, sample="日本語")` reports the requested and effective
+  bundled font, current subtitle language and script-aware fallback policy.
+  The renderer/preview select the same CJK fonts automatically; this read does
+  not change the project or load a TTS/OCR model.
+
+Translation style/guidance never raises reasoning. Changing model resets the
+level to that model's supported default unless the same configure request
+explicitly supplies a supported level. Unsupported combinations are rejected
+before settings are written. Manual/Auto use `configure` with snake_case fields;
+Batch uses `batch_configure` with the camelCase names returned by `batch_settings`
+(for example `translationModel`, `translationReasoningEffort`,
+`geminiTranslationStyle`, `subtitleStyle`). `replace_overrides=true` is explicit
+permission to replace individual Batch overrides; it does not open a modal.
+Data-collection consent is not granted by discovering/configuring a model.
+
+Discovery through generic `execute("capabilities", {})` is now compact too;
+request named commands or `include_schemas=true` for schemas. Successful
+`configure` returns only `accepted` and `changed_fields`, rather than repeating
+the complete editable-field allowlist. Read it once from `capabilities`.
+
 Connecting/signing in to accounts and entering keys still require the user. Existing-source and SRT replacement are supported by explicit commands, not by implicit import. Processing/reruns, deletion and publishing do not require a second confirmation in the HaizFlow MCP page. No MCP command reads/writes secrets, bypasses platform consent, or executes arbitrary shell/Python/QObject methods. Retired NLE actions (source cuts, overlays, keyframes and markers) are not advertised as functional editing commands. Full workflow access does not grant unrestricted access to the machine.
 
 ### Source replacement

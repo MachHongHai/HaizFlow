@@ -26,7 +26,7 @@ ColumnLayout {
     signal edited(string value)
     visible: values.length > 0 || Boolean(configuration.mandatory)
     spacing: Theme.space8
-    function choose(value) { edited(value === configuration.default ? "" : value); }
+    function choose(value) { edited(value); }
     function restoreSelection() {
         effortCombo.currentIndex = Qt.binding(function() { return root.values.indexOf(root.effectiveEffort); });
         thinkingCombo.currentIndex = Qt.binding(function() { return root.effectiveEffort === "disabled" ? 0 : 1; });

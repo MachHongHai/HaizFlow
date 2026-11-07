@@ -63,6 +63,12 @@ def check_native():
                 async with Client(params, raise_exceptions=False) as session:
                     result = await session.call_tool("haizflow_status", {})
                     assert not result.is_error
+                    result = await session.call_tool("haizflow_execute", {
+                        "command": "translation_models", "arguments": {"provider": "gemini", "query": "3.5"}})
+                    assert not result.is_error and "minimal" in str(result.content)
+                    result = await session.call_tool("haizflow_execute", {"command": "capabilities", "arguments": {}})
+                    assert not result.is_error and "subtitle_fonts" in str(result.content)
+                    assert "input_schema" not in str(result.content)
                     result = await session.call_tool("haizflow_list_projects", {})
                     assert not result.is_error and project_id in str(result.content)
                     result = await session.call_tool("haizflow_list_projects", {"limit": -1})
@@ -224,7 +230,7 @@ def test_mcp_dedicated_routes_menu_and_page_ownership():
     assert 'objectName: "mcpSettingsMenuItem"' in menu
     assert "onTriggered: root.mcpRequested()" in menu
     assert '"mcp": 13' in routes
-    assert "active: settingsPages.currentIndex === 3" in workspace
+    assert "selected: settingsPages.currentIndex === 3" in workspace
     assert "sourceComponent: Component { McpSettingsPage {} }" in workspace
     assert "SettingsMcpGroup {" not in (qml / "SettingsPage.qml").read_text(encoding="utf-8")
     guide = (qml / "McpConnectionGuide.qml").read_text(encoding="utf-8")

@@ -162,14 +162,10 @@ Rectangle {
                 active: visible
             }
 
-            Text {
+            UserErrorNotice {
                 Layout.fillWidth: true
-                visible: root.candidateError.length > 0
-                text: I18n.channelImportStatus(root.candidateError)
-                color: Theme.danger
-                font.pixelSize: Theme.label
-                textFormat: Text.PlainText
-                elide: Text.ElideRight
+                title: qsTr("Chưa tải được video")
+                details: root.candidateError
             }
         }
 

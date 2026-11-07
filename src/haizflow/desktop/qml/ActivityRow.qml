@@ -49,8 +49,8 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 visible: root.detail.length > 0
-                text: root.detail
-                color: root.severity === "error" ? Theme.danger : Theme.textMuted
+                text: ErrorPresentation.summary(root.detail)
+                color: Theme.textMuted
                 font.family: Theme.fontFamily
                 font.pixelSize: TypeScale.metadata
                 textFormat: Text.PlainText

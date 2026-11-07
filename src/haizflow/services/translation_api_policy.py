@@ -52,14 +52,17 @@ def request_limits(provider: str, model: str, base: int, effort: str = "") -> di
 
 
 def capabilities(provider, model, *, has_guidance=False):
-    """Official parameter names/values only; unknown capabilities stay hidden."""
+    """Model-only defaults; style/guidance never silently enables more reasoning.
+
+    Keep has_guidance for callers using the existing UI/MCP contract.
+    """
     name = re.sub(r"-\d{4}-\d{2}-\d{2}$", "", model.lower())
     if provider == "gemini" and model in {"gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"}:
         values = ["low", "medium", "high"]
         if model != "gemini-3.8-flash":
             values.insert(0, "minimal")
         return {"parameter": "thinkingLevel", "values": values,
-                "default": "low" if has_guidance else values[0]}
+                "default": values[0]}
     if provider == "deepseek" and name in {"deepseek-flash", "deepseek-v4-pro", "deepseek-v4-flash"}:
         return {"parameter": "reasoning_effort", "values": ["low", "high", "max"],
                 "thinking": True, "default": "disabled"}

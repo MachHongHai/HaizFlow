@@ -84,6 +84,39 @@ class DropdownToggleTests(unittest.TestCase):
                     + properties + ' Component.onCompleted: popup.objectName = "testedPopup" }',
                     "trigger", "testedPopup")
 
+    def test_combo_selection_keyboard_and_model_replacement_have_no_binding_loop(self):
+        engine, warnings = QQmlEngine(), []
+        engine.warnings.connect(lambda values: warnings.extend(item.toString() for item in values))
+        component = QQmlComponent(engine)
+        component.setData((
+            'import QtQuick\nimport QtQuick.Controls.Basic\n'
+            f'import "{QML.as_uri()}"\n'
+            'ApplicationWindow { width: 600; height: 500; visible: true; '
+            'AppComboBox { objectName: "combo"; width: 260; model: ["A", "B", "C"]; currentIndex: 2 }}'
+        ).encode(), QUrl())
+        self.assertTrue(component.isReady(), [e.toString() for e in component.errors()])
+        window = component.create()
+        try:
+            QTest.qWait(40)
+            combo = window.findChild(QQuickItem, "combo")
+            for _ in range(3):
+                QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, QPoint(100, 18))
+                QTest.qWait(180)
+                QTest.keyClick(window, Qt.Key_Up)
+                QTest.keyClick(window, Qt.Key_Return)
+                QTest.qWait(180)
+            combo.setProperty("model", ["X"])
+            QTest.qWait(30)
+            QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, QPoint(100, 18))
+            QTest.qWait(180)
+            QTest.keyClick(window, Qt.Key_Return)
+            self.assertEqual(combo.property("currentIndex"), 0)
+            self.assertFalse(warnings, warnings)
+        finally:
+            window.close()
+            window.deleteLater()
+            self.app.processEvents()
+
     def test_help_popover(self):
         self.check_toggle('HelpPopover { objectName: "trigger"; helpText: "Trợ giúp" }',
                           "trigger", "helpPopoverPopup")

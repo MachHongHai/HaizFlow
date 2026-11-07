@@ -19,7 +19,6 @@ from haizflow.core.hardware import (
     translation_model_preference,
     translation_model_signature_parts,
 )
-from haizflow.core.runtime_probe import probe_runtime
 from haizflow.pipeline.audio_timeline import build_audio_timeline
 from haizflow.pipeline.extract_audio import extract_audio
 from haizflow.pipeline.process_registry import check_cancellation, clean_video, is_cancelled, is_paused, start_video
@@ -300,41 +299,11 @@ def _is_gpu_runtime_failure(error: Exception) -> bool:
 
 
 def _recover_gpu_to_cpu(video_id: str, stage: str, error: Exception) -> bool:
-    """Move one interrupted video to CPU at a durable stage boundary.
-
-    The interrupted stage is restarted, while completed checkpoints remain
-    available only to this recovery run. A second automatic retry is refused
-    so an unstable driver cannot leave a project in an endless loop.
-    """
-    video = get_video(video_id)
-    if not video or video.gpu_recovery_attempted or not _is_gpu_runtime_failure(error):
-        return False
-
-    detail = f"GPU unavailable during {stage}. Switching this project to CPU and retrying that stage."
-    update_video(
-        video_id,
-        status="processing",
-        step="recovering_device",
-        step_detail=detail,
-        runtime_recovery_step=stage,
-        gpu_recovery_attempted=True,
-        error=None,
-    )
-    log_to_video(video_id, detail)
-    log_to_video(video_id, f"GPU recovery reason: {error}")
-    try:
-        cpu_probe = probe_runtime("cpu")
-        if not cpu_probe.ok:
-            log_to_video(video_id, f"CPU fallback runtime is unavailable: {cpu_probe.message}")
-            return False
-        shutdown_hymt2_worker()
-        _release_recognition_runtime()
-        configure_processing_device("cpu")
-        log_to_video(video_id, "Released GPU models. CPU runtime is ready to resume from the last completed stage.")
-        return True
-    except Exception as recovery_error:
-        log_to_video(video_id, f"Could not prepare CPU fallback: {recovery_error}")
-        return False
+    """Compatibility entry point; automatic device changes are intentionally disabled."""
+    if _is_gpu_runtime_failure(error):
+        log_to_video(video_id, f"GPU failed during {stage}; keeping the selected device. "
+                     f"CPU requires a user choice. Reason: {error}")
+    return False
 
 
 def _mark_checkpoint(video, name, signature):

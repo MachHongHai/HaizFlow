@@ -124,6 +124,48 @@ def test_gemini_explicit_thinking_level_reaches_native_payload():
                            target_language="vi", reasoning_effort="minimal")
 
 
+@pytest.mark.parametrize("model", ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"])
+@pytest.mark.parametrize("style", list(gemini_context.STYLE_PROMPTS))
+@pytest.mark.parametrize("guided", [False, True])
+@pytest.mark.parametrize("selected", ["", "low", "medium", "high"])
+def test_gemini_style_and_guidance_never_change_ui_or_request_reasoning(model, style, guided, selected):
+    from haizflow.services.gemini_translation import _payload_for_chunk
+
+    info = policy.project_configuration(model, selected, has_guidance=guided or style != "balanced")
+    default = "minimal" if "lite" in model else "low"
+    assert info["default"] == default
+    assert info["effective"] == (selected or default)
+    config = _payload_for_chunk([(0, "Hello.")], model=model, source_language="en", target_language="vi",
+        reasoning_effort=selected, translation_style=style,
+        translation_instructions="Modern setting." if guided else "",
+        translation_glossary="Keep names consistent." if guided else "")["generationConfig"]
+    assert config["thinkingConfig"] == {"thinkingLevel": info["effective"], "includeThoughts": False}
+    assert config["maxOutputTokens"] == policy.output_limit(2048, selected)
+
+
+@pytest.mark.parametrize("effort", ["minimal", "low", "medium", "high"])
+def test_desktop_saves_explicit_gemini_level_even_when_equal_to_default(effort):
+    from haizflow.desktop.qml_controller import HaizFlowController
+
+    host = SimpleNamespace(_translation_model="gemini-3.5-flash-lite", _translation_reasoning_effort="",
+        _gemini_translation_style="balanced", _show_app_alert=Mock(), geminiGuidanceChanged=Mock())
+    HaizFlowController.translationReasoningEffort.fset(host, effort)
+    assert host._translation_reasoning_effort == effort
+    host._gemini_translation_style = "natural"
+    host._gemini_translation_instructions = "A modern conversation."
+    host._gemini_translation_glossary = "Keep names consistent."
+    HaizFlowController.translationReasoningEffort.fset(host, effort)
+    assert host._translation_reasoning_effort == effort
+    assert host.geminiGuidanceChanged.emit.call_count == 1
+    host._show_app_alert.assert_not_called()
+    saved = VideoConfig(translation_model=host._translation_model,
+        translation_reasoning_effort=host._translation_reasoning_effort,
+        gemini_translation_style=host._gemini_translation_style)
+    restored = VideoConfig.model_validate_json(saved.model_dump_json())
+    assert restored.translation_reasoning_effort == effort
+    assert restored.gemini_translation_style == "natural"
+
+
 def test_desktop_selection_is_local_and_model_switch_resets_to_supported_default(credentials):
     from haizflow.desktop.qml_controller import HaizFlowController
 

@@ -226,16 +226,11 @@ InspectorPanel {
         color: Theme.divider
     }
 
-    Text {
+    UserErrorNotice {
         Layout.fillWidth: true
-        visible: root.toolState.state === "error"
-        text: String(root.toolState.errorMessage || qsTr("Tác vụ gặp lỗi. Mở log kỹ thuật để xem chi tiết."))
-        color: Theme.danger
-        font.family: Theme.fontFamily
-        font.pixelSize: TypeScale.metadata
-        font.weight: Font.DemiBold
-        textFormat: Text.PlainText
-        wrapMode: Text.WordWrap
+        title: qsTr("Xử lý chưa hoàn tất")
+        details: root.toolState.state === "error" ? String(root.toolState.errorMessage || qsTr("Tác vụ gặp lỗi.")) : ""
+        logText: AppController.logs
     }
 
     Flickable {

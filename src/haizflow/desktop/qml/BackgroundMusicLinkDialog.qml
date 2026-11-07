@@ -79,14 +79,14 @@ AppDialog {
 
     RowLayout {
         Layout.fillWidth: true
-        visible: root.busy || root.hasError
+        visible: root.busy
         spacing: Theme.space8
         Text {
             Layout.fillWidth: true
             text: root.busy ? qsTr("Đang tải âm thanh…")
                 : root.importStatus.length > 160 ? qsTr("Không nhập được nhạc nền. Xem chi tiết lỗi.")
                 : I18n.runtimeStatus(root.importStatus)
-            color: root.hasError ? Theme.danger : Theme.textMuted
+            color: Theme.textMuted
             font.family: Theme.fontFamily
             font.pixelSize: TypeScale.metadata
             wrapMode: Text.Wrap
@@ -101,6 +101,11 @@ AppDialog {
         }
     }
 
+    UserErrorNotice {
+        Layout.fillWidth: true
+        title: qsTr("Không nhập được nhạc nền")
+        details: root.hasError ? root.importStatus : ""
+    }
     AppProgressBar {
         Layout.fillWidth: true
         visible: root.busy

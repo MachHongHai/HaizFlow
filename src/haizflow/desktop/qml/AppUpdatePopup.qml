@@ -169,15 +169,10 @@ Popup {
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
         }
-        Text {
+        UserErrorNotice {
             Layout.fillWidth: true
-            visible: root.controller.appUpdateError.length > 0 && root.state !== "error"
-            text: root.updateError(root.controller.appUpdateError)
-            color: Theme.danger
-            font.family: Theme.fontFamily
-            font.pixelSize: TypeScale.metadata
-            textFormat: Text.PlainText
-            wrapMode: Text.WordWrap
+            title: qsTr("Cập nhật chưa hoàn tất")
+            details: root.controller.appUpdateError
         }
         Text {
             Layout.fillWidth: true

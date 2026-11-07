@@ -278,11 +278,17 @@ StackLayout {
         }
     }
 
-    SettingsWorkspace {
-        currentRoute: root.currentRoute
+    Loader {
         Layout.fillWidth: true
         Layout.fillHeight: true
         Layout.margins: 0
-        onNavigateRequested: function(route) { root.navigateRequested(route); }
+        active: root.currentIndex === 13
+        asynchronous: true
+        sourceComponent: Component {
+            SettingsWorkspace {
+                currentRoute: root.currentRoute
+                onNavigateRequested: function(route) { root.navigateRequested(route); }
+            }
+        }
     }
 }

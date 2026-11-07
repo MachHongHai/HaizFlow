@@ -61,6 +61,12 @@ def create_server(client: DesktopClient, *, tool_profile: Literal["full", "compa
             "These optimizations reduce agent context/tool rounds, not the price of a video translation/TTS API."
             " In compact tool profile, all mutations and detailed reads remain available through execute; "
             "direct convenience wrappers are omitted to save tool-schema tokens."
+            " Use options(section='translation'|'voice'|'subtitles'|'export') for scoped settings, "
+            "translation_models with query/free_only and pagination for offline model discovery, and subtitle_fonts "
+            "for script-aware fonts. Style and reasoning are independent; never silently raise reasoning. "
+            "Voice studio has separate OmniVoice design and VieNeu reference-clone workflows; presets belong "
+            "to one provider only. Discover voice-area commands as needed; microphone capture stays UI-controlled. "
+            "Catalogue presence does not guarantee endpoint availability or quota. No model discovery calls an AI API."
         ),
     )
     read = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
@@ -277,7 +283,7 @@ def create_server(client: DesktopClient, *, tool_profile: Literal["full", "compa
 
     @server.tool(annotations=write)
     def haizflow_create_project(
-        name: str, kind: Literal["manual", "single", "batch", "download", "publish"] = "manual"
+        name: str, kind: Literal["manual", "single", "batch", "download", "publish", "voice"] = "manual"
     ) -> dict:
         """Create a project in the app's configured project directory, then select it."""
         return call("create", {"name": name, "kind": kind})
@@ -289,7 +295,7 @@ def create_server(client: DesktopClient, *, tool_profile: Literal["full", "compa
 
     @server.tool(annotations=write)
     def haizflow_configure_video(video_id: str, settings: dict) -> dict:
-        """Change allowlisted settings via normal cache invalidation. See returned editable_fields."""
+        """Change allowlisted settings via normal cache invalidation. Read capabilities.editable_fields first."""
         return call("configure", {"video_id": video_id, "settings": settings})
 
     @server.tool(annotations=destructive)

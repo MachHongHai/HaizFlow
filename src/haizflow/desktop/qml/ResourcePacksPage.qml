@@ -45,20 +45,33 @@ Item {
         default: return fallback;
         }
     }
-    readonly property var packageRows: {
-        // Re-evaluate when the selected device or package inventory changes.
-        const device = AppController.processingDevice;
-        const selectedVideo = AppController.selectedVideoId;
-        const activity = AppController.resourcePackActivityText;
-        const language = I18n.language;
-        return AppController.resourcePackageRows;
+    property var packageRows: []
+    property bool inventoryDirty: true
+    readonly property string inventoryContext: AppController.processingDevice + "|"
+        + AppController.selectedVideoId + "|" + I18n.language
+    onInventoryContextChanged: invalidateInventory()
+    onVisibleChanged: if (visible && inventoryDirty) inventoryTimer.restart()
+    function invalidateInventory() {
+        inventoryDirty = true;
+        if (visible) inventoryTimer.restart();
     }
+    Timer {
+        id: inventoryTimer
+        interval: 40
+        onTriggered: {
+            if (!root.visible || !root.inventoryDirty) return;
+            root.inventoryDirty = false;
+            root.packageRows = AppController.resourcePackageRows;
+        }
+    }
+    Connections { target: AppController; function onResourcePacksChanged() { root.invalidateInventory(); } }
     ListModel {
         id: stableRows
         dynamicRoles: true
     }
     function syncPackageRows() {
         const rows = root.packageRows;
+        if (!rows) return;
         let sameOrder = stableRows.count === rows.length;
         for (let i = 0; sameOrder && i < rows.length; ++i)
             sameOrder = stableRows.get(i).modelData.packId === rows[i].packId;
@@ -68,11 +81,12 @@ Item {
                 stableRows.append({modelData: rows[i]});
         } else {
             for (let i = 0; i < rows.length; ++i)
-                stableRows.setProperty(i, "modelData", rows[i]);
+                if (JSON.stringify(stableRows.get(i).modelData) !== JSON.stringify(rows[i]))
+                    stableRows.setProperty(i, "modelData", rows[i]);
         }
     }
     onPackageRowsChanged: root.syncPackageRows()
-    Component.onCompleted: root.syncPackageRows()
+    Component.onCompleted: root.invalidateInventory()
 
     SettingsPageShell {
         anchors.fill: parent
@@ -82,11 +96,13 @@ Item {
         pageInset: 0
         horizontalInset: 0
         alignLeft: false
+        contentSpacing: Theme.space20
 
+        SettingsGroup {
+            Layout.fillWidth: true
+            title: qsTr("Bộ nhớ và thiết bị")
         SettingRow {
                     Layout.fillWidth: true
-                    Layout.topMargin: Theme.space16
-                    Layout.bottomMargin: Theme.space16
                     label: qsTr("Cấu hình máy")
                     description: AppController.hardwareInfo.recommendedDevice === "gpu"
                         ? qsTr("NVIDIA · %1 · %2 VRAM")
@@ -97,16 +113,8 @@ Item {
                             : qsTr("Đang đọc thông tin CPU…")
                 }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: Theme.divider
-                }
-
                 SettingRow {
                     Layout.fillWidth: true
-                    Layout.topMargin: Theme.space16
-                    Layout.bottomMargin: Theme.space16
                     label: qsTr("Vị trí lưu")
                     description: qsTr("%1 · Đang dùng %2 · Còn trống %3")
                         .arg(AppController.resourcePackStorageLocation)
@@ -120,12 +128,6 @@ Item {
                         enabled: !AppController.resourcePackBusy
                         onClicked: AppController.browseAndMoveResourceStorage()
                     }
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: Theme.divider
                 }
 
                 ColumnLayout {
@@ -152,10 +154,11 @@ Item {
                     }
                 }
 
-                ColumnLayout {
+        }
+                SettingsGroup {
                     id: packageList
                     Layout.fillWidth: true
-                    spacing: 0
+                    title: qsTr("Các gói tài nguyên")
 
                     Repeater {
                         id: packageRepeater

@@ -12,6 +12,7 @@ Dialog {
     property int maximumWidth: 760
     property int maximumHeight: 720
     property int bodySpacing: Theme.space16
+    property int horizontalInset: Theme.space24
     property bool dismissible: true
     readonly property bool hasFooterActions: actionArea.children.length > 0
     readonly property int headerHeight: subtitle.length > 0 ? 64 : 56
@@ -57,7 +58,7 @@ Dialog {
             Layout.minimumHeight: root.headerHeight
             Layout.preferredHeight: root.headerHeight
             Layout.maximumHeight: root.headerHeight
-            Layout.leftMargin: Theme.space20
+            Layout.leftMargin: root.horizontalInset
             Layout.rightMargin: Theme.space16
             spacing: Theme.space12
 
@@ -65,6 +66,7 @@ Dialog {
                 Layout.fillWidth: true
                 spacing: 2
                 Text {
+                    objectName: "appDialogTitle"
                     Layout.fillWidth: true
                     text: root.title
                     color: Theme.text
@@ -109,8 +111,8 @@ Dialog {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumHeight: 0
-            Layout.leftMargin: Theme.space24
-            Layout.rightMargin: Theme.space24
+            Layout.leftMargin: root.horizontalInset
+            Layout.rightMargin: root.horizontalInset
             Layout.topMargin: Theme.space20
             Layout.bottomMargin: Theme.space20
             spacing: root.bodySpacing
@@ -131,8 +133,8 @@ Dialog {
             Layout.preferredHeight: root.footerHeight
             Layout.maximumHeight: root.footerHeight
             visible: root.hasFooterActions
-            Layout.leftMargin: Theme.space24
-            Layout.rightMargin: Theme.space24
+            Layout.leftMargin: root.horizontalInset
+            Layout.rightMargin: root.horizontalInset
             spacing: Theme.space8
             Item { Layout.fillWidth: true }
             RowLayout { id: actionArea; spacing: Theme.space8 }

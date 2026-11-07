@@ -70,6 +70,8 @@ def exercise(width):
                 property string r1Model
                 property string firstEffort: ""
                 property string secondEffort: ""
+                property string geminiEffort: ""
+                property bool geminiHasGuidance: false
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 20
@@ -103,6 +105,9 @@ def exercise(width):
                             objectName: "geminiReasoning"
                             Layout.fillWidth: true
                             selectedModel: "gemini-3.5-flash-lite"
+                            reasoningEffort: window.geminiEffort
+                            hasGuidance: window.geminiHasGuidance
+                            onEdited: function(value) { window.geminiEffort = value; }
                         }
                     }
                     SettingsGroup {
@@ -138,6 +143,26 @@ def exercise(width):
         gemini_combo = gemini.findChild(QQuickItem, "translationReasoningEffortCombo")
         assert gemini_combo.property("currentText") == "Tối thiểu"
         assert gemini_combo.property("currentValue") == "minimal"
+        # Changing style/guidance must neither raise the displayed default nor
+        # rebuild the dropdown; selecting the default must be explicit too.
+        gemini_model_changes = QSignalSpy(gemini_combo.modelChanged)
+        window.setProperty("geminiHasGuidance", True)
+        QTest.qWait(25)
+        assert gemini_combo.property("currentValue") == "minimal"
+        gemini_combo.activated.emit(0)
+        QTest.qWait(25)
+        assert window.property("geminiEffort") == "minimal"
+        gemini_combo.setProperty("currentIndex", 2)
+        gemini_combo.activated.emit(2)
+        QTest.qWait(25)
+        assert window.property("geminiEffort") == "medium"
+        window.setProperty("geminiHasGuidance", False)
+        QTest.qWait(25)
+        assert gemini_combo.property("currentValue") == "medium"
+        window.setProperty("geminiHasGuidance", True)
+        QTest.qWait(25)
+        assert gemini_combo.property("currentValue") == "medium"
+        assert gemini_model_changes.count() == 0
         r1 = window.findChild(QQuickItem, "r1Reasoning")
         assert r1.isVisible()
         status = r1.findChild(QQuickItem, "translationReasoningMandatoryState")
@@ -184,7 +209,7 @@ def exercise(width):
         combo.setProperty("currentIndex", 0)
         combo.activated.emit(0)
         QTest.qWait(25)
-        assert window.property("firstEffort") == "" and combo.property("currentText") == "Tắt"
+        assert window.property("firstEffort") == "disabled" and combo.property("currentText") == "Tắt"
         window.setProperty("firstModel", first)
         window.setProperty("firstEffort", "high")
         QTest.qWait(25)

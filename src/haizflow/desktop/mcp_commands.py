@@ -9,8 +9,8 @@ from typing import Literal, get_type_hints
 
 from pydantic import TypeAdapter, ValidationError
 
-from haizflow.schemas.video import VideoConfig
 from haizflow.core.translation_models import is_cloud_model
+from haizflow.schemas.video import VideoConfig
 from haizflow.services import video_store
 
 EDITABLE_FIELDS = frozenset(
@@ -69,6 +69,8 @@ READ_COMMANDS = {
     "batch_settings",
     "resources",
     "options",
+    "translation_models",
+    "subtitle_fonts",
     "logs",
     "export_ranges",
     "batch_results",
@@ -303,7 +305,7 @@ class McpCommands:
                 "error": redact_diagnostic_text(getattr(video, "error", "") or "")}
 
     def _capabilities(
-        self, command_names: list[str] | None = None, area: str = "", include_schemas: bool = True,
+        self, command_names: list[str] | None = None, area: str = "", include_schemas: bool = False,
     ) -> dict:
         from haizflow.desktop.catalog import POPULAR_TARGET_LANGUAGES
         from haizflow.mcp.efficiency import command_area
@@ -318,15 +320,16 @@ class McpCommands:
             if area and command_area(name) != area:
                 continue
             operations[name] = {"read_only": name in READ_COMMANDS, "area": command_area(name)}
-            if not include_schemas:
+            if not include_schemas and command_names is None:
                 continue
             function = getattr(self, "_" + name)
             signature, adapters = command_signature(function.__func__)
-            arguments, required = {}, []
+            arguments, required, definitions = {}, [], {}
             for key, item in signature.parameters.items():
                 if key == "self":
                     continue
                 schema = adapters[key].json_schema()
+                definitions.update(schema.pop("$defs", {}))
                 if item.default is inspect.Parameter.empty:
                     required.append(key)
                 else:
@@ -338,6 +341,8 @@ class McpCommands:
                 "required": required,
                 "additionalProperties": False,
             }
+            if definitions:
+                operations[name]["input_schema"]["$defs"] = definitions
         return {
             "commands": operations,
             "areas": areas,
@@ -410,7 +415,8 @@ class McpCommands:
         active = host._processing_queue.active_video_id
         queued = host._processing_queue.pending_ids()
         if not ids:
-            ids = list(dict.fromkeys([v for v in [active, host._selected_video_id, *queued] if v]))[:20]
+            ids = list(dict.fromkeys([v for v in [active, host._selected_video_id, *queued]
+                                      if v in host._catalog_videos]))[:20]
         videos = []
         for video_id in ids:
             video = self._known_video(video_id)
@@ -422,9 +428,9 @@ class McpCommands:
         value = {
             "permissions": self.bridge.permissions,
             "videos": videos,
-            "active_video_id": active if not scoped or active in ids else None,
-            "queued_video_ids": [v for v in queued if not scoped or v in ids][:200],
-            "queue_total": len([v for v in queued if not scoped or v in ids]),
+            "active_video_id": active if active in host._catalog_videos and (not scoped or active in ids) else None,
+            "queued_video_ids": [v for v in queued if v in host._catalog_videos and (not scoped or v in ids)][:200],
+            "queue_total": len([v for v in queued if v in host._catalog_videos and (not scoped or v in ids)]),
             "exports": [{**{key: job.get(key) for key in ("videoId", "status", "progress")},
                          "output": job.get("path"), "error": self._safe_detail(job.get("error"))}
                         for job in jobs[-50:]],
@@ -530,7 +536,8 @@ class McpCommands:
             self.host._select_video(video)
         return self._accepted(accepted)
 
-    def _create(self, name: str, kind: Literal["manual", "single", "batch", "download", "publish"] = "manual") -> dict:
+    def _create(self, name: str,
+                kind: Literal["manual", "single", "batch", "download", "publish"] = "manual") -> dict:
         from haizflow.services import project_store
 
         self._no_draft()
@@ -580,6 +587,10 @@ class McpCommands:
             if isinstance(settings.get(field), dict):
                 settings[field] = {**getattr(video, field).model_dump(), **settings[field]}
         data.update(settings)
+        # Match the project UI: a new model starts at its supported default,
+        # while style/guidance changes preserve the user's explicit level.
+        if data["translation_model"] != video.translation_model and "translation_reasoning_effort" not in settings:
+            data["translation_reasoning_effort"] = ""
         from haizflow.core.translation_models import translation_provider
 
         data["translator_provider"] = translation_provider(str(data.get("translation_model") or "auto"))
@@ -588,9 +599,12 @@ class McpCommands:
 
         if config.target_language not in TARGET_LANGUAGE_CODES:
             raise ValueError("Unsupported target language.")
+        from haizflow.mcp.options import validate_reasoning
+
+        validate_reasoning(config.translation_model, config.translation_reasoning_effort)
         self.host._apply_config_to_video(video, config)
         self.host._select_video(video_store.get_video(video_id) or video)
-        return {"accepted": True, "editable_fields": sorted(EDITABLE_FIELDS)}
+        return {"accepted": True, "changed_fields": sorted(settings)}
 
     def _import_srt(
         self, video_id: str, path: str, language: Literal["vi", "en", "zh", "ja", "ko", "es"], replace: bool = False
@@ -757,9 +771,22 @@ class McpCommands:
 
     def _batch_configure(self, project_id: str, settings: dict, replace_overrides: bool = False) -> dict:
         self._current_project(project_id, "batch")
-        if set(settings) - EDITABLE_FIELDS:
+        from haizflow.services import batch_settings
+
+        allowed = batch_settings.FIELDS.keys() | batch_settings.ASSETS.keys() | {"subtitleStyle"}
+        if not settings or set(settings) - allowed:
             raise ValueError("Unsupported batch setting.")
-        return self._accepted(self.host.applyBatchSettingsValues(project_id, settings, replace_overrides))
+        from haizflow.mcp.options import validate_reasoning
+
+        current = self.host.batchSettings()
+        settings = dict(settings)
+        choice = settings.get("translationModel", current.get("translationModel", "q4"))
+        if choice != current.get("translationModel") and "translationReasoningEffort" not in settings:
+            settings["translationReasoningEffort"] = ""
+        config = batch_settings.config_for({**current, **settings})
+        validate_reasoning(config.translation_model, config.translation_reasoning_effort)
+        return self._accepted(self.host._project_commands.apply_batch_settings_values(
+            project_id, settings, replace_overrides))
 
     def _batch_start(self, project_id: str) -> dict:
         self._current_project(project_id, "batch")
@@ -932,23 +959,53 @@ class McpCommands:
             paths = [subtitle_export.save_srt(source if kind == "source" else result, destination, overwrite=overwrite)]
         return {"completed": True, "paths": [str(path) for path in paths]}
 
-    def _options(self, video_id: str) -> dict:
+    def _translation_models(
+        self, provider: Literal["gemini", "openai", "deepseek", "openrouter", "custom"] = "gemini",
+        connection_id: str = "", query: str = "", offset: int = 0, limit: int = 25, free_only: bool = False,
+    ) -> dict:
+        from haizflow.mcp.options import model_page
+
+        page([], offset, limit)
+        if len(query) > 200:
+            raise ValueError("Use a model query up to 200 characters.")
+        return model_page(provider, connection_id, query, offset, limit, free_only)
+
+    def _subtitle_fonts(self, video_id: str, sample: str = "") -> dict:
+        from haizflow.mcp.options import subtitle_fonts
+
+        if len(sample) > 500:
+            raise ValueError("Use a font sample up to 500 characters.")
+        return subtitle_fonts(self._known_video(video_id), sample)
+
+    def _options(
+        self, video_id: str, section: Literal["all", "translation", "voice", "subtitles", "export"] = "all",
+    ) -> dict:
         from haizflow.desktop.catalog import POPULAR_TARGET_LANGUAGES
+        from haizflow.mcp.options import subtitle_fonts, translation_settings
         from haizflow.services.gemini_translation import MODELS
         from haizflow.services.translation_connections import list_connections
         from haizflow.services.translation_model_catalog import presets
-        from haizflow.services.translation_api_policy import project_configuration
 
         video = self._known_video(video_id)
         language = video.subtitle_language or video.target_language
+        if section == "subtitles":
+            return subtitle_fonts(video, "")
+        if section == "export":
+            return {"export_presets": ["source", "1080p", "1080p-high", "720p", "2160p"]}
+        if section == "voice":
+            return {"language": language, "tts_providers": self.host.ttsProviderOptionsForLanguage(language),
+                    "voices": self.host.voiceOptionsForLanguageAndProvider(language, video.tts_provider)}
+        translation_config = translation_settings(video)
+        if section == "translation":
+            return {**translation_config, "connections": [
+                {key: row[key] for key in ("id", "provider", "label")} for row in list_connections()],
+                "model_lookup": "translation_models"}
         return {
+            "translation_settings": translation_config,
+            "subtitle_fonts": subtitle_fonts(video, ""),
             "target_languages": [code for code, _, _ in POPULAR_TARGET_LANGUAGES],
             "gemini_models": MODELS,
-            "translation_reasoning": project_configuration(video.translation_model,
-                str(getattr(video, "translation_reasoning_effort", "") or ""), has_guidance=bool(
-                    getattr(video, "gemini_translation_instructions", "")
-                    or getattr(video, "gemini_translation_glossary", "")
-                    or getattr(video, "gemini_translation_style", "balanced") != "balanced")),
+            "translation_reasoning": translation_config["reasoning"],
             "translation_api_models": [{"value": "api:" + row["id"] if row["model"] else None,
                                         "provider": row["provider"], "model": row["model"], "label": row["label"],
                                         "value_prefix": "api:" + row["id"] + ":",
@@ -1062,7 +1119,9 @@ class McpCommands:
                    and (not speaker or cue.get("speaker_id", cue.get("speaker", "")) == speaker)]
         result = {"items": context_rows(state, offset, limit, indices=indices), "offset": offset, "total": len(indices),
                   "total_cues": len(state["segments"])}
-        return {**result, "revision": state["revision"], "target_language": video.target_language,
+        return {**result, "revision": state["revision"],
+                "target_language": video.subtitle_language or video.target_language,
+                "translation_target_language": video.target_language,
                 "instructions": video.gemini_translation_instructions, "glossary": video.gemini_translation_glossary,
                 "limitations": "Source matches use time overlap, not a guaranteed one-to-one sentence alignment. "
                                "Speaker labels are fallible. Inspect frames/dialogue before changing address terms."}

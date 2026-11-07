@@ -64,7 +64,7 @@ Rectangle {
         }
         Text {
             Layout.fillWidth: true
-            text: root.message
+            text: ErrorPresentation.status(root.message, root.activityState === "failed")
             color: Theme.textMuted
             font.family: Theme.fontFamily
             font.pixelSize: TypeScale.label

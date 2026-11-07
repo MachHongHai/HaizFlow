@@ -103,7 +103,7 @@ Rectangle {
 
                     Text {
                         Layout.fillWidth: true
-                        text: root.statusText
+                        text: ErrorPresentation.summary(root.statusText)
                         color: Theme.text
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.caption

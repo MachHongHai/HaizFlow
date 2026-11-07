@@ -20,7 +20,7 @@ Rectangle {
         spacing: Theme.space12
         Text {
             Layout.fillWidth: true
-            text: root.statusText
+            text: ErrorPresentation.status(root.statusText, false)
             color: Theme.textMuted
             font.family: Theme.fontFamily
             font.pixelSize: TypeScale.label

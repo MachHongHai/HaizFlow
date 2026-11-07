@@ -257,13 +257,13 @@ def _payload_for_chunk(
     reasoning_effort: str = "",
 ) -> dict:
     from haizflow.services.gemini_context import STYLE_PROMPTS
+    from haizflow.services.translation_api_policy import capabilities
 
     if translation_style not in STYLE_PROMPTS:
         raise ValueError("Unsupported Gemini translation style.")
-    if reasoning_effort:
-        from haizflow.services.translation_api_policy import capabilities
-        if reasoning_effort not in capabilities("gemini", model).get("values", []):
-            raise ValueError("Mức thinkingLevel không được model Gemini đang chọn hỗ trợ.")
+    reasoning = capabilities("gemini", model)
+    if reasoning_effort and reasoning_effort not in reasoning.get("values", []):
+        raise ValueError("Mức thinkingLevel không được model Gemini đang chọn hỗ trợ.")
     entries = [{"id": index, "text": text} for index, text in chunk]
     for entry in entries:
         index = entry["id"]
@@ -304,8 +304,8 @@ def _payload_for_chunk(
             # A cap does not prepay tokens. Leave room for language expansion,
             # JSON framing and low-level reasoning so the last cue is not cut.
             "maxOutputTokens": min(8192, max(2048, 1024 + len(chunk) * 64, sum(len(text) for _, text in chunk) * 4)),
-            "thinkingConfig": {"thinkingLevel": reasoning_effort or ("minimal" if not has_guidance and model in {
-                "gemini-3.1-flash-lite", "gemini-3.5-flash-lite"} else "low"), "includeThoughts": False},
+            "thinkingConfig": {"thinkingLevel": reasoning_effort or reasoning.get("default", "low"),
+                               "includeThoughts": False},
             "responseMimeType": "application/json",
             "responseSchema": {
                 "type": "OBJECT",

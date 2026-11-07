@@ -58,7 +58,7 @@ Item {
         pageInset: 0
         horizontalInset: 0
         alignLeft: false
-        contentMaximumWidth: 760
+        contentMaximumWidth: 920
         contentSpacing: Theme.space20
 
         Flickable {
@@ -72,6 +72,7 @@ Item {
             clip: true
             NavigationTabs {
                 id: providerTabs
+                showUnderline: false
                 width: Math.max(implicitWidth, providerScroll.width)
                 height: providerScroll.height
                 spacing: Theme.space8
@@ -87,21 +88,16 @@ Item {
                 }
             }
         }
+        SettingsGroup {
+            Layout.fillWidth: true
+            title: root.externalApi ? qsTr("%1 API key").arg(root.providerLabel)
+                : root.zernio ? qsTr("Zernio API key") : qsTr("Gemini API key")
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.space16
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: Theme.space8
-                Text {
-                    Layout.fillWidth: true
-                    text: root.externalApi ? qsTr("%1 API key").arg(root.providerLabel)
-                        : root.zernio ? qsTr("Zernio API key") : qsTr("Gemini API key")
-                    color: Theme.text
-                    font.family: Theme.fontFamily
-                    font.pixelSize: TypeScale.title
-                    font.weight: Font.DemiBold
-                }
                 Text {
                     Layout.fillWidth: true
                     text: root.provider === "custom" ? qsTr("API tương thích OpenAI. Chỉ dùng để dịch văn bản.")
@@ -188,6 +184,7 @@ Item {
                 enabled: !root.credentialLocked
                 onClicked: AppController.verifyZernioApiKey()
             }
+        }
         }
         ApiKeyEntryForm {
             id: entryForm

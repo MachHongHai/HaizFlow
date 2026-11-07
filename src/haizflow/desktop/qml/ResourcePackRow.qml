@@ -101,9 +101,9 @@ ColumnLayout {
 
             Text {
                 Layout.fillWidth: true
-                visible: text.length > 0
+                visible: text.length > 0 && root.status !== "failed"
                 text: !root.hardwareCompatible ? root.hardwareWarning
-                    : root.detail.length > 0 ? root.detail
+                    : root.detail.length > 0 ? ErrorPresentation.summary(root.detail, qsTr("Đang chuẩn bị gói tài nguyên."))
                     : root.status === "bundled" ? ""
                     : root.blockedReason.length > 0 ? root.blockedReason
                     : root.status === "installed" ? qsTr("Dung lượng %1").arg(root.installedSizeText)
@@ -115,6 +115,11 @@ ColumnLayout {
                 font.pixelSize: TypeScale.metadata
                 elide: Text.ElideRight
                 textFormat: Text.PlainText
+            }
+            UserErrorNotice {
+                Layout.fillWidth: true
+                title: qsTr("Gói tài nguyên chưa sẵn sàng")
+                details: root.status === "failed" ? root.detail || root.blockedReason || qsTr("Không cài được gói tài nguyên.") : ""
             }
 
             AppProgressBar {

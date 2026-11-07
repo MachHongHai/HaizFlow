@@ -19,15 +19,10 @@ SettingsGroup {
             onToggled: root.bridge.setEnabled(checked)
         }
     }
-    Text {
+    UserErrorNotice {
         Layout.fillWidth: true
-        visible: root.bridge.error.length > 0
-        text: root.bridge.error
-        textFormat: Text.PlainText
-        wrapMode: Text.WordWrap
-        color: Theme.textMuted
-        font.family: Theme.fontFamily
-        font.pixelSize: TypeScale.label
+        title: qsTr("Kết nối MCP chưa thành công")
+        details: root.bridge.error
     }
     StudioButton {
         objectName: "mcpTestConnectionButton"
@@ -38,15 +33,20 @@ SettingsGroup {
     Text {
         objectName: "mcpConnectionTestResult"
         Layout.fillWidth: true
-        visible: root.bridge.connectionMessage.length > 0
+        visible: root.bridge.connectionMessage.length > 0 && root.bridge.connectionState !== "error"
         text: root.bridge.connectionMessage
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        color: root.bridge.connectionState === "error" ? Theme.danger : Theme.textMuted
+        color: Theme.textMuted
         font.family: Theme.fontFamily
         font.pixelSize: TypeScale.body
         Accessible.role: Accessible.StaticText
         Accessible.name: text
+    }
+    UserErrorNotice {
+        Layout.fillWidth: true
+        title: qsTr("Kiểm tra MCP chưa thành công")
+        details: root.bridge.connectionState === "error" ? root.bridge.connectionMessage : ""
     }
     ColumnLayout {
         Layout.fillWidth: true

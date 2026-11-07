@@ -16,7 +16,7 @@ def test_batch_details_layout_and_large_lists(width, overrides):
 
 
 def exercise(width, overrides):
-    from PySide6.QtCore import QByteArray, QUrl, QObject
+    from PySide6.QtCore import QByteArray, QUrl, QObject, Slot
     from PySide6.QtGui import QGuiApplication, QFont, QFontDatabase
     from PySide6.QtQml import QQmlComponent, QQmlEngine
     from PySide6.QtQuick import QQuickWindow
@@ -31,6 +31,12 @@ def exercise(width, overrides):
             QFontDatabase.addApplicationFont(str(path))
     app.setFont(QFont("Segoe UI Variable"))
     engine = QQmlEngine()
+    class Backend(QObject):
+        @Slot(str, str, str)
+        def presentUserError(self, title, detail, log):
+            pass
+    backend = Backend()
+    engine.rootContext().setContextProperty("AppController", backend)
     warnings = []
     engine.warnings.connect(lambda items: warnings.extend(item.toString() for item in items))
     directory = Path(__file__).parents[1] / "src/haizflow/desktop/qml"

@@ -1,4 +1,7 @@
 module HaizFlow
+SettingsPageLoader 1.0 SettingsPageLoader.qml
+UserErrorNotice 1.0 UserErrorNotice.qml
+singleton ErrorPresentation 1.0 ErrorPresentation.qml
 TranslationApiEntryForm 1.0 TranslationApiEntryForm.qml
 TranslationProjectModelDialog 1.0 TranslationProjectModelDialog.qml
 TranslationDataConsentDialog 1.0 TranslationDataConsentDialog.qml

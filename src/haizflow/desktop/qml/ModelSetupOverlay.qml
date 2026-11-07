@@ -60,7 +60,8 @@ FocusScope {
 
                 Text {
                     Layout.fillWidth: true
-                    text: I18n.runtimeStatus(AppController.modelSetupDetail)
+                    visible: AppController.modelSetupState !== "failed"
+                    text: ErrorPresentation.summary(I18n.runtimeStatus(AppController.modelSetupDetail), qsTr("Đang chuẩn bị gói tài nguyên."))
                     color: AppController.modelSetupState === "failed"
                         ? Theme.danger : Theme.textMuted
                     font.pixelSize: Theme.body
@@ -70,6 +71,11 @@ FocusScope {
             }
         }
 
+        UserErrorNotice {
+            Layout.fillWidth: true
+            title: qsTr("Cài đặt gói chưa hoàn tất")
+            details: AppController.modelSetupState === "failed" ? AppController.modelSetupDetail : ""
+        }
         ColumnLayout {
             Layout.fillWidth: true
             visible: AppController.modelSetupBusy

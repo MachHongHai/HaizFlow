@@ -19,6 +19,7 @@ RowLayout {
     property string deleteText: qsTr("Xóa dự án")
     property bool deleteEnabled: true
     property string menuProjectKey: ""
+    property string projectKey: AppController.projectKey
 
     signal projectFolderRequested()
     signal inputVideoRequested()
@@ -31,6 +32,7 @@ RowLayout {
 
     IconButton {
         id: moreButton
+        objectName: "projectMoreButton"
 
         property bool menuWasOpenOnPress: false
 
@@ -54,7 +56,7 @@ RowLayout {
             y: parent.height + Theme.space4
             padding: Theme.space4
             closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
-            onAboutToShow: root.menuProjectKey = AppController.projectKey
+            onAboutToShow: root.menuProjectKey = root.projectKey
 
             background: Rectangle {
                 radius: Theme.radiusSmall
@@ -88,6 +90,7 @@ RowLayout {
 
             AppMenuItem {
                 text: qsTr("Log kỹ thuật")
+                objectName: "projectTechnicalLogAction"
                 iconGlyph: "\uE9D9"
                 collapsed: !root.showTechnicalLog
                 enabled: root.technicalLogEnabled

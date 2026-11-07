@@ -337,6 +337,21 @@ ApplicationWindow {
 
     AppAlertDialog {
         id: appAlertDialog
+        onTechnicalDetailsRequested: (title, detail, logText) => AppController.showErrorDetails(title, detail, logText)
+    }
+
+    LazyDialogLoader {
+        id: technicalErrorLogLoader
+        property string capturedTitle: ""
+        property string capturedText: ""
+        sourceComponent: Component {
+            ActivityLogDialog {
+                objectName: "globalErrorTechnicalLog"
+                detailText: technicalErrorLogLoader.capturedTitle
+                logText: technicalErrorLogLoader.capturedText
+                onClosed: technicalErrorLogLoader.release()
+            }
+        }
     }
 
     ConfirmDialog {
@@ -408,10 +423,17 @@ ApplicationWindow {
         }
 
         function onAppAlertRequested(title, message, severity) {
-            if (severity === "critical")
-                appAlertDialog.showAlert(title, message, severity);
-            else
-                toastStack.show(title, message, severity, severity === "warning" ? 6200 : 4200);
+            toastStack.show(title, message, severity, severity === "warning" ? 6200 : 4200);
+        }
+
+        function onUserErrorRequested(title, detail, logText) {
+            toastStack.show(title, detail, "critical", 0, logText);
+        }
+
+        function onTechnicalErrorLogRequested(title, text) {
+            technicalErrorLogLoader.capturedTitle = title;
+            technicalErrorLogLoader.capturedText = text;
+            technicalErrorLogLoader.invoke("open");
         }
 
         function onAppConfirmationRequested(title, message) {
@@ -523,7 +545,6 @@ ApplicationWindow {
                 compact: root.compactNavigation
                 currentSection: root.navigationSection()
                 onSectionRequested: function (section) {
-                    AppController.refreshVideos();
                     if (section === "single")
                         root.navigate(root.routeSingleProjects);
                     else if (section === "manual")
@@ -558,7 +579,6 @@ ApplicationWindow {
                         root.openProjectWorkspace(returnRoute, workspaceRoute);
                     }
                     onNavigateRequested: function (route) {
-                        AppController.refreshVideos();
                         root.navigate(route);
                     }
                     onReviewTranslationRequested: translationReviewDialogLoader.invoke("open", [])
@@ -615,7 +635,7 @@ ApplicationWindow {
     ToastStack {
         id: toastStack
         parent: Overlay.overlay
-        onDetailsRequested: (title, message, tone) => appAlertDialog.showAlert(title, message, tone)
+        onDetailsRequested: (title, message, tone, logText) => AppController.showAlertDetails(title, message, tone, logText)
         anchors.top: parent.top
         anchors.right: parent.right
         anchors.topMargin: Theme.space16 + (root.projectWorkspaceVisible ? UiMetrics.toolbarHeight : 40)

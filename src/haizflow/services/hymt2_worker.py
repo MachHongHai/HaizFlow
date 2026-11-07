@@ -533,6 +533,10 @@ def _load_model(model_name: str):
     profile = cpu_runtime_profile(runtime_profile())
     backend = profile.hymt2_backend
     preference = translation_model_preference()
+    if processing_device_preference() == "gpu" and preference != "q4" and not profile.cuda_available:
+        from haizflow.core.gpu_errors import notice
+
+        raise RuntimeError(notice("CUDA is unavailable"))
     if preference == "full":
         if not profile.cuda_available:
             raise RuntimeError("HY-MT2 GPU cần GPU NVIDIA tương thích. Hãy chọn HY-MT2 CPU trong dự án.")
@@ -617,6 +621,10 @@ def _load_model(model_name: str):
     torch = torch_runtime or _prepare_torch_runtime()
     from transformers import AutoModelForCausalLM, AutoTokenizer
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "cpu" and (preference == "full" or processing_device_preference() == "gpu"):
+        from haizflow.core.gpu_errors import notice
+
+        raise RuntimeError(notice("CUDA is unavailable"))
     if device == "cuda":
         requested_dtype = getattr(profile, "hymt2_dtype", "float16")
         bf16_supported = bool(getattr(torch.cuda, "is_bf16_supported", lambda: False)())

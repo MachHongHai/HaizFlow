@@ -405,7 +405,7 @@ def commands(bridge, monkeypatch):
 
 
 def test_capabilities_cover_all_allowlisted_commands(commands):
-    capabilities = commands.dispatch("capabilities", {})
+    capabilities = commands.dispatch("capabilities", {"include_schemas": True})
     assert set(capabilities["commands"]) == COMMANDS
     assert {"batch_start", "channel_scan", "publish", "delete", "edit_subtitle"} <= COMMANDS
     export_schema = capabilities["commands"]["export"]["input_schema"]
@@ -417,8 +417,8 @@ def test_capabilities_cover_all_allowlisted_commands(commands):
 def test_compact_discovery_is_smaller_and_named_schemas_remain_complete(commands):
     from haizflow.mcp.efficiency import encoded_size
 
-    full = commands.dispatch("capabilities", {})
-    small = commands.dispatch("capabilities", {"include_schemas": False})
+    full = commands.dispatch("capabilities", {"include_schemas": True})
+    small = commands.dispatch("capabilities", {})
     assert set(full["commands"]) == set(small["commands"])
     assert encoded_size(small) < encoded_size(full) * .4
     scoped = commands.dispatch("capabilities", {"command_names": ["translation_patch", "export"]})
@@ -1411,3 +1411,147 @@ def test_pipe_replay_conflict_revocation_and_bad_frames(bridge):
     assert "error" in send(b"[]\n")
     assert "error" in send(b"{}\n{}\n")
     assert "error" in send(b"not-json\n")
+
+
+def test_model_discovery_uses_filtered_cached_openrouter_metadata_without_keys(commands, monkeypatch):
+    from haizflow.services import translation_catalog_cache, translation_connections, translation_privacy
+
+    identifier = "a" * 32
+    monkeypatch.setattr(translation_connections, "get_connection", lambda value: {
+        "id": identifier, "provider": "openrouter", "model": "", "format": "json_object"})
+    monkeypatch.setattr(translation_connections.secure_credentials, "read_secret",
+                        Mock(side_effect=AssertionError("Discovery must never read secrets")))
+    monkeypatch.setattr(translation_privacy, "allowed", lambda profile: False)
+    monkeypatch.setattr(translation_catalog_cache, "load", lambda: [
+        {"value": "vendor/paid", "label": "A paid", "pricing_kind": "paid"},
+        {"value": "nvidia/nemotron-3.5-super-vl:free", "label": "Nemotron", "pricing_kind": "free"},
+        {"value": "dots-studio/dots-3-note-preview:free", "label": "Dots", "pricing_kind": "free"}])
+    result = commands.dispatch("translation_models", {"connection_id": identifier, "limit": 1})
+    assert result["total"] == 3 and result["has_more"]
+    assert result["provider"] == "openrouter" and result["catalogue"] == "offline_cached"
+    first = result["items"][0]
+    assert first["model"] == "dots-studio/dots-3-note-preview:free"
+    assert first["value"] == f"api:{identifier}:" + first["model"]
+    assert first["reasoning"]["toggle"] and first["pricing_kind"] == "free"
+    assert "base_url" not in str(result) and "api_key" not in str(result)
+    result = commands.dispatch("translation_models", {
+        "provider": "openrouter", "query": "NEMOTRON", "free_only": True})
+    assert result["total"] == 1 and not result["has_more"]
+    assert result["items"][0]["data_collection"]["required"]
+    assert not result["items"][0]["data_collection"]["allowed"]
+    assert "collect" in result["items"][0]["data_collection"]["notice"]
+    result = commands.dispatch("translation_models", {"provider": "openrouter", "offset": 1, "free_only": True})
+    assert result["total"] == 2 and len(result["items"]) == 1
+    assert result["requires_connection"] and "quota" in result["availability"]
+
+
+def test_model_discovery_and_scoped_options_work_in_read_many(commands):
+    result = commands.dispatch("read_many", {"requests": [
+        {"command": "translation_models", "arguments": {"provider": "gemini", "query": "3.5"}},
+        {"command": "options", "arguments": {"video_id": "test-video", "section": "export"}}]})
+    rows = result["results"]
+    assert rows[0]["result"]["items"][0]["reasoning"]["default"] == "minimal"
+    assert rows[1]["result"] == {"export_presets": ["source", "1080p", "1080p-high", "720p", "2160p"]}
+    assert commands.host._apply_config_to_video.call_count == 0
+
+
+@pytest.mark.parametrize("arguments", [{"limit": 0}, {"limit": 201}, {"offset": -1},
+    {"provider": "unknown"}, {"query": "x" * 201}, {"free_only": "true"}, {"connection_id": "missing"}])
+def test_bad_model_discovery_is_rejected_before_any_mutation(commands, arguments):
+    with pytest.raises(ValueError):
+        commands.dispatch("translation_models", arguments)
+    commands.host._apply_config_to_video.assert_not_called()
+
+
+def test_scoped_translation_snapshot_omits_voice_and_large_guidance(commands, monkeypatch):
+    from haizflow.mcp.efficiency import encoded_size
+    from haizflow.services import translation_connections
+
+    video = commands.host._catalog_videos["test-video"]
+    video.translation_model = "gemini-3.5-flash-lite"
+    video.gemini_translation_style = "natural"
+    video.gemini_translation_instructions = "x" * 4000
+    monkeypatch.setattr(translation_connections, "list_connections", lambda: [])
+    result = commands.dispatch("options", {"video_id": video.video_id, "section": "translation"})
+    assert result["style"] == "natural" and result["reasoning"]["effective"] == "minimal"
+    assert result["selected_reasoning"] == "" and result["model_lookup"] == "translation_models"
+    assert "natural" in result["styles"] and "voices" not in result
+    assert "instructions" not in result and encoded_size(result) < 1200
+
+
+@pytest.mark.parametrize("language,sample,expected", [
+    ("ja", "日本語", "Dela Gothic One"), ("ko", "안녕하세요", "Pretendard ExtraBold"),
+    ("zh", "你好", "Noto Sans SC Black"), ("vi", "Xin chào", "Bangers")])
+def test_font_discovery_follows_published_subtitle_language(commands, language, sample, expected):
+    video = commands.host._catalog_videos["test-video"]
+    video.subtitle_language, video.target_language = language, "en"
+    result = commands.dispatch("subtitle_fonts", {"video_id": video.video_id, "sample": sample})
+    assert result["language"] == language and result["effective"] == expected
+    assert result["automatic_by_script"] and expected in result["families"]
+    assert commands.dispatch("options", {"video_id": video.video_id, "section": "subtitles"})["language"] == language
+    commands.host._apply_config_to_video.assert_not_called()
+
+
+@pytest.mark.parametrize("project_type", ["manual", "single"])
+@pytest.mark.parametrize("effort", ["", "minimal", "high"])
+def test_configure_style_keeps_reasoning_and_new_model_resets_it(commands, bridge, project_type, effort):
+    bridge.setPermission("write", True)
+    video = commands.host._catalog_videos["test-video"]
+    video.project_type, video.translation_model = project_type, "gemini-3.5-flash-lite"
+    video.translation_reasoning_effort = effort
+    commands.dispatch("configure", {"video_id": video.video_id, "settings": {"gemini_translation_style": "natural"}})
+    config = commands.host._apply_config_to_video.call_args.args[1]
+    assert config.translation_reasoning_effort == effort and config.gemini_translation_style == "natural"
+    commands.dispatch("configure", {"video_id": video.video_id, "settings": {"translation_model": "gemini-3.8-flash"}})
+    assert commands.host._apply_config_to_video.call_args.args[1].translation_reasoning_effort == ""
+    calls = commands.host._apply_config_to_video.call_count
+    with pytest.raises(ValueError, match="reasoning"):
+        commands.dispatch("configure", {"video_id": video.video_id, "settings": {
+            "translation_model": "gemini-3.8-flash", "translation_reasoning_effort": "minimal"}})
+    assert commands.host._apply_config_to_video.call_count == calls
+
+
+def test_batch_configure_uses_batch_fields_without_opening_confirmation(commands, bridge):
+    from haizflow.services import batch_settings
+
+    bridge.setPermission("write", True)
+    video = commands.host._catalog_videos["test-video"]
+    commands.host._project_summaries_by_key["project:test"]["project_type"] = "batch"
+    current = batch_settings.values_for(video)
+    current.update(translationModel="gemini-3.5-flash-lite", translationReasoningEffort="high")
+    commands.host.batchSettings = Mock(return_value=current)
+    commands.host.applyBatchSettingsValues = Mock(side_effect=AssertionError("Must not open a modal"))
+    apply = commands.host._project_commands.apply_batch_settings_values
+    apply.return_value = True
+    result = commands.dispatch("batch_configure", {"project_id": "project:test",
+        "settings": {"geminiTranslationStyle": "natural"}, "replace_overrides": True})
+    assert result["accepted"]
+    apply.assert_called_once_with("project:test", {"geminiTranslationStyle": "natural"}, True)
+    commands.dispatch("batch_configure", {"project_id": "project:test",
+        "settings": {"translationModel": "gemini-3.8-flash"}})
+    assert apply.call_args.args[1]["translationReasoningEffort"] == ""
+    for settings in ({"translationModel": "gemini-3.8-flash", "translationReasoningEffort": "minimal"},
+                     {"translation_model": "gemini-3.8-flash"}, {}, {"translationModel": 42}):
+        count = apply.call_count
+        with pytest.raises(ValueError):
+            commands.dispatch("batch_configure", {"project_id": "project:test", "settings": settings})
+        assert apply.call_count == count
+
+
+def test_voice_studio_and_library_are_no_longer_exposed(commands, bridge):
+    removed = {
+        "voice_design", "voice_design_status", "voice_design_cancel", "voice_presets",
+        "voice_preset_save", "voice_preset_archive", "voice_audio_export",
+        "voice_audio_export_status", "voice_audio_export_cancel", "voice_studio_logs",
+        "vieneu_studio_status", "vieneu_reference_import", "vieneu_preview",
+        "vieneu_preview_cancel", "vieneu_preset_save",
+    }
+    schema = commands.dispatch("capabilities", {"area": "voice"})
+    assert not removed & schema["commands"].keys()
+    assert {"voice_configuration", "voice_run", "voice_reference", "voice_reference_clear"} <= schema["commands"].keys()
+    bridge.setPermission("write", True)
+    for name in removed:
+        assert name not in COMMANDS
+        assert not hasattr(commands, "_" + name)
+        with pytest.raises(ValueError):
+            commands.dispatch(name, {})

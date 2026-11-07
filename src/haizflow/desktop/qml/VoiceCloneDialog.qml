@@ -9,7 +9,7 @@ FloatingToolDialog {
     id: root
 
     expandedWidth: 600
-    expandedHeight: 470 + (hasSample ? 40 : 0) + (recordingError.length > 0 ? 50 : 0)
+    expandedHeight: 470 + (hasSample ? 40 : 0) + (captureError.visible ? captureError.implicitHeight : 0)
     toolTitle: qsTr("Nhân bản giọng")
     toolSubtitle: preferredProvider.indexOf("vieneu") === 0
         ? qsTr("VieNeu · Mẫu 3–8 giây, một người nói, ít nhạc hoặc tiếng ồn") : ""
@@ -343,14 +343,11 @@ FloatingToolDialog {
                 }
             }
 
-            Text {
+            UserErrorNotice {
+                id: captureError
                 Layout.fillWidth: true
-                visible: root.recordingError.length > 0
-                text: root.recordingError
-                color: Theme.danger
-                font.pixelSize: TypeScale.metadata
-                wrapMode: Text.WordWrap
-                textFormat: Text.PlainText
+                title: qsTr("Chưa ghi được mẫu giọng")
+                details: root.recordingError
             }
 
             RowLayout {

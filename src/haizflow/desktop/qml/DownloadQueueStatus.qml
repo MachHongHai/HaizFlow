@@ -48,7 +48,7 @@ AppSurface {
 
     RowLayout {
         Layout.fillWidth: true
-        visible: root.downloader.status.length > 0 && !root.channelProgressShownInPage
+        visible: root.downloader.status.length > 0 && !root.channelProgressShownInPage && !root.failed
 
         Text {
             Layout.fillWidth: true
@@ -80,6 +80,11 @@ AppSurface {
         }
     }
 
+    UserErrorNotice {
+        Layout.fillWidth: true
+        title: qsTr("Tải xuống chưa hoàn tất")
+        details: root.failed ? root.downloader.status : ""
+    }
     AppProgressBar {
         Layout.fillWidth: true
         visible: root.downloader.busy && !root.channelProgressShownInPage

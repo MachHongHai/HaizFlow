@@ -1199,34 +1199,23 @@ def synthesize_batch_to_mp3(
             )
             check_cancellation(cancellation_id)
         if return_code != 0 and not recovered_invalid_batch and str(request["device"]).startswith("cuda") and _is_cuda_resource_failure(stderr):
-            # The failed worker has exited. Flush closed WAVs that were written
-            # after its last status poll, then retry only unpublished sentences.
+            # Keep closed clips, but never turn a GPU selection into slow CPU work.
             publish_completed(len(output_pairs), len(output_pairs), "synthesizing")
             remaining = [index for index in range(len(output_pairs)) if index not in encoded]
             if not remaining:
                 return
             log_to_video(
                 video_id,
-                "[TTS][WARN] OmniVoice GPU resource failure; retrying missing sentences on CPU. "
+                "[TTS][ERROR] OmniVoice GPU failed; automatic CPU fallback is disabled. "
                 f"completed={len(encoded)}/{len(output_pairs)} remaining={len(remaining)} "
                 f"reason={str(stderr).strip()[-500:]}",
             )
-            for index in remaining:
-                output_pairs[index][0].unlink(missing_ok=True)
-            Path(str(request["status_path"])).unlink(missing_ok=True)
-            cpu_request = {**request, "device": "cpu", "cpu_threads": _cpu_voice_threads(),
-                           "items": [request_items[index] for index in remaining]}
-            request_path.write_text(json.dumps(cpu_request, ensure_ascii=False), encoding="utf-8")
-
-            def publish_cpu(completed, _total, stage):
-                publish_indices(remaining[:max(0, int(completed))], stage)
-
-            publish_cpu(0, len(remaining), "retrying_voice_on_cpu")
             if keep_worker_warm:
                 with _PERSISTENT_WORKER_LOCK:
                     _stop_persistent_worker_unlocked()
-            return_code, stderr = worker_runner(request_path, cpu_request, video_id, publish_cpu, **worker_kwargs)
-            check_cancellation(cancellation_id)
+            from haizflow.core.gpu_errors import notice
+
+            raise RuntimeError(notice(stderr))
         if encoding_errors:
             raise encoding_errors[0]
         if return_code != 0:
@@ -1500,7 +1489,7 @@ def _validated_waveforms(generated, count, np, torch):
 def _generate_bounded_batch(generate, items, torch, device, *, retry_single_oom=None):
     """Reduce invalid paired audio or CUDA OOM to individual synthesis.
 
-    Never retry arbitrary SDK errors, a corrupt single output, or CPU OOM.
+    Retry CPU allocation failures only when a caller provides a smaller-chunk retry.
     Completed sentences remain untouched and quality settings stay unchanged.
     """
     candidate = list(items)
@@ -1510,14 +1499,15 @@ def _generate_bounded_batch(generate, items, torch, device, *, retry_single_oom=
         retry_with_shorter_chunks = False
         try:
             return generate(candidate), candidate, retries
-        except RuntimeError as exc:
-            allocation_error = isinstance(exc, torch.OutOfMemoryError) or any(
+        except (RuntimeError, MemoryError) as exc:
+            allocation_error = isinstance(exc, (torch.OutOfMemoryError, MemoryError)) or any(
                 marker in str(exc).lower() for marker in (
                     "out of memory", "cublas_status_alloc_failed", "cudnn_status_alloc_failed", "not enough memory",
+                    "can't allocate memory", "cannot allocate memory",
                 )
             )
             invalid_batch = isinstance(exc, _InvalidSynthesisAudio)
-            if len(candidate) == 1 and device.startswith("cuda") and allocation_error and retry_single_oom is not None:
+            if len(candidate) == 1 and allocation_error and retry_single_oom is not None:
                 retry_with_shorter_chunks = True
             elif (len(candidate) == 1 or not (invalid_batch or (device.startswith("cuda") and allocation_error))):
                 raise

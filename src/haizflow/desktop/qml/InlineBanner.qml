@@ -10,21 +10,26 @@ Rectangle {
     property string title: ""
     property string message: ""
     property bool busy: false
+    readonly property bool issue: ErrorPresentation.isIssue(tone) || ErrorPresentation.technical(message)
+    property bool dismissed: false
+    onMessageChanged: dismissed = false
     default property alias actions: actionArea.data
     readonly property color accent: tone === "danger" ? Theme.danger
         : tone === "warning" ? Theme.warning
         : tone === "success" ? Theme.success : Theme.interactive
 
-    implicitHeight: Math.max(52, bannerContent.implicitHeight + 20)
+    implicitHeight: dismissed ? 0 : Math.max(52, bannerContent.implicitHeight + 20)
+    visible: !dismissed
     color: tone === "danger" ? Theme.dangerMuted
         : tone === "warning" ? Theme.warningMuted
         : tone === "success" ? Theme.successMuted : Theme.interactiveMuted
-    border.width: 1
+    border.width: dismissed ? 0 : 1
     border.color: root.accent
     radius: Theme.radiusSmall
 
     RowLayout {
         id: bannerContent
+        visible: !root.dismissed
         anchors.fill: parent
         anchors.margins: 10
         spacing: Theme.space8
@@ -53,7 +58,7 @@ Rectangle {
 
             Text {
                 Layout.fillWidth: true
-                text: root.message
+                text: root.issue ? ErrorPresentation.summary(root.message) : root.message
                 color: Theme.textMuted
                 font.family: Theme.fontFamily
                 font.pixelSize: TypeScale.label
@@ -65,6 +70,20 @@ Rectangle {
         RowLayout {
             id: actionArea
             spacing: Theme.space8
+            StudioButton {
+                visible: root.issue
+                text: qsTr("Chi tiết")
+                onClicked: AppController.showErrorDetails(root.title, root.message)
+            }
+            StudioButton {
+                visible: root.issue
+                text: qsTr("Xác nhận")
+                onClicked: root.dismissed = true
+            }
+            StudioIconButton {
+                visible: root.issue; iconName: "close"; toolTipText: qsTr("Đóng")
+                onClicked: root.dismissed = true
+            }
         }
     }
 }

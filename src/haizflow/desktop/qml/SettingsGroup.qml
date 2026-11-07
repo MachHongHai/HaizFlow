@@ -20,6 +20,7 @@ Rectangle {
         spacing: Theme.space20
         Text {
             Layout.fillWidth: true
+            visible: root.title.length > 0
             text: root.title
             color: Theme.text
             font.family: Theme.fontFamily

@@ -115,7 +115,7 @@ def test_storage_errors_with_gpu_named_paths_never_trigger_cpu_recovery(code, wr
         error.args = (message,)
     with patch.object(process_video, "runtime_profile", return_value=SimpleNamespace(cuda_available=True)), \
          patch.object(process_video, "get_video", return_value=SimpleNamespace(gpu_recovery_attempted=False)), \
-         patch.object(process_video, "probe_runtime") as probe, \
+         patch("haizflow.core.runtime_probe.probe_runtime") as probe, \
          patch.object(process_video, "update_video") as update:
         assert not process_video._is_gpu_runtime_failure(error)
         assert not process_video._recover_gpu_to_cpu("fixture", "translation", error)
@@ -203,7 +203,7 @@ def test_stage_windows_failure_releases_runtime_and_retains_durable_results(tmp_
             patch.object(process_video, "runtime_profile", return_value=SimpleNamespace(cuda_available=True)),
             patch.object(process_video, "processing_device_preference", return_value="gpu"),
             patch.object(process_video, "translation_model_preference", return_value="full"),
-            patch.object(process_video, "probe_runtime") as probe,
+            patch("haizflow.core.runtime_probe.probe_runtime") as probe,
             patch.object(process_video, "configure_processing_device") as change_device,
         ):
             process_video.process_video_sync("fixture", _reporter=Mock())

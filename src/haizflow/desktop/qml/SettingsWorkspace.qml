@@ -8,8 +8,9 @@ Item {
     id: root
     required property string currentRoute
     signal navigateRequested(string route)
-    onVisibleChanged: AppController.setHardwareTelemetryActive(visible)
-    Component.onCompleted: AppController.setHardwareTelemetryActive(visible)
+    readonly property bool telemetryNeeded: visible && (currentRoute === "settings" || currentRoute === "packages")
+    onTelemetryNeededChanged: AppController.setHardwareTelemetryActive(telemetryNeeded)
+    Component.onDestruction: AppController.setHardwareTelemetryActive(false)
 
     ColumnLayout {
         anchors.fill: parent
@@ -29,6 +30,7 @@ Item {
             implicitHeight: tabs.implicitHeight
             NavigationTabs {
                 id: tabs
+                showUnderline: false
                 anchors.left: parent.left
                 currentValue: root.currentRoute
                 options: [
@@ -40,33 +42,38 @@ Item {
                 onActivated: function(value) { root.navigateRequested(value); }
             }
         }
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.maximumWidth: 920
-            Layout.alignment: Qt.AlignHCenter
-            Layout.preferredHeight: 1
-            color: Theme.divider
-        }
         StackLayout {
             id: settingsPages
             Layout.fillWidth: true
             Layout.fillHeight: true
             currentIndex: root.currentRoute === "api-keys" ? 1
                 : root.currentRoute === "packages" ? 2 : root.currentRoute === "mcp" ? 3 : 0
-            SettingsPage { Layout.fillWidth: true; Layout.fillHeight: true }
-            ApiKeysPage { Layout.fillWidth: true; Layout.fillHeight: true }
-            Loader {
+            SettingsPageLoader {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                active: settingsPages.currentIndex === 2
-                asynchronous: true
+                selected: settingsPages.currentIndex === 0
+                workspaceVisible: root.visible
+                sourceComponent: Component { SettingsPage {} }
+            }
+            SettingsPageLoader {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                selected: settingsPages.currentIndex === 1
+                workspaceVisible: root.visible
+                sourceComponent: Component { ApiKeysPage {} }
+            }
+            SettingsPageLoader {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                selected: settingsPages.currentIndex === 2
+                workspaceVisible: root.visible
                 sourceComponent: Component { ResourcePacksPage {} }
             }
-            Loader {
+            SettingsPageLoader {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                active: settingsPages.currentIndex === 3
-                asynchronous: true
+                selected: settingsPages.currentIndex === 3
+                workspaceVisible: root.visible
                 sourceComponent: Component { McpSettingsPage {} }
             }
         }

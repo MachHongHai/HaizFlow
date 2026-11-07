@@ -19,6 +19,28 @@ from haizflow.services import hymt2_worker, translation
 
 
 class GpuRecoveryTests(unittest.TestCase):
+    def test_gpu_failure_notice_requires_an_explicit_cpu_choice(self):
+        from haizflow.core.gpu_errors import notice, unavailable
+
+        self.assertTrue(unavailable("No CUDA GPUs are available"))
+        self.assertIn("không khả dụng", notice("CUDA is unavailable"))
+        self.assertIn("thiếu bộ nhớ", notice("CUDA out of memory"))
+        self.assertIn("App không tự đổi thiết bị", notice("CUDA is unavailable"))
+
+    def test_hymt_explicit_gpu_stops_when_cuda_is_unavailable(self):
+        profile = SimpleNamespace(cuda_available=False, hymt2_backend="transformers")
+        with (
+            mock.patch.object(hymt2_worker, "runtime_profile", return_value=profile),
+            mock.patch("haizflow.core.hardware.cpu_runtime_profile", return_value=profile),
+            mock.patch.object(hymt2_worker, "processing_device_preference", return_value="gpu"),
+            mock.patch.object(hymt2_worker, "translation_model_preference", return_value="full"),
+            mock.patch.object(hymt2_worker, "_prepare_torch_runtime") as prepare,
+            mock.patch.object(hymt2_worker, "_cpu_model_path") as cpu,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "GPU không khả dụng"):
+                hymt2_worker._load_model("HY-MT2")
+        prepare.assert_not_called()
+        cpu.assert_not_called()
     def test_low_vram_translation_prefers_installed_cpu_engine(self):
         profile = SimpleNamespace(key="cuda_low_memory")
         def engine_command(_capability, _command, context):
@@ -100,7 +122,7 @@ class GpuRecoveryTests(unittest.TestCase):
             with self.assertRaises(process_video.GpuRuntimeUnavailable):
                 process_video._ensure_gpu_available("translation")
 
-    def test_gpu_failure_switches_one_video_to_cpu_once(self):
+    def test_gpu_failure_keeps_the_selected_device_and_does_not_run_cpu(self):
         video = SimpleNamespace(gpu_recovery_attempted=False)
         profile = SimpleNamespace(cuda_available=True)
         with (
@@ -108,11 +130,10 @@ class GpuRecoveryTests(unittest.TestCase):
             mock.patch.object(process_video, "runtime_profile", return_value=profile),
             mock.patch.object(process_video, "update_video") as update_video,
             mock.patch.object(process_video, "log_to_video"),
-            mock.patch("haizflow.pipeline.transcribe.release_warm_whisperx_model"),
             mock.patch.object(process_video, "shutdown_hymt2_worker"),
             # Recovery routing is deterministic; real Torch/CPU engine probes
             # have separate coverage and must not run on the test host here.
-            mock.patch.object(process_video, "probe_runtime", return_value=SimpleNamespace(ok=True)),
+            mock.patch("haizflow.core.runtime_probe.probe_runtime") as probe,
             mock.patch.object(process_video, "configure_processing_device") as configure,
         ):
             recovered = process_video._recover_gpu_to_cpu(
@@ -121,10 +142,10 @@ class GpuRecoveryTests(unittest.TestCase):
                 RuntimeError("CUDA driver lost"),
             )
 
-        self.assertTrue(recovered)
-        configure.assert_called_once_with("cpu")
-        self.assertTrue(update_video.call_args.kwargs["gpu_recovery_attempted"])
-        self.assertEqual(update_video.call_args.kwargs["runtime_recovery_step"], "translating")
+        self.assertFalse(recovered)
+        configure.assert_not_called()
+        update_video.assert_not_called()
+        probe.assert_not_called()
 
     def test_second_gpu_failure_is_not_retried_automatically(self):
         video = SimpleNamespace(gpu_recovery_attempted=True)

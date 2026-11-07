@@ -91,13 +91,10 @@ FloatingToolDialog {
                 onRegionEdited: function(region) { root.draftRegion = region; }
             }
         }
-        Text {
+        UserErrorNotice {
             Layout.fillWidth: true
-            visible: root.errorText.length > 0
-            text: root.errorText
-            color: Theme.warning
-            font.pixelSize: TypeScale.label
-            wrapMode: Text.Wrap
+            title: qsTr("Chưa lưu được vùng che")
+            details: root.errorText
         }
         RowLayout {
             Layout.fillWidth: true

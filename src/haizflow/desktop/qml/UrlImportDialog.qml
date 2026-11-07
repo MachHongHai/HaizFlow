@@ -165,12 +165,12 @@ AppDialog {
 
     RowLayout {
         Layout.fillWidth: true
-        visible: root.hasStatus
+        visible: root.hasStatus && !root.failed
         spacing: Theme.space8
         Text {
             Layout.fillWidth: true
             text: root.statusText
-            color: root.failed ? Theme.danger : Theme.textMuted
+            color: Theme.textMuted
             font.family: Theme.fontFamily
             font.pixelSize: TypeScale.metadata
             wrapMode: Text.Wrap
@@ -185,6 +185,11 @@ AppDialog {
         }
     }
 
+    UserErrorNotice {
+        Layout.fillWidth: true
+        title: qsTr("Không nhập được video")
+        details: root.failed ? root.importer.status : ""
+    }
     DouyinSessionAction {
         id: douyinAction
         Layout.fillWidth: true

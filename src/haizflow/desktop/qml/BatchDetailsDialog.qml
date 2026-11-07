@@ -116,15 +116,20 @@ AppDialog {
                 }
                 TextEdit {
                     Layout.fillWidth: true
-                    visible: text.length > 0
-                    text: root.overrides ? root.differences(row.modelData.differences) : (row.modelData.error || "")
+                    visible: root.overrides && text.length > 0
+                    text: root.overrides ? root.differences(row.modelData.differences) : ""
                     textFormat: TextEdit.PlainText
                     readOnly: true
                     selectByMouse: true
                     wrapMode: TextEdit.Wrap
-                    color: root.overrides ? Theme.warning : Theme.danger
+                    color: Theme.textMuted
                     font.family: Theme.fontFamily
                     font.pixelSize: TypeScale.metadata
+                }
+                UserErrorNotice {
+                    Layout.fillWidth: true
+                    title: qsTr("Xử lý video chưa hoàn tất")
+                    details: !root.overrides ? String(row.modelData.error || "") : ""
                 }
             }
         }

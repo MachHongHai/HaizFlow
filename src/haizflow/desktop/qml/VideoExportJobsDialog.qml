@@ -61,7 +61,8 @@ AppDialog {
                                 + (exportJob.measured ? " · " + exportJob.progressPercent + "%" : ""))
                             : exportJob.modelData.status === "exporting" ? qsTr("Đang lưu · %1%").arg(exportJob.modelData.progress)
                             : exportJob.modelData.status === "done" ? qsTr("Đã xuất thành công")
-                            : exportJob.modelData.status === "pending" ? qsTr("Đang chờ") : exportJob.modelData.error
+                            : exportJob.modelData.status === "pending" ? qsTr("Đang chờ")
+                            : exportJob.modelData.status === "cancelled" ? qsTr("Đã hủy xuất") : qsTr("Xuất chưa hoàn tất")
                         textFormat: Text.PlainText
                         wrapMode: Text.WordWrap
                         color: exportJob.modelData.status === "failed" ? Theme.danger : Theme.textMuted
@@ -75,6 +76,11 @@ AppDialog {
                         value: exportJob.progressPercent
                         indeterminate: !exportJob.measured
                         active: visible
+                    }
+                    UserErrorNotice {
+                        Layout.fillWidth: true
+                        title: qsTr("Xuất video chưa hoàn tất")
+                        details: exportJob.modelData.status === "failed" ? String(exportJob.modelData.error || qsTr("Không thể xuất video.")) : ""
                     }
                     Text {
                         Layout.fillWidth: true

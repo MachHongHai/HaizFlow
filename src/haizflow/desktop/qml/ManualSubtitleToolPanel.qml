@@ -102,13 +102,18 @@ ColumnLayout {
         }
         Text {
             Layout.fillWidth: true
-            visible: subtitleEditor.saveStatus === "error" || subtitleEditor.saveStatus === "saving"
-            text: subtitleEditor.saveStatus === "error" ? subtitleEditor.errorMessage : qsTr("Đang lưu…")
-            color: subtitleEditor.saveStatus === "error" ? Theme.danger : Theme.textMuted
+            visible: subtitleEditor.saveStatus === "saving"
+            text: qsTr("Đang lưu…")
+            color: Theme.textMuted
             font.family: Theme.fontFamily
             font.pixelSize: TypeScale.metadata
             wrapMode: Text.Wrap
             textFormat: Text.PlainText
+        }
+        UserErrorNotice {
+            Layout.fillWidth: true
+            title: qsTr("Chưa lưu được phụ đề")
+            details: subtitleEditor.saveStatus === "error" ? subtitleEditor.errorMessage : ""
         }
         RowLayout {
             Layout.fillWidth: true
