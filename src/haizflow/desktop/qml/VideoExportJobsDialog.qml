@@ -21,6 +21,8 @@ AppDialog {
     readonly property bool scopeBusy: scopedJobs.some(job => ["preparing", "pending", "rendering", "exporting"].includes(job.status))
 
     function openForVideos(ids) {
+        if (!(controller.videoExportJobs || []).some(job => ids.includes(job.videoId)))
+            return;
         videoIds = ids.slice();
         controller.setVideoExportDialogScope(videoIds);
         open();

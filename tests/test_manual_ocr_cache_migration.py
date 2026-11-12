@@ -80,6 +80,54 @@ def test_old_full_source_primary_ocr_hydrates_after_each_app_restart_without_wor
     assert after == before
 
 
+@pytest.mark.parametrize("layered", [False, True])
+def test_existing_source_generation_reopens_pre_epoch_preview_without_render_or_writes(tmp_path, layered):
+    old, current = old_and_layered_settings()
+    cached = current if layered else old
+    output = legacy_cache(tmp_path, cached)
+    current["source_identity"]["source_replacement"] = 6
+    expected = fingerprint(current)
+    before = {path.relative_to(tmp_path): path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
+    for _ in range(3):
+        controller = EditorPreviewController(SimpleNamespace())
+        with patch("haizflow.desktop.editor_preview_controller.get_video_duration",
+                   side_effect=AssertionError("Reopening must not probe or render")):
+            controller._restore_manual_disk_cache(tmp_path, expected, current)
+        assert controller._completed_requests[expected][0] == str(output.resolve())
+        assert controller._completed_base_sources[expected][0] == str(output.resolve())
+    assert before == {path.relative_to(tmp_path): path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
+
+
+def test_exact_new_epoch_cache_takes_priority_over_compatible_older_key(tmp_path):
+    _old, current = old_and_layered_settings()
+    legacy_cache(tmp_path, current)
+    current["source_identity"]["source_replacement"] = 2
+    expected_output = legacy_cache(tmp_path, current)
+    controller = EditorPreviewController(SimpleNamespace())
+    controller._restore_manual_disk_cache(tmp_path, fingerprint(current), current)
+    assert controller._completed_requests[fingerprint(current)][0] == str(expected_output.resolve())
+
+
+@pytest.mark.parametrize("change", ["path", "size", "mtime_ns", "geometry", "mode", "intervals"])
+def test_pre_epoch_fallback_still_requires_the_same_source_and_treatment(tmp_path, change):
+    _old, current = old_and_layered_settings()
+    current["source_identity"]["mtime_ns"] = 10
+    legacy_cache(tmp_path, current)
+    current["source_identity"]["source_replacement"] = 2
+    if change in {"path", "size", "mtime_ns"}:
+        current["source_identity"][change] = "changed.mp4" if change == "path" else 999
+    elif change == "geometry":
+        current["ocr_region"]["treatment_layers"][0]["region"]["x_percent"] += 1
+    elif change == "mode":
+        current["removal_mode"] = "blur"
+        current["ocr_region"]["treatment_layers"][0]["mode"] = "blur"
+    else:
+        current["original_subtitle_intervals"] = [(0, 1)]
+    controller = EditorPreviewController(SimpleNamespace())
+    controller._restore_manual_disk_cache(tmp_path, fingerprint(current), current)
+    assert not controller._completed_requests
+
+
 @pytest.mark.parametrize("change", ["geometry", "mode", "start", "shorter", "extra", "not-primary",
                                    "source", "crop", "encoding", "intervals", "auto", "keep", "trim",
                                    "malformed-time"])

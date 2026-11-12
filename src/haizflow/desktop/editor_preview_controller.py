@@ -461,17 +461,27 @@ class EditorPreviewController:
         seen = {fingerprint[:20]}
         yield fingerprint[:20], "exact"
         if settings:
-            payload = cls._base_visual_cache_payload(settings)
-            for variant in cls._crop_cache_variants(payload):
-                key = hashlib.sha256(json.dumps(variant, ensure_ascii=False, sort_keys=True,
-                                               separators=(",", ":")).encode("utf-8")).hexdigest()[:20]
-                if key not in seen:
-                    seen.add(key)
-                    yield key, "numeric_crop"
-                legacy = cls._legacy_primary_ocr_fingerprint(settings, crop=variant["crop"])
-                if legacy and legacy[:20] not in seen:
-                    seen.add(legacy[:20])
-                    yield legacy[:20], "legacy_primary_ocr"
+            candidates = [(settings, "")]
+            identity = dict(settings.get("source_identity") or {})
+            if "source_replacement" in identity:
+                # Pre-epoch previews of this current source are still valid.
+                # Only temp/editor-preview is searched; source replacement
+                # transactionally retires that entire directory before commit.
+                # Never search immutable cache/manual or retired old-temp here.
+                identity.pop("source_replacement")
+                candidates.append(({**settings, "source_identity": identity}, "_source_epoch"))
+            for compatible, suffix in candidates:
+                payload = cls._base_visual_cache_payload(compatible)
+                for variant in cls._crop_cache_variants(payload):
+                    key = hashlib.sha256(json.dumps(variant, ensure_ascii=False, sort_keys=True,
+                                                   separators=(",", ":")).encode("utf-8")).hexdigest()[:20]
+                    if key not in seen:
+                        seen.add(key)
+                        yield key, "numeric_crop" + suffix
+                    legacy = cls._legacy_primary_ocr_fingerprint(compatible, crop=variant["crop"])
+                    if legacy and legacy[:20] not in seen:
+                        seen.add(legacy[:20])
+                        yield legacy[:20], "legacy_primary_ocr" + suffix
 
     def _restore_manual_disk_cache(self, preview_dir: Path, fingerprint: str, settings: dict | None = None) -> None:
         """Hydrate a completed base without FFprobe, encoding or AI work."""
@@ -487,7 +497,7 @@ class EditorPreviewController:
                         or int(marker.get("size", -1)) != identity.get("size")
                         or not output.is_file() or int(identity.get("size", 0)) <= 0):
                     continue
-                if settings and compatibility == "legacy_primary_ocr":
+                if settings and compatibility.startswith("legacy_primary_ocr"):
                     expected = self._contiguous_source_window(settings.get("editor_sequence") or {})
                     if expected is None or duration < expected[1] - 0.25:
                         continue
@@ -543,10 +553,14 @@ class EditorPreviewController:
             video_dir,
             str(files.get("source_segments") or ""),
         )
+        source_identity = self._file_identity(source_path)
+        source_generation = int((getattr(video, "manual_tool_generations", {}) or {}).get("source", 0) or 0)
+        if source_generation > 0:
+            source_identity["source_replacement"] = source_generation
         settings = {
             "video_id": video.video_id,
             "source_path": os.path.abspath(source_path),
-            "source_identity": self._file_identity(source_path),
+            "source_identity": source_identity,
             "segments": segments,
             "subtitle_style": self._model_dict(getattr(video, "subtitle_style", None)),
             "crop": self._crop_cache_payload(self._model_dict(getattr(video, "crop", None))),

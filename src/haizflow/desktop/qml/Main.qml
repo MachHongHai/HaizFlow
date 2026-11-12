@@ -44,7 +44,9 @@ ApplicationWindow {
     property int routeHistoryIndex: 0
     readonly property bool compactNavigation: width < 1280
     readonly property bool videoProcessing: AppController.isProcessing && !AppController.isSwitchingProcessingDevice
-    readonly property var activeExportJob: AppController.videoExportSummary.activeJob || ({})
+    readonly property var activeExportJob: (projectWorkspaceVisible
+        ? AppController.videoExportScopeSummary.activeJob
+        : AppController.videoExportSummary.activeJob) || ({})
     readonly property bool exportWorking: AppController.videoExportBusy
         && Boolean(activeExportJob.videoId)
     // qmllint disable stale-property-read

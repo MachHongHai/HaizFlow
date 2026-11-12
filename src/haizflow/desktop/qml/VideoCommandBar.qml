@@ -13,10 +13,7 @@ Rectangle {
     readonly property bool selectedQueued: AppController.isSelectedVideoQueued
     readonly property bool selectedActive: root.selectedProcessing || root.selectedQueued
     readonly property bool pausePending: AppController.selectedStatus === "paused" && root.selectedQueued
-    readonly property bool selectedExportActive: (AppController.videoExportJobs || []).some(job =>
-        job.videoId === AppController.selectedVideoId &&
-        (["pending", "rendering", "exporting"].indexOf(job.status) >= 0
-         || AppController.videoExportBusy && ["paused", "awaiting_review"].indexOf(job.status) >= 0))
+    readonly property bool selectedExportActive: AppController.selectedVideoExportActive
     readonly property bool canProcess: AppController.hasSelectedVideo && !root.selectedActive
         && !root.selectedExportActive
     readonly property bool canReview: AppController.selectedStatus === "awaiting_review"

@@ -287,6 +287,11 @@ def _generation_token(video, kind: str) -> tuple:
     return ("manual-rerun", generation) if generation > 0 else ()
 
 
+def _source_generation_token(video) -> tuple:
+    generation = _tool_generation(video, "source")
+    return ("source-replacement", generation) if generation > 0 else ()
+
+
 def _record_exists(video, kind: str, artifact_signature: str, *, validate: bool = True) -> bool:
     if not artifact_signature:
         return False
@@ -319,6 +324,7 @@ def recognition_signature(video) -> str:
         return manual_artifacts.signature(
             (video.files or {}).get("imported_source_srt"),
             manual_artifacts.file_state(_video_input(video)),
+            *_source_generation_token(video),
             *_generation_token(video, "recognition"), "manual-imported-srt-v1",
         )
     input_signature = separation_signature(video) if video.enable_audio_separation else source_signature(video)
@@ -354,6 +360,9 @@ def ocr_signature(video) -> str:
     return manual_artifacts.signature(
         manual_artifacts.file_state(_video_input(video)),
         DETECTOR_CACHE_VERSION,
+        # copy2 preserves size/mtime when the same input is selected again.
+        # Namespace the source epoch so it cannot collide with an image rerun.
+        *_source_generation_token(video),
         *_generation_token(video, "image"),
         "manual-ocr-region-v1",
     )
@@ -408,6 +417,7 @@ def _subtitle_document_signature(video, path: str) -> str:
     return manual_artifacts.signature(
         _subtitle_content_signature(path),
         _active_signature(video, "translation"),
+        *_source_generation_token(video),
         "manual-subtitle-document-v2",
     )
 
@@ -453,6 +463,7 @@ def _voice_clip_signatures(video, segments: list[dict[str, Any]]) -> list[str]:
                 recognition if effective_speaker_mode == "multiple" else "",
                 index if effective_speaker_mode == "multiple" else 0,
                 *((segment.get('start'), segment.get('end')) if effective_speaker_mode == 'multiple' and provider != 'edge' else ()),
+                *_source_generation_token(video),
                 *_generation_token(video, "voice"),
                 *((override["generation"],) if override.get("generation") else ()),
                 _voice_cache_version(video),
@@ -866,6 +877,7 @@ def audio_signature(video, *, validate: bool = True) -> str:
         getattr(video, "tts_volume", 100),
         (subtitle or {}).get("signature", "") if voice else "no-subtitle-audio",
         audio_document,
+        *_source_generation_token(video),
         *_generation_token(video, "audio"),
         "manual-audio-mix-v7-voice-asset-validation",
     )
@@ -909,6 +921,7 @@ def export_signature(video, *, validate: bool = True) -> str:
         result_segments.render_payload(editor_document),
         getattr(video, "export_preset", "source"),
         *(["output-speed-v1", video.output_speed] if getattr(video, "output_speed", 1.0) != 1.0 else []),
+        *_source_generation_token(video),
         *_generation_token(video, "export"),
         "manual-export-v11-bundled-regional-fonts",
     )

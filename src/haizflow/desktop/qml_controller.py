@@ -243,6 +243,7 @@ class HaizFlowController(QObject):
     manualExportCompleted = Signal(str, str)
     videoExportCompleted = Signal(str, str)
     exportStateChanged = Signal()
+    exportScopeChanged = Signal()
     videoExportRequested = Signal()
     videoExportProgressRequested = Signal()
     autoProcessingRequested = Signal()
@@ -336,6 +337,9 @@ class HaizFlowController(QObject):
         self.selectedVideoChanged.connect(self._refresh_selected_video_snapshot)
         self.selectedVideoChanged.connect(self.previewMediaChanged.emit)
         self.selectedVideoChanged.connect(self.selectedElapsedChanged.emit)
+        self.selectedVideoChanged.connect(self.exportScopeChanged.emit)
+        self.batchChanged.connect(self.exportScopeChanged.emit)
+        self.exportStateChanged.connect(self.exportScopeChanged.emit)
         self._selected_project_key = ""
         self._project_session_notices: set[tuple[str, str]] = set()
         self._device_switching = False
@@ -4711,7 +4715,15 @@ class HaizFlowController(QObject):
     def videoExportSummary(self):
         return dict(self._video_exports.summary)
 
-    @Property("QVariantList", notify=selectedVideoChanged)
+    @Property(bool, notify=exportScopeChanged)
+    def selectedVideoExportActive(self):
+        return self._video_exports.active_for_video(self._selected_video_id)
+
+    @Property("QVariantMap", notify=exportScopeChanged)
+    def videoExportScopeSummary(self):
+        return self._video_exports.summary_for(self.videoExportScope)
+
+    @Property("QVariantList", notify=exportScopeChanged)
     def videoExportScope(self):
         if self._project_type == "batch":
             return list(self._batch_video_ids)
@@ -4734,7 +4746,7 @@ class HaizFlowController(QObject):
 
     @Slot()
     def requestVideoExportProgress(self):
-        if self.videoExportBusy:
+        if self.selectedVideoExportActive:
             self.videoExportProgressRequested.emit()
 
     @Slot()
@@ -4832,6 +4844,10 @@ class HaizFlowController(QObject):
     @Slot(result=str)
     def chooseBatchExportDestination(self):
         return self._video_exports.choose_batch_directory()
+
+    @Slot(result=str)
+    def chooseBatchExportFolder(self):
+        return self._video_exports.choose_batch_folder()
 
     @Slot(QUrl, result=str)
     def exportFolderPath(self, url):

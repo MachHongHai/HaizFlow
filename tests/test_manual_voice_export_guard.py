@@ -1,6 +1,5 @@
 """Manual audio/export must honor audible editor clips or fail before rendering."""
 
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -70,6 +69,9 @@ def test_real_manual_mix_keeps_voice_above_background_music(tmp_path):
     video = _video()
     video.files["video_input"] = str(source)
     output = tmp_path / "mix.wav"
+    # Match a real editor document: its sequence owns the output duration.
+    # The default empty sequence (0 ms) is deliberately rejected by the mixer.
+    document.sequence.duration_ms = 3000
     with (patch.object(manual_tools, "_audio_background", return_value=(str(source), "", [])),
           patch("haizflow.pipeline.sequence_compiler.materialize_source_sequence",
                 return_value=(str(source), str(source)))):

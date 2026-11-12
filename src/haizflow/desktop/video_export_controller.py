@@ -123,6 +123,20 @@ class VideoExportController(QObject):
         self._dialog_video_ids = set(map(str, video_ids))
         self.dialog_job_model.sync([job for job in self.jobs if job["videoId"] in self._dialog_video_ids])
 
+    def summary_for(self, video_ids):
+        identifiers = set(map(str, video_ids))
+        return export_job_summary([job for job in self.jobs if job["videoId"] in identifiers])
+
+    def active_for_video(self, video_id):
+        if not video_id:
+            return False
+        for job in self.jobs:
+            if job["videoId"] != str(video_id):
+                continue
+            if job["status"] in {"preparing", "pending", "rendering", "exporting"}:
+                return True
+        return False
+
     def forget_video(self, video_id):
         self.jobs = [job for job in self.jobs if job["videoId"] != video_id]
         self._batch_notices = [[job for job in group if job["videoId"] != video_id]
@@ -187,11 +201,19 @@ class VideoExportController(QObject):
                               for video in videos])
         return result
 
-    def choose_batch_directory(self) -> str:
-        directory = QFileDialog.getExistingDirectory(
+    def choose_batch_folder(self) -> str:
+        """Pick only; QML owns overwrite confirmation and start validates jobs.
+
+        Keep batch on the same native-profile/known-folder path as all other
+        media pickers, without scanning every batch destination on selection.
+        """
+        return QFileDialog.getExistingDirectory(
             None, self.text("Chọn thư mục xuất video", "Choose video export folder"),
             desktop_settings.load_settings().get("last_export_directory") or native_media_dialog_directory(),
         )
+
+    def choose_batch_directory(self) -> str:
+        directory = self.choose_batch_folder()
         if not directory:
             return ""
         try:

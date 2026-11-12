@@ -106,7 +106,7 @@ def test_export_opens_dialog_without_replacing_the_current_editor_panel():
 
 @pytest.mark.parametrize("busy", [False, True])
 def test_progress_request_only_opens_existing_export_without_starting_another(busy):
-    host = SimpleNamespace(videoExportBusy=busy, videoExportProgressRequested=Mock(),
+    host = SimpleNamespace(selectedVideoExportActive=busy, videoExportProgressRequested=Mock(),
                            videoExportRequested=Mock(), videoExportStarted=Mock())
     HaizFlowController.requestVideoExportProgress(host)
     assert host.videoExportProgressRequested.emit.call_count == int(busy)

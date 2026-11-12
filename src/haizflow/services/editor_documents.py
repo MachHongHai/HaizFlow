@@ -160,6 +160,12 @@ def build_legacy_document(video) -> EditorDocument:
     segments = _legacy_segments(video)
     duration_ms = _source_duration_ms(video, segments)
     source_path = str((video.files or {}).get("video_input") or (video.files or {}).get("input_video") or "")
+    source_fingerprint = _fingerprint(source_path)
+    source_generation = int((getattr(video, "manual_tool_generations", {}) or {}).get("source", 0) or 0)
+    if source_generation > 0:
+        source_fingerprint = hashlib.sha256(
+            f"{source_fingerprint}:source-replacement:{source_generation}".encode("utf-8")
+        ).hexdigest()
     tracks = [
         EditorTrack(track_id=track_id, kind=kind, name=name, order=order)
         for track_id, kind, name, order in TRACKS
@@ -170,7 +176,7 @@ def build_legacy_document(video) -> EditorDocument:
             kind="source",
             name=str(getattr(video, "original_filename", "") or "Video nguồn"),
             path=source_path,
-            fingerprint=_fingerprint(source_path),
+            fingerprint=source_fingerprint,
             duration_ms=duration_ms,
             width=max(0, int(getattr(video, "video_width", 0) or 0)),
             height=max(0, int(getattr(video, "video_height", 0) or 0)),

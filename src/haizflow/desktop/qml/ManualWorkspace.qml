@@ -654,7 +654,7 @@ Item {
             hasOutput: AppController.hasSelectedOutput
             exportEnabled: !AppController.isSelectedVideoProcessing
                 && !AppController.isSelectedVideoQueued && !AppController.videoExportBusy
-            exportBusy: AppController.videoExportBusy
+            exportBusy: AppController.selectedVideoExportActive
             hasProject: AppController.hasOpenProject
             canUndo: AppController.canUndoEdit
             canRedo: AppController.canRedoEdit

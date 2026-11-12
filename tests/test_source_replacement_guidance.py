@@ -92,13 +92,18 @@ def test_failed_replacement_restores_guidance_with_original_source(configured_vi
     assert restored.gemini_translation_glossary == video.gemini_translation_glossary
 
 
-@pytest.mark.parametrize("operation", ["same_input", "restart"])
-def test_same_source_operations_preserve_guidance(configured_video, operation):
+def test_restart_preserves_guidance(configured_video):
     video = configured_video()
-    if operation == "same_input":
-        result = video_store.replace_video_input(video.video_id, video.files["video_input"])
-    else:
-        result = video_store.prepare_video_restart(video.video_id)
+    result = video_store.prepare_video_restart(video.video_id)
     assert result.gemini_translation_instructions == video.gemini_translation_instructions
     assert result.gemini_translation_glossary == video.gemini_translation_glossary
     assert result.gemini_translation_style == "literal"
+
+
+def test_explicit_replacement_with_current_input_still_resets_source_guidance(configured_video):
+    video = configured_video()
+    result = video_store.replace_video_input(video.video_id, video.files["video_input"])
+    assert result.gemini_translation_instructions == result.gemini_translation_glossary == ""
+    assert result.gemini_translation_style == "literal"
+    assert result.original_filename == video.original_filename
+    assert result.manual_tool_generations == {"source": 1}

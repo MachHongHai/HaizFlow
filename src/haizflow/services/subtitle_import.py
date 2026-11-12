@@ -251,7 +251,9 @@ def import_srt(video_id: str, path: str, *, duration_ms: int = 0, language: str 
     for item in segments:
         item["language"] = language if language != "und" else "auto"
     current = video_store.get_video(video_id)
-    if not current or source_identity(current) != source_identity(video):
+    if (not current or source_identity(current) != source_identity(video)
+            or int(current.manual_tool_generations.get("source", 0) or 0)
+            != int(video.manual_tool_generations.get("source", 0) or 0)):
         raise ValueError("Video nguồn đã thay đổi. Hãy nhập lại SRT.")
     video = current
     from haizflow.services import editor_documents

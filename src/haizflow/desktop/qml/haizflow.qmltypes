@@ -105,7 +105,7 @@ Module {
     }
     Component {
         name: "HaizFlowController"
-        Property { name: "videoExportScope"; type: "QVariantList"; isReadonly: true }
+        Property { name: "videoExportScope"; type: "QVariantList"; read: "videoExportScope"; notify: "exportScopeChanged"; isReadonly: true }
         Property { name: "videoExportDialogModel"; type: "QObject"; isPointer: true; isReadonly: true }
         Method { name: "setVideoExportDialogScope"; Parameter { name: "videoIds"; type: "QVariantList" } }
         Method { name: "cancelVideoExportsFor"; Parameter { name: "videoIds"; type: "QVariantList" } }
@@ -2491,7 +2491,10 @@ Module {
         Property { name: "videoExportJobs"; type: "QVariantList"; read: "videoExportJobs"; notify: "exportStateChanged"; isReadonly: true }
         Property { name: "videoExportJobModel"; type: "QObject"; read: "videoExportJobModel"; isReadonly: true }
         Property { name: "videoExportSummary"; type: "QVariantMap"; read: "videoExportSummary"; notify: "exportStateChanged"; isReadonly: true }
+        Property { name: "selectedVideoExportActive"; type: "bool"; read: "selectedVideoExportActive"; notify: "exportScopeChanged"; isReadonly: true }
+        Property { name: "videoExportScopeSummary"; type: "QVariantMap"; read: "videoExportScopeSummary"; notify: "exportScopeChanged"; isReadonly: true }
         Signal { name: "exportStateChanged" }
+        Signal { name: "exportScopeChanged" }
         Signal { name: "videoExportRequested" }
         Signal { name: "videoExportProgressRequested" }
         Signal { name: "autoProcessingRequested" }
@@ -2529,6 +2532,7 @@ Module {
         Method { name: "requestBatchProcessing" }
         Method { name: "batchExportSettings"; type: "QVariantMap" }
         Method { name: "chooseBatchExportDestination"; type: "QString" }
+        Method { name: "chooseBatchExportFolder"; type: "QString" }
         Method { name: "batchExportDestinationExists"; type: "bool"; Parameter { name: "directory"; type: "QString" } }
         Method { name: "processBatchTo"; type: "bool"
             Parameter { name: "projectKey"; type: "QString" }

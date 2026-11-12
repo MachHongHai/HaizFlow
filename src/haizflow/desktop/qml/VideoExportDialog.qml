@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Dialogs
 import "."
 
 AppDialog {
@@ -30,6 +29,7 @@ AppDialog {
         exportRange.currentIndex = 0;
         destination = "";
         destinationExists = false;
+        pendingFolder = "";
         quality.currentIndex = Math.max(0, (configuration.presets || []).findIndex(item => item.value === configuration.preset));
         open();
     }
@@ -40,6 +40,7 @@ AppDialog {
         configuration = controller.batchExportSettings();
         destination = "";
         destinationExists = false;
+        pendingFolder = "";
         exportRange.currentIndex = 0;
         batchScope.scope = processFirst ? "unfinished" : "all";
         batchScope.selectedIds = [];
@@ -52,21 +53,9 @@ AppDialog {
         Layout.fillWidth: true
         videos: root.configuration.videos || []
     }
-    FolderDialog {
-        id: batchFolder
-        title: qsTr("Chọn thư mục xuất video")
-        onAccepted: {
-            root.pendingFolder = root.controller.exportFolderPath(selectedFolder);
-            if (root.controller.batchExportDestinationExists(root.pendingFolder))
-                replaceBatchFiles.open();
-            else {
-                root.destination = root.pendingFolder;
-                root.destinationExists = false;
-            }
-        }
-    }
     AppDialog {
         id: replaceBatchFiles
+        objectName: "replaceBatchExportFiles"
         title: qsTr("Thay thế tệp đã có?")
         Text {
             Layout.fillWidth: true
@@ -176,11 +165,22 @@ AppDialog {
                 accessibleName: qsTr("Đường dẫn xuất video")
             }
             StudioButton {
+                objectName: "chooseExportDestination"
                 text: qsTr("Chọn…")
                 iconName: "folder"
                 onClicked: {
                     if (root.batchMode) {
-                        batchFolder.open();
+                        const projectKey = root.configuration.projectKey;
+                        const folder = root.controller.chooseBatchExportFolder();
+                        if (folder.length === 0 || projectKey !== root.configuration.projectKey)
+                            return;
+                        root.pendingFolder = folder;
+                        if (root.controller.batchExportDestinationExists(folder))
+                            replaceBatchFiles.open();
+                        else {
+                            root.destination = folder;
+                            root.destinationExists = false;
+                        }
                         return;
                     }
                     const path = root.controller.chooseVideoExportDestination(root.configuration.videoId);

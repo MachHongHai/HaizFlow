@@ -29,6 +29,7 @@ from haizflow.utils.ffmpeg import (
     get_media_stream_types,
     get_video_dimensions,
     get_video_duration,
+    inspect_preview_media,
     mark_video_encoder_failed,
     preferred_video_encoder,
 )
@@ -2097,9 +2098,16 @@ def render_video(
         if return_code != 0:
             log_to_video(video_id, f"FFmpeg Render Error output:\n{stderr}", level="ERROR", component="RENDER")
             raise RuntimeError(f"FFmpeg render failed with exit code {return_code}")
-        if os.path.getsize(temporary_output) <= 0 or get_video_duration(temporary_output) <= 0:
+        if os.path.getsize(temporary_output) <= 0:
             raise RuntimeError("FFmpeg render produced an empty or unreadable video.")
-        stream_types = get_media_stream_types(temporary_output)
+        if compatibility_preview:
+            preview_duration, stream_types = inspect_preview_media(temporary_output)
+        else:
+            preview_duration = get_video_duration(temporary_output)
+        if preview_duration <= 0:
+            raise RuntimeError("FFmpeg render produced an empty or unreadable video.")
+        if not compatibility_preview:
+            stream_types = get_media_stream_types(temporary_output)
         if not {"video", "audio"}.issubset(stream_types):
             raise RuntimeError("FFmpeg render output is missing its video or dubbed-audio stream.")
         os.replace(temporary_output, output_path)

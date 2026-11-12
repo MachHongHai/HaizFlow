@@ -840,8 +840,7 @@ def replace_video_input(
         safe_tree(video_dir)
         extension = os.path.splitext(source_path)[1].lower() or ".mp4"
         input_path = os.path.join(video_dir, "input", f"video{extension}")
-        if os.path.normcase(source_path) == os.path.normcase(os.path.abspath(input_path)):
-            return video
+        same_input_path = os.path.normcase(source_path) == os.path.normcase(os.path.abspath(input_path))
 
         final_video = (video.files or {}).get("final_video") or ""
         previous_thumbnail = (video.files or {}).get("thumbnail") or ""
@@ -900,7 +899,8 @@ def replace_video_input(
             video.files["voice_output"] = os.path.join(video_dir, "temp", "voice_final.wav")
             video.files["transcript_json"] = os.path.join(video_dir, "temp", "vi_segments.json")
             video.files["thumbnail"] = os.path.join(video_dir, "thumbnail.jpg")
-            video.original_filename = os.path.basename(source_path)
+            if not same_input_path:
+                video.original_filename = os.path.basename(source_path)
             video.media_source = MediaSource.model_validate(media_source or {"type": "local_file"})
             video.video_width = 0
             video.video_height = 0

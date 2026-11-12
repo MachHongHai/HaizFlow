@@ -1,4 +1,5 @@
 import json
+import math
 import shutil
 import subprocess
 from contextlib import contextmanager
@@ -210,6 +211,25 @@ def get_video_duration(video_path: str, *, timeout_seconds: float = 15.0) -> flo
         return duration
     except (OSError, subprocess.SubprocessError, TypeError, ValueError):
         return 0.0
+
+
+def inspect_preview_media(media_path: str, *, timeout_seconds: float = 15.0) -> tuple[float, set[str]]:
+    """Validate a generated proxy's duration and streams in one bounded probe."""
+    result = subprocess.run(
+        [_binary("ffprobe"), "-v", "error", "-show_entries", "format=duration:stream=codec_type",
+         "-of", "json", media_path], capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=max(1.0, float(timeout_seconds)), check=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    payload = json.loads(result.stdout)
+    duration = float(payload.get("format", {}).get("duration", 0))
+    streams = {str(stream.get("codec_type", "")) for stream in payload.get("streams", [])}
+    if not math.isfinite(duration) or duration <= 0:
+        return 0.0, streams
+    if duration > 0:
+        observations, key = _probe_key("duration", media_path, timeout_seconds)
+        if observations is not None:
+            observations[key] = duration
+    return duration, streams
 
 
 def get_video_dimensions(video_path: str, *, timeout_seconds: float = 15.0) -> tuple[int, int]:

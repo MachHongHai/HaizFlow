@@ -190,6 +190,7 @@ class TimelineRenderTests(unittest.TestCase):
                 mock.patch.object(render, "get_video_dimensions", return_value=(1920, 1080)),
                 mock.patch.object(render, "get_video_duration", return_value=30.0),
                 mock.patch.object(render, "get_media_stream_types", return_value={"video", "audio"}),
+                mock.patch.object(render, "inspect_preview_media", return_value=(30.0, {"video", "audio"})),
                 mock.patch.object(render, "preferred_video_encoder", return_value=("libx264", [])),
                 mock.patch.object(render.subprocess, "Popen", FakeProcess),
                 mock.patch.object(render, "communicate_process", return_value=("", "")),
