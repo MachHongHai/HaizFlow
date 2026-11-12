@@ -115,14 +115,29 @@ def test_custom_sessions_apply_directml_requirements_and_verify_effective_provid
     assert sessions[0].providers[0][1] == {"performance_preference": "high_performance", "device_filter": "gpu"}
     assert engine.params["Global.use_cls"] is False
     assert engine.params["Rec.rec_batch_num"] == 4
-    for item in options:
-        assert item.enable_mem_pattern is False
+    for item, expected_provider in zip(options, [runtime.DML, runtime.CPU, runtime.DML]):
+        assert item.enable_mem_pattern is (expected_provider == runtime.CPU)
         assert item.execution_mode == "serial"
-        assert item.intra_op_num_threads == 4
+        assert item.intra_op_num_threads == (8 if expected_provider == runtime.CPU else 4)
         assert item.inter_op_num_threads == 1
         item.add_session_config_entry.assert_any_call("session.intra_op.allow_spinning", "0")
     for item in sessions:
         item.disable_fallback.assert_called_once()
+
+
+@pytest.mark.parametrize("provider", [runtime.CPU, runtime.DML, runtime.CUDA])
+@pytest.mark.parametrize("logical_cpus", [None, 1, 2, 4, 8, 16, 64])
+def test_session_policy_bounds_cpu_workers_without_disabling_cpu_memory_planner(provider, logical_cpus):
+    ort = SimpleNamespace(SessionOptions=lambda: SimpleNamespace(add_session_config_entry=MagicMock()),
+                          ExecutionMode=SimpleNamespace(ORT_SEQUENTIAL="serial"))
+    with patch.object(runtime.os, "cpu_count", return_value=logical_cpus):
+        options = runtime._session_options(ort, provider)
+    assert options.enable_mem_pattern is (provider == runtime.CPU)
+    assert options.enable_cpu_mem_arena is False  # Do not retain a growing arena on low-RAM machines.
+    assert options.intra_op_num_threads == min(8 if provider == runtime.CPU else 4,
+                                              max(1, (logical_cpus or 2) // 2))
+    assert options.inter_op_num_threads == 1
+    options.add_session_config_entry.assert_any_call("session.intra_op.allow_spinning", "0")
 
 
 def test_silent_ort_cpu_fallback_is_not_reported_as_gpu():

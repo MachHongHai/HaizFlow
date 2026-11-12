@@ -20,14 +20,19 @@ def preferred_provider(available: list[str]) -> str:
     return CPU
 
 
-def _session_options(ort):
+def _session_options(ort, provider: str = CPU):
     options = ort.SessionOptions()
     options.log_severity_level = 3
-    options.intra_op_num_threads = min(4, max(1, (os.cpu_count() or 2) // 2))
+    # CPU inference can use up to eight workers, unlike the small CPU side
+    # tasks of a GPU session. The former four-worker cap slowed CPU OCR on
+    # eight-core machines compared with RapidOCR's release configuration.
+    limit = 8 if provider == CPU else 4
+    options.intra_op_num_threads = min(limit, max(1, (os.cpu_count() or 2) // 2))
     options.inter_op_num_threads = 1
     options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-    # DirectML requires sequential execution and no memory-pattern optimiser.
-    options.enable_mem_pattern = False
+    # Keep DirectML/CUDA's existing conservative policy; do not also disable
+    # the normal CPU planner merely because this runtime supports GPU OCR.
+    options.enable_mem_pattern = provider == CPU
     options.enable_cpu_mem_arena = False
     options.add_session_config_entry("session.intra_op.allow_spinning", "0")
     options.add_session_config_entry("session.inter_op.allow_spinning", "0")
@@ -67,7 +72,7 @@ def _create_engine(model_dir: Path, provider: str):
                         providers.append((CPU, {}))
                     session = ort.InferenceSession(
                         str(model_dir / f"subtitle-{filename}.onnx"),
-                        sess_options=_session_options(ort),
+                        sess_options=_session_options(ort, selected),
                         providers=providers,
                     )
                     if selected not in session.get_providers():
