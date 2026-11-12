@@ -51,6 +51,7 @@ Item {
             tryCompare(install, "enabled", true);
             mouseClick(install);
             tryCompare(popup.controller, "installCalls", 0);
+            tryVerify(() => !!findChild(popup, "appUpdateConfirmationDialog"));
             const confirmation = findChild(popup, "appUpdateConfirmationDialog");
             verify(!!confirmation, "Object exists");
             tryCompare(confirmation, "opened", true);

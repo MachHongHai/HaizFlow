@@ -232,6 +232,7 @@ class VideoListModel(QAbstractListModel):
     def __init__(self):
         super().__init__()
         self._videos = []
+        self._video_rows = {}
         self._role_snapshots = []
 
     def rowCount(self, parent=QModelIndex()):
@@ -271,6 +272,7 @@ class VideoListModel(QAbstractListModel):
         }
 
     def set_videos(self, videos):
+        self._video_rows = {video.video_id: row for row, video in enumerate(videos)}
         current_ids = [video.video_id for video in self._videos]
         next_ids = [video.video_id for video in videos]
         if current_ids == next_ids:
@@ -294,19 +296,18 @@ class VideoListModel(QAbstractListModel):
 
     def update_video(self, video) -> bool:
         """Update one visible row without rebuilding a large view model."""
-        for row, existing in enumerate(self._videos):
-            if existing.video_id != video.video_id:
-                continue
-            updated_values = self._role_values(video)
-            previous_values = self._role_snapshots[row]
-            changed_roles = [role for role in previous_values if previous_values[role] != updated_values[role]]
-            self._videos[row] = video
-            self._role_snapshots[row] = updated_values
-            if changed_roles:
-                index = self.index(row, 0)
-                self.dataChanged.emit(index, index, changed_roles)
-            return True
-        return False
+        row = self._video_rows.get(video.video_id)
+        if row is None:
+            return False
+        updated_values = self._role_values(video)
+        previous_values = self._role_snapshots[row]
+        changed_roles = [role for role in previous_values if previous_values[role] != updated_values[role]]
+        self._videos[row] = video
+        self._role_snapshots[row] = updated_values
+        if changed_roles:
+            index = self.index(row, 0)
+            self.dataChanged.emit(index, index, changed_roles)
+        return True
 
     def video_at(self, row: int):
         if row < 0 or row >= len(self._videos):
@@ -340,6 +341,7 @@ class ProjectListModel(QAbstractListModel):
     def __init__(self):
         super().__init__()
         self._projects = []
+        self._project_rows = {}
         self._role_snapshots = []
 
     def rowCount(self, parent=QModelIndex()):
@@ -379,8 +381,29 @@ class ProjectListModel(QAbstractListModel):
         }
 
     def set_projects(self, projects):
+        projects = list(projects)
         next_keys = [project["key"] for project in projects]
         current_keys = [project["key"] for project in self._projects]
+        if current_keys != next_keys:
+            next_key_set = set(next_keys)
+            if [key for key in current_keys if key in next_key_set] == next_keys:
+                # A deletion is a row change, not a new catalog. Resetting here
+                # destroys every GridView card (including its thumbnail/menu).
+                row = len(current_keys) - 1
+                while row >= 0:
+                    if current_keys[row] in next_key_set:
+                        row -= 1
+                        continue
+                    last = row
+                    while row >= 0 and current_keys[row] not in next_key_set:
+                        row -= 1
+                    first = row + 1
+                    self.beginRemoveRows(QModelIndex(), first, last)
+                    del self._projects[first:last + 1]
+                    del self._role_snapshots[first:last + 1]
+                    self._project_rows = {project["key"]: index for index, project in enumerate(self._projects)}
+                    self.endRemoveRows()
+                current_keys = next_keys
         if current_keys == next_keys:
             changed_rows = []
             updated_snapshots = [self._role_values(project) for project in projects]
@@ -397,23 +420,23 @@ class ProjectListModel(QAbstractListModel):
             return
         self.beginResetModel()
         self._projects = projects
+        self._project_rows = {project["key"]: row for row, project in enumerate(projects)}
         self._role_snapshots = [self._role_values(project) for project in projects]
         self.endResetModel()
 
     def update_project(self, project) -> bool:
-        for row, existing in enumerate(self._projects):
-            if existing["key"] != project["key"]:
-                continue
-            updated_values = self._role_values(project)
-            previous_values = self._role_snapshots[row]
-            changed_roles = [role for role in previous_values if previous_values[role] != updated_values[role]]
-            self._projects[row] = project
-            self._role_snapshots[row] = updated_values
-            if changed_roles:
-                index = self.index(self._project_row_to_model_row(row), 0)
-                self.dataChanged.emit(index, index, changed_roles)
-            return True
-        return False
+        row = self._project_rows.get(project["key"])
+        if row is None:
+            return False
+        updated_values = self._role_values(project)
+        previous_values = self._role_snapshots[row]
+        changed_roles = [role for role in previous_values if previous_values[role] != updated_values[role]]
+        self._projects[row] = project
+        self._role_snapshots[row] = updated_values
+        if changed_roles:
+            index = self.index(self._project_row_to_model_row(row), 0)
+            self.dataChanged.emit(index, index, changed_roles)
+        return True
 
     def _project_row_to_model_row(self, row: int) -> int:
         """Map a persisted-project row to the row exposed to a view."""

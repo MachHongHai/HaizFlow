@@ -836,6 +836,8 @@ class ResourcePackManager:
             return [*base, "--omnivoice-worker"]
         if command_name == "vieneu_worker":
             return [*base, "--vieneu-worker"]
+        if command_name == "vieneu_server":
+            return [*base, "--vieneu-server"]
         if command_name == "omnivoice_server":
             return [*base, "--omnivoice-server"]
         if command_name == "demucs":
@@ -860,7 +862,7 @@ class ResourcePackManager:
             payload = json.loads((root / "engine.json").read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return []
-        if command_name == "vieneu_worker" and payload.get("runtime_contract") != 7:
+        if command_name in {"vieneu_worker", "vieneu_server"} and payload.get("runtime_contract") != 7:
             return []
         command = payload.get(str(command_name))
         if not isinstance(command, list) or not command or not all(isinstance(item, str) for item in command):

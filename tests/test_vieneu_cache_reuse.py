@@ -102,3 +102,44 @@ def test_reopen_fitted_voice_maps_pcm_without_decode_or_silence_trimming(tmp_pat
             assert isinstance(samples, np.memmap) and len(samples) > 0
     finally:
         reopened.close()
+
+
+@pytest.mark.parametrize('backend', ['vieneu', 'omnivoice'])
+def test_unchanged_voice_pcm_survives_manifest_path_change_but_not_new_audio(tmp_path, backend):
+    import shutil
+    import wave
+
+    old = tmp_path / 'manifest-old' / 'voice.mp3'
+    new = tmp_path / 'manifest-new' / 'voice.mp3'
+    old.parent.mkdir()
+    new.parent.mkdir()
+    with wave.open(str(old), 'wb') as output:
+        output.setnchannels(2)
+        output.setsampwidth(2)
+        output.setframerate(48000)
+        output.writeframes(np.full((4800, 2), 1500, dtype='<i2').tobytes())
+    shutil.copy2(old, new)
+    directory = tmp_path / 'pcm'
+    directory.mkdir()
+    identity = backend + '-same-immutable-clip'
+    first = ManualPreviewAudioController()
+    try:
+        first._pcm_cache_directory = directory
+        samples = first._decode(old, duration=1000, content_signature=identity)
+        with patch.object(first, '_decode_to_pcm', side_effect=AssertionError('Unchanged audio must reuse PCM')):
+            assert first._decode(new, duration=1000, content_signature=identity) is samples
+    finally:
+        first.close()
+    reopened = ManualPreviewAudioController()
+    try:
+        reopened._pcm_cache_directory = directory
+        with patch.object(reopened, '_decode_to_pcm', side_effect=AssertionError('Must map saved PCM')):
+            assert len(reopened._decode(new, duration=1000, content_signature=identity)) > 0
+        # Neither another voice request nor a retimed slot may borrow this PCM.
+        with patch.object(reopened, '_decode_to_pcm', side_effect=RuntimeError('fresh decode')):
+            with pytest.raises(RuntimeError, match='fresh decode'):
+                reopened._decode(new, duration=1000, content_signature=identity + '-new-voice')
+            with pytest.raises(RuntimeError, match='fresh decode'):
+                reopened._decode(new, duration=500, content_signature=identity)
+    finally:
+        reopened.close()

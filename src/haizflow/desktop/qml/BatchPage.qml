@@ -17,6 +17,11 @@ Item {
     readonly property bool compactHeight: height < 740
     property var settingOverrides: []
     property var results: ({})
+    property string removalVideoId: ""
+    property string removalProjectKey: ""
+    property bool removingVideo: false
+    readonly property bool preparingBatch: (AppController.videoExportJobs || []).some(job =>
+        job.status === "preparing" && (AppController.videoExportScope || []).includes(job.videoId))
     function refreshOverrides() {
         settingOverrides = AppController.batchSettingOverrides();
         results = AppController.batchResults();
@@ -24,8 +29,14 @@ Item {
     Component.onCompleted: refreshOverrides()
     Connections {
         target: AppController
-        function onBatchChanged() { root.refreshOverrides(); }
-        function onExportStateChanged() { root.results = AppController.batchResults(); }
+        function onBatchChanged() {
+            root.refreshOverrides();
+            if (root.removingVideo && !AppController.batchVideoRemovalPending(root.removalVideoId)) {
+                root.removingVideo = false;
+                removeVideoDialog.close();
+            }
+        }
+        function onBatchResultsChanged() { root.results = AppController.batchResults(); }
     }
 
     function importDrop(drop) {
@@ -149,14 +160,15 @@ Item {
                 text: qsTr("Cài đặt hàng loạt")
                 iconGlyph: "\uE713"
                 variant: "secondary"
-                enabled: !AppController.isBatchRunning
+                enabled: !AppController.isBatchRunning && !root.preparingBatch
                 onClicked: root.requestBatchSettings()
             }
 
             DeferredActionButton {
                 objectName: "batchProcessButton"
                 visible: !AppController.isBatchRunning
-                readyText: qsTr("Xử lý")
+                readyText: AppController.batchPausedCount > 0 || (root.results.succeeded || 0) > 0
+                    || (root.results.failed || 0) > 0 ? qsTr("Xử lý lại") : qsTr("Xử lý")
                 iconGlyph: "\uE768"
                 variant: "primary"
                 actionEnabled: AppController.batchCount > 0 && !AppController.videoExportBusy
@@ -291,7 +303,7 @@ Item {
                 readonly property int columnCount: Math.max(1, Math.floor((width + Theme.space16) / (200 + Theme.space16)))
                 readonly property real cellContentWidth: Math.floor(width / columnCount)
                 readonly property real cardWidth: Math.min(220, Math.max(1, cellContentWidth - Theme.space16))
-                readonly property real cardHeight: Math.round(cardWidth * 0.56 + 64)
+                readonly property real cardHeight: Math.round(cardWidth * 0.56 + 78)
 
                 anchors.fill: parent
                 anchors.margins: AppController.batchCount > 0 ? Theme.space12 : 0
@@ -304,6 +316,12 @@ Item {
                 delegate: BatchVideoCard {
                     required property string videoId
                     customSettings: root.settingOverrides.some(item => item.videoId === videoId)
+                    removalEnabled: !AppController.isBatchRunning && !AppController.videoExportBusy
+                    onRemovalRequested: {
+                        root.removalVideoId = videoId;
+                        root.removalProjectKey = AppController.projectKey;
+                        removeVideoDialog.open();
+                    }
                     width: queueList.cardWidth
                     height: queueList.cardHeight
                     onActivated: {
@@ -455,6 +473,31 @@ Item {
                 onClosed: overrideDetailsLoader.release()
             }
         }
+    }
+    AppDialog {
+        id: removeVideoDialog
+        title: qsTr("Xóa video khỏi dự án?")
+        dismissible: !root.removingVideo
+        Text {
+            Layout.fillWidth: true
+            text: qsTr("Video và kết quả trong dự án sẽ bị xóa. Tệp nguồn bên ngoài và video đã xuất được giữ lại.")
+            wrapMode: Text.Wrap
+            font.pixelSize: TypeScale.control
+            color: Theme.text
+        }
+        footerActions: [
+            StudioButton { text: qsTr("Hủy"); enabled: !root.removingVideo; onClicked: removeVideoDialog.close() },
+            DeferredActionButton {
+                readyText: root.removingVideo ? qsTr("Đang xóa…") : qsTr("Xóa video")
+                variant: "danger"
+                actionEnabled: !root.removingVideo
+                actionContext: ({projectKey: root.removalProjectKey, videoId: root.removalVideoId})
+                onExecute: context => {
+                    if (AppController.removeBatchVideo(context.projectKey, context.videoId))
+                        root.removingVideo = true;
+                }
+            }
+        ]
     }
     LazyDialogLoader {
         id: resultDetailsLoader

@@ -5,7 +5,7 @@ import queue
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QTimer
+from PySide6.QtCore import QAbstractListModel, QModelIndex, QObject, Qt, QTimer
 
 from haizflow.desktop.localization import QFileDialog, QMessageBox, native_media_dialog_directory
 from haizflow.services import desktop_settings, video_store
@@ -15,12 +15,64 @@ from haizflow.services.video_export import (
 )
 
 
+class ExportJobModel(QAbstractListModel):
+    JobRole = Qt.UserRole + 1
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._rows = []
+
+    def roleNames(self):
+        return {self.JobRole: b"job"}
+
+    def rowCount(self, parent=QModelIndex()):
+        return 0 if parent.isValid() else len(self._rows)
+
+    def data(self, index, role=Qt.DisplayRole):
+        if index.isValid() and role == self.JobRole and 0 <= index.row() < len(self._rows):
+            return dict(self._rows[index.row()])
+        return None
+
+    def sync(self, jobs):
+        # An export's identity includes its destination; progress updates only
+        # touch that row, retaining the view's delegates and scroll position.
+        keys = lambda rows: [(row.get("videoId"), row.get("path")) for row in rows]
+        if keys(jobs) != keys(self._rows):
+            self.beginResetModel()
+            self._rows = [dict(job) for job in jobs]
+            self.endResetModel()
+            return
+        for row, job in enumerate(jobs):
+            if self._rows[row] != job:
+                self._rows[row] = dict(job)
+                self.dataChanged.emit(self.index(row), self.index(row), [self.JobRole])
+
+
+def export_job_summary(jobs):
+    result = dict(count=len(jobs), done=0, failed=0, cancelled=0, waiting=False, activeJob={}, activeVideoIds=[])
+    for job in jobs:
+        status = job.get("status")
+        if status in {"done", "failed", "cancelled"}:
+            result[status] += 1
+        if status in {"paused", "awaiting_review"}:
+            result["waiting"] = True
+        if status in {"preparing", "rendering", "exporting", "pending"}:
+            result["activeVideoIds"].append(job.get("videoId"))
+            if not result["activeJob"]:
+                result["activeJob"] = dict(job)
+    return result
+
+
 class VideoExportController(QObject):
     def __init__(self, host, *, copier=export_video):
         super().__init__(host)
         self.host = host
         self.copier = copier
         self.jobs: list[dict] = []
+        self.job_model = ExportJobModel(self)
+        self.dialog_job_model = ExportJobModel(self)
+        self._dialog_video_ids = set()
+        self.summary = export_job_summary([])
         self.cancel = threading.Event()
         self.worker: threading.Thread | None = None
         self.events = queue.Queue()
@@ -29,6 +81,10 @@ class VideoExportController(QObject):
         self._batch_notices = []
         self._cancelling_render_tokens = {}
         self._pending_run_cleanup = False
+        self._copy_cancels = {}
+        self._preparation_events = queue.Queue()
+        self._preparation_worker = None
+        self._preparing_video_ids = set()
         self.timer = QTimer(self)
         self.timer.setInterval(150)
         self.timer.timeout.connect(self.poll)
@@ -39,10 +95,12 @@ class VideoExportController(QObject):
         from haizflow.services.processing_runs import discard_pending
 
         return bool((self.worker and self.worker.is_alive()) or not self.events.empty()
+                    or (self._preparation_worker and self._preparation_worker.is_alive())
+                    or not self._preparation_events.empty()
                     or self._pending_run_cleanup
                     or any(discard_pending(job["videoId"], job.get("runScopeId")) for job in self.jobs
                            if job["status"] == "cancelled" and job.get("runScopeId"))
-                    or any(job["status"] == "rendering" for job in self.jobs)
+                    or any(job["status"] in {"preparing", "rendering"} for job in self.jobs)
                     or any(self.host._processing_queue.token_for(key) == token
                            for key, token in self._cancelling_render_tokens.items()))
 
@@ -50,7 +108,28 @@ class VideoExportController(QObject):
         return vi if self.host._settings_language == "vi" else en
 
     def changed(self):
+        self.job_model.sync(self.jobs)
+        self.dialog_job_model.sync([job for job in self.jobs if job["videoId"] in self._dialog_video_ids])
+        self.summary = export_job_summary(self.jobs)
+        result_signature = tuple((job.get("videoId"), job.get("status"), job.get("error")) for job in self.jobs)
+        if result_signature != getattr(self, "_batch_result_signature", None):
+            self._batch_result_signature = result_signature
+            signal = getattr(self.host, "batchResultsChanged", None)
+            if signal is not None:
+                signal.emit()
         self.host.exportStateChanged.emit()
+
+    def set_dialog_scope(self, video_ids):
+        self._dialog_video_ids = set(map(str, video_ids))
+        self.dialog_job_model.sync([job for job in self.jobs if job["videoId"] in self._dialog_video_ids])
+
+    def forget_video(self, video_id):
+        self.jobs = [job for job in self.jobs if job["videoId"] != video_id]
+        self._batch_notices = [[job for job in group if job["videoId"] != video_id]
+                               for group in self._batch_notices]
+        self._batch_notices = [group for group in self._batch_notices if group]
+        self._copy_cancels.pop(video_id, None)
+        self.changed()
 
     def _capture_render_owner(self, job):
         task_queue = self.host._processing_queue
@@ -69,6 +148,8 @@ class VideoExportController(QObject):
         from haizflow.services.batch_feedback import completion_notice
 
         for group in list(self._batch_notices):
+            if any(job["videoId"] in self._preparing_video_ids for job in group):
+                continue
             if any(job["videoId"] in self._cancelling_render_tokens for job in group):
                 continue
             if any(job["status"] not in {"done", "failed", "cancelled"} for job in group):
@@ -100,7 +181,10 @@ class VideoExportController(QObject):
         videos = [video for video in videos if video]
         result = self.settings(videos[0]) if videos else {}
         result.update(projectKey=str(self.host._selected_project_key or ""),
-                      videoIds=[video.video_id for video in videos], count=len(videos))
+                      videoIds=[video.video_id for video in videos], count=len(videos),
+                      videos=[{"videoId": video.video_id, "name": video.original_filename,
+                               "status": video.status, "progress": video.progress}
+                              for video in videos])
         return result
 
     def choose_batch_directory(self) -> str:
@@ -143,6 +227,8 @@ class VideoExportController(QObject):
         waiting = [job for job in self.jobs if job["status"] not in {"done", "failed", "cancelled"}
                    and job["videoId"] not in identifiers]
         self.jobs = waiting + jobs
+        retained = {job["videoId"] for job in self.jobs}
+        self._copy_cancels = {key: event for key, event in self._copy_cancels.items() if key in retained}
 
     def can_start_processing(self, video_id):
         if self._pending_run_cleanup or self._cancelling_render_tokens or (self.busy and self.cancel.is_set()):
@@ -278,10 +364,13 @@ class VideoExportController(QObject):
         self.changed()
         return True
 
-    def start_batch_to(self, project_key, video_ids, preset, directory, *, overwrite=False, process=True) -> bool:
+    def start_batch_to(self, project_key, video_ids, preset, directory, *, overwrite=False, process=True,
+                       background=False) -> bool:
         """Capture destinations and validate the whole batch before enqueueing."""
         if (self.busy or not video_ids or project_key != str(self.host._selected_project_key or "")
-                or list(video_ids) != list(self.host._batch_video_ids)):
+                or len(set(video_ids)) != len(video_ids)
+                or set(video_ids).intersection(getattr(self.host, "_deleted_video_ids", set()))
+                or not set(video_ids).issubset(self.host._batch_video_ids)):
             return False
         videos = [video_store.get_video(key) for key in video_ids]
         if any(not video or video.project_type != "batch" or video.project_key != project_key
@@ -308,52 +397,38 @@ class VideoExportController(QObject):
 
         if process and not ProjectCommandsController._resources_ready_for_videos(self.host, videos):
             return False
+        if process and background:
+            # Retire only the captured members' cache off the Qt click handler.
+            for job in jobs:
+                job["status"] = "preparing"
+            self._set_jobs(jobs)
+            self.cancel.clear()
+            self._watch_batch(jobs)
+            self._preparing_video_ids = {video.video_id for video in videos}
+
+            def prepare():
+                try:
+                    prepared = self._prepare_batch(videos, jobs)
+                    self._preparation_events.put((prepared, jobs, str(preset), ""))
+                except Exception as exc:
+                    self._preparation_events.put(([], jobs, str(preset), str(exc)))
+
+            self._preparation_worker = threading.Thread(target=prepare, name="batch-restart-prepare", daemon=False)
+            self.changed()
+            self._preparation_worker.start()
+            return True
         if process:
             try:
-                # Validate every member before touching any cached result.
-                for video in videos:
-                    video_store.validate_video_restart(video.video_id)
+                videos = self._prepare_batch(videos, jobs)
             except (OSError, RuntimeError, ValueError) as exc:
                 self.alert(exc)
                 return False
-            ready_videos = []
-            for video, job in zip(videos, jobs):
-                try:
-                    video_store.prepare_video_restart(video.video_id)
-                    ready_videos.append(video)
-                except (OSError, RuntimeError, ValueError) as exc:
-                    # A per-file cleanup failure after the safe preflight is
-                    # isolated. Never discard other members' successful work.
-                    job.update(status="failed", error=str(exc))
-            videos = ready_videos
         self._set_jobs(jobs)
         self.cancel.clear()
         for video in videos:
             video_store.update_video(video.video_id, export_preset=str(preset))
         if process:
-            from haizflow.pipeline.process_registry import prepare_video_resume
-            from haizflow.services import processing_runs
-
-            for video in videos:
-                job = next(item for item in jobs if item["videoId"] == video.video_id)
-                job["renderRequired"] = True
-                job["runScopeId"] = processing_runs.arm_export(video.video_id)
-                prepare_video_resume(video.video_id)
-            self.host._batch_running = True
-            self.host._batch_stop_requested = False
-            if not videos or not self.host._enqueue_videos([video.video_id for video in videos]):
-                self.host._batch_running = False
-                for job in jobs:
-                    if job["status"] == "rendering":
-                        processing_runs.disarm_export(job["videoId"])
-                        video = video_store.get_video(job["videoId"])
-                        job.update(status="failed", error=str(getattr(video, "error", "") or "") or self.text(
-                            "Không thể đưa video vào hàng đợi.", "Cannot enqueue video."))
-            self.host.batchChanged.emit()
-            self.host.refreshVideos()
-            for job in jobs:
-                if job["status"] == "rendering":
-                    self._capture_render_owner(job)
+            self._enqueue_prepared_batch(videos, jobs)
         else:
             ready = []
             for job in jobs:
@@ -367,6 +442,56 @@ class VideoExportController(QObject):
         self.changed()
         self._watch_batch(jobs)
         return True
+
+    def _prepare_batch(self, videos, jobs):
+        # Validate all members before the first destructive reset.
+        for video in videos:
+            if self.cancel.is_set():
+                for job in jobs:
+                    job.update(status="cancelled", error="")
+                return []
+            video_store.validate_video_restart(video.video_id)
+        ready = []
+        for video, job in zip(videos, jobs):
+            if self.cancel.is_set() or job.get("cancelRequested"):
+                job.update(status="cancelled", error="")
+                continue
+            try:
+                video_store.prepare_video_restart(video.video_id)
+                ready.append(video)
+            except (OSError, RuntimeError, ValueError) as exc:
+                job.update(status="failed", error=str(exc))
+        return ready
+
+    def _enqueue_prepared_batch(self, videos, jobs):
+        from haizflow.pipeline.process_registry import prepare_video_resume
+        from haizflow.services import processing_runs
+
+        ready = []
+        for video in videos:
+            job = next(item for item in jobs if item["videoId"] == video.video_id)
+            if self.cancel.is_set() or job.get("cancelRequested"):
+                job.update(status="cancelled", error="")
+                continue
+            job.update(status="rendering", renderRequired=True)
+            job["runScopeId"] = processing_runs.arm_export(video.video_id)
+            prepare_video_resume(video.video_id)
+            ready.append(video.video_id)
+        self.host._batch_running = bool(ready)
+        self.host._batch_stop_requested = False
+        if ready and not self.host._enqueue_videos(ready):
+            self.host._batch_running = False
+            for job in jobs:
+                if job["status"] == "rendering":
+                    processing_runs.disarm_export(job["videoId"])
+                    video = video_store.get_video(job["videoId"])
+                    job.update(status="failed", error=str(getattr(video, "error", "") or "") or self.text(
+                        "Không thể đưa video vào hàng đợi.", "Cannot enqueue video."))
+        self.host.batchChanged.emit()
+        self.host.refreshVideos()
+        for job in jobs:
+            if job["status"] == "rendering":
+                self._capture_render_owner(job)
 
     def request_render(self, video, job):
         from haizflow.services import processing_runs
@@ -397,13 +522,15 @@ class VideoExportController(QObject):
         return True
 
     def launch(self, jobs):
+        for job in jobs:
+            self._copy_cancels[job["videoId"]] = threading.Event()
         self.worker = threading.Thread(target=self.copy_jobs, args=(jobs,), name="haizflow-video-export", daemon=False)
         self.worker.start()
 
     def copy_jobs(self, jobs):
         for job in jobs:
             identifier = job["videoId"]
-            if self.cancel.is_set():
+            if self.cancel.is_set() or job.get("cancelRequested"):
                 self.events.put((identifier, "cancelled", 0, self.error_text(ExportCancelled())))
                 continue
             self.events.put((identifier, "exporting", 0, ""))
@@ -422,6 +549,8 @@ class VideoExportController(QObject):
                     video = video_store.get_video(identifier)
                 arguments = {"overwrite": job["overwrite"], "cancel": self.cancel,
                              "progress": lambda value, key=identifier: self.events.put((key, "exporting", value, ""))}
+                if identifier in self._copy_cancels:
+                    arguments["cancel"] = self._copy_cancels[identifier]
                 if self.copier is export_video:
                     arguments["expected_target"] = job.get("targetIdentity")
                     if job.get("rangeMs"):
@@ -486,13 +615,15 @@ class VideoExportController(QObject):
         self.changed()
         return True
 
-    def retry_failed(self):
+    def retry_failed(self, video_ids=None):
         if self.busy:
             return False
-        jobs = [job for job in self.jobs if job["status"] in {"failed", "cancelled"}]
+        jobs = [job for job in self.jobs if job["status"] in {"failed", "cancelled"}
+                and (video_ids is None or job["videoId"] in video_ids)]
         if not jobs:
             return False
         for job in jobs:
+            job.pop("cancelRequested", None)
             # A changed existing destination needs a new explicit confirmation,
             # not an automatic overwrite on retry.
             if job.get("overwrite") and destination_identity(job["path"]) != job.get("targetIdentity"):
@@ -520,10 +651,16 @@ class VideoExportController(QObject):
         self.changed()
         return True
 
-    def cancel_all(self):
-        self.cancel.set()
+    def cancel_all(self, video_ids=None):
+        jobs = [job for job in self.jobs if video_ids is None or job["videoId"] in video_ids]
+        if video_ids is None:
+            self.cancel.set()
+        for job in jobs:
+            job["cancelRequested"] = True
+            if job["videoId"] in self._copy_cancels:
+                self._copy_cancels[job["videoId"]].set()
         task_queue = self.host._processing_queue
-        tokens = {job["videoId"]: job["renderToken"] for job in self.jobs
+        tokens = {job["videoId"]: job["renderToken"] for job in jobs
                   if job.get("renderToken") is not None
                   and job["status"] in {"rendering", "paused", "awaiting_review"}}
         from haizflow.pipeline.process_registry import cancel_video
@@ -546,8 +683,8 @@ class VideoExportController(QObject):
             if video:
                 video_store.update_video(identifier, status="cancelled", error=None, step="cancelled",
                     resume_step="", step_detail="Đã hủy lượt xuất.")
-        for job in self.jobs:
-            if job["status"] in {"rendering", "paused", "awaiting_review"}:
+        for job in jobs:
+            if job["status"] in {"preparing", "rendering", "paused", "awaiting_review"}:
                 job.update(status="cancelled", error=self.error_text(ExportCancelled()))
         self.changed()
         if active or removed:
@@ -568,6 +705,27 @@ class VideoExportController(QObject):
         return min(99, raw)
 
     def poll(self):
+        while not self._preparation_events.empty():
+            videos, jobs, preset, error = self._preparation_events.get_nowait()
+            self._preparing_video_ids.difference_update(job["videoId"] for job in jobs)
+            if error:
+                for job in jobs:
+                    if job["status"] == "preparing":
+                        job.update(status="failed", error=error)
+            else:
+                try:
+                    for video in videos:
+                        video_store.update_video(video.video_id, export_preset=preset)
+                    self._enqueue_prepared_batch(videos, jobs)
+                except (OSError, RuntimeError, ValueError) as exc:
+                    from haizflow.services import processing_runs
+
+                    for job in jobs:
+                        if (job["status"] in {"preparing", "rendering"}
+                                and not self.host._processing_queue.contains(job["videoId"])):
+                            processing_runs.disarm_export(job["videoId"])
+                            job.update(status="failed", error=str(exc))
+            self.changed()
         self._cancelling_render_tokens = {
             key: token for key, token in self._cancelling_render_tokens.items()
             if self.host._processing_queue.token_for(key) == token
@@ -664,5 +822,9 @@ class VideoExportController(QObject):
     def shutdown(self):
         self.timer.stop()
         self.cancel.set()
+        for event in self._copy_cancels.values():
+            event.set()
+        if self._preparation_worker and self._preparation_worker.is_alive():
+            self._preparation_worker.join(timeout=10)
         if self.worker and self.worker.is_alive():
             self.worker.join(timeout=10)

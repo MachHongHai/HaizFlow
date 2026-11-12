@@ -1750,6 +1750,10 @@ class ProjectImportController:
             release = getattr(host, "releaseEditorPreview", None)
             if callable(release):
                 release()
+            model = getattr(host, "_manual_editor_document", None)
+            if model is not None and getattr(model, "video_id", "") == video_id:
+                model.clear()
+                host._manual_editor_warm_identity = None
             if getattr(host, "_selected_video_id", "") == video_id:
                 audio_preview = getattr(host, "_audio_preview", None)
                 if audio_preview is not None:

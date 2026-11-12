@@ -362,7 +362,7 @@ def build_audio_timeline(
     video_dur = get_video_duration(video_path)
     log_to_video(video_id, f"Base video duration: {video_dur:.2f} seconds")
     
-    video_dur_ms = int(timeline_duration_ms if range_ms is not None else video_dur * 1000)
+    video_dur_ms = int(timeline_duration_ms if timeline_duration_ms is not None else video_dur * 1000)
     window_start, window_end = range_ms or (0, video_dur_ms)
     output_duration_ms = window_end - window_start
     if video_dur_ms <= 0:
@@ -535,6 +535,26 @@ def build_audio_timeline(
                 except FileNotFoundError:
                     pass
     
+    arguments = (segments, voice_parts_dir, video_id, cancellation_id, video_dur_ms,
+                 window_start, window_end, output_duration_ms, output_wav_path, tts_volume, require_voice_parts)
+    if range_ms is None and output_duration_ms >= 120000:
+        from haizflow.pipeline.disk_audio_mix import DiskAudioMix
+
+        directory = os.path.dirname(os.path.abspath(output_wav_path))
+        os.makedirs(directory, exist_ok=True)
+        with DiskAudioMix(base_audio, directory, cancellation_id) as accumulator:
+            del base_audio
+            if "bg_audio" in locals():
+                del bg_audio
+            if "music" in locals():
+                del music
+            return _finish_audio_timeline(accumulator, *arguments)
+    return _finish_audio_timeline(base_audio, *arguments)
+
+
+def _finish_audio_timeline(base_audio, segments, voice_parts_dir, video_id, cancellation_id,
+                           video_dur_ms, window_start, window_end, output_duration_ms,
+                           output_wav_path, tts_volume, require_voice_parts):
     total = len(segments)
     for idx, seg in enumerate(segments, 1):
         if not bool(seg.get("_voice_enabled", True)):
@@ -617,11 +637,16 @@ def build_audio_timeline(
     )
     os.close(handle)
     try:
-        exported_timeline = base_audio[:output_duration_ms].export(
-            temporary_path,
-            format="wav",
-            parameters=["-ac", "2", "-ar", "48000", "-c:a", "pcm_s24le"],
-        )
+        from haizflow.pipeline.disk_audio_mix import DiskAudioMix
+
+        if isinstance(base_audio, DiskAudioMix):
+            exported_timeline = base_audio.export(temporary_path, output_duration_ms)
+        else:
+            exported_timeline = base_audio[:output_duration_ms].export(
+                temporary_path,
+                format="wav",
+                parameters=["-ac", "2", "-ar", "48000", "-c:a", "pcm_s24le"],
+            )
         exported_timeline.close()
         check_cancellation(cancellation_id)
         if os.path.getsize(temporary_path) <= 44:

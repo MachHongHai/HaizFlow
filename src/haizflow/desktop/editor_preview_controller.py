@@ -28,7 +28,7 @@ from haizflow.pipeline.process_registry import (
 from haizflow.pipeline.render import map_subtitle_region_to_output_percent, render_video
 from haizflow.schemas.video import CropSettings
 from haizflow.services import manual_artifacts, video_store
-from haizflow.utils.ffmpeg import _binary, get_video_dimensions, get_video_duration
+from haizflow.utils.ffmpeg import _binary, get_video_dimensions, get_video_duration, media_probe_batch
 
 
 class EditorPreviewController:
@@ -788,6 +788,7 @@ class EditorPreviewController:
                 if unfinished:
                     self._finish_error(generation, "Không thể chuẩn bị bản xem trước. Hãy thử lại.")
 
+    @media_probe_batch()
     def _render_current(self, generation, process_id, video, settings, preview_dir: Path) -> None:
         try:
             source_start = 0.0

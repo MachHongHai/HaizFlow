@@ -73,16 +73,26 @@ StackLayout {
 
     currentIndex: routeIndex(currentRoute)
 
-    ProjectsPage {
-        projectType: "single"
-        // qmllint disable stale-property-read
-        projectModel: AppController.singleProjectModel
-        // qmllint enable stale-property-read
+    Loader {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: 0
-        onRequestNewProject: root.newProjectRequested("single", "single-projects")
-        onOpenProject: root.workspaceRequested("single-projects", "single-workspace")
+        property bool visited: false
+        active: root.currentRoute === "single-projects" || visited
+        asynchronous: true
+        onLoaded: visited = true
+        sourceComponent: Component {
+            ProjectsPage {
+                projectType: "single"
+                // qmllint disable stale-property-read
+                projectModel: AppController.singleProjectModel
+                // qmllint enable stale-property-read
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.margins: 0
+                onRequestNewProject: root.newProjectRequested("single", "single-projects")
+                onOpenProject: root.workspaceRequested("single-projects", "single-workspace")
+            }
+        }
     }
 
     Loader {
@@ -101,20 +111,30 @@ StackLayout {
         }
     }
 
-    ProjectsPage {
-        projectType: "manual"
-        // qmllint disable missing-property
-        // The controller exposes a constant QObject model. The hand-written
-        // tooling metadata cannot encode PySide's constant=True flag.
-        // qmllint disable stale-property-read
-        projectModel: AppController.manualProjectModel
-        // qmllint enable stale-property-read
-        // qmllint enable missing-property
+    Loader {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: 0
-        onRequestNewProject: root.newProjectRequested("manual", "manual-projects")
-        onOpenProject: root.workspaceRequested("manual-projects", "manual-workspace")
+        property bool visited: false
+        active: root.currentRoute === "manual-projects" || visited
+        asynchronous: true
+        onLoaded: visited = true
+        sourceComponent: Component {
+            ProjectsPage {
+                projectType: "manual"
+                // qmllint disable missing-property
+                // The controller exposes a constant QObject model. The hand-written
+                // tooling metadata cannot encode PySide's constant=True flag.
+                // qmllint disable stale-property-read
+                projectModel: AppController.manualProjectModel
+                // qmllint enable stale-property-read
+                // qmllint enable missing-property
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.margins: 0
+                onRequestNewProject: root.newProjectRequested("manual", "manual-projects")
+                onOpenProject: root.workspaceRequested("manual-projects", "manual-workspace")
+            }
+        }
     }
 
     Loader {
@@ -135,8 +155,7 @@ StackLayout {
         }
         Rectangle {
             anchors.fill: parent
-            visible: manualWorkspaceLoader.active
-                && manualWorkspaceLoader.status !== Loader.Ready
+            visible: manualWorkspaceLoader.active && manualWorkspaceLoader.status !== Loader.Ready
             color: Theme.window
 
             Text {
@@ -149,16 +168,26 @@ StackLayout {
         }
     }
 
-    ProjectsPage {
-        projectType: "batch"
-        // qmllint disable stale-property-read
-        projectModel: AppController.batchProjectModel
-        // qmllint enable stale-property-read
+    Loader {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: 0
-        onRequestNewProject: root.newProjectRequested("batch", "batch-projects")
-        onOpenProject: root.workspaceRequested("batch-projects", "batch-workspace")
+        property bool visited: false
+        active: root.currentRoute === "batch-projects" || visited
+        asynchronous: true
+        onLoaded: visited = true
+        sourceComponent: Component {
+            ProjectsPage {
+                projectType: "batch"
+                // qmllint disable stale-property-read
+                projectModel: AppController.batchProjectModel
+                // qmllint enable stale-property-read
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.margins: 0
+                onRequestNewProject: root.newProjectRequested("batch", "batch-projects")
+                onOpenProject: root.workspaceRequested("batch-projects", "batch-workspace")
+            }
+        }
     }
 
     Loader {
@@ -192,16 +221,26 @@ StackLayout {
         }
     }
 
-    ProjectsPage {
-        projectType: "download"
-        // qmllint disable stale-property-read
-        projectModel: AppController.downloadProjectModel
-        // qmllint enable stale-property-read
+    Loader {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: 0
-        onRequestNewProject: root.newProjectRequested("download", "download-projects")
-        onOpenProject: root.workspaceRequested("download-projects", "download-workspace")
+        property bool visited: false
+        active: root.currentRoute === "download-projects" || visited
+        asynchronous: true
+        onLoaded: visited = true
+        sourceComponent: Component {
+            ProjectsPage {
+                projectType: "download"
+                // qmllint disable stale-property-read
+                projectModel: AppController.downloadProjectModel
+                // qmllint enable stale-property-read
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.margins: 0
+                onRequestNewProject: root.newProjectRequested("download", "download-projects")
+                onOpenProject: root.workspaceRequested("download-projects", "download-workspace")
+            }
+        }
     }
 
     Loader {
@@ -219,16 +258,26 @@ StackLayout {
         }
     }
 
-    ProjectsPage {
-        projectType: "publish"
-        // qmllint disable stale-property-read
-        projectModel: AppController.publishProjectModel
-        // qmllint enable stale-property-read
+    Loader {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: 0
-        onRequestNewProject: root.newProjectRequested("publish", "publish-projects")
-        onOpenProject: root.workspaceRequested("publish-projects", "publish-workspace")
+        property bool visited: false
+        active: root.currentRoute === "publish-projects" || visited
+        asynchronous: true
+        onLoaded: visited = true
+        sourceComponent: Component {
+            ProjectsPage {
+                projectType: "publish"
+                // qmllint disable stale-property-read
+                projectModel: AppController.publishProjectModel
+                // qmllint enable stale-property-read
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.margins: 0
+                onRequestNewProject: root.newProjectRequested("publish", "publish-projects")
+                onOpenProject: root.workspaceRequested("publish-projects", "publish-workspace")
+            }
+        }
     }
 
     Loader {
@@ -242,39 +291,59 @@ StackLayout {
         }
     }
 
-    HomePage {
-        // qmllint disable missing-property stale-property-read
-        projectModel: AppController.projectBrowserModel
-        // qmllint enable missing-property stale-property-read
+    Loader {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: 0
-        onRequestNewProject: function (projectType) {
-            root.newProjectRequested(projectType, "home");
-        }
-        onOpenProject: function (index, projectType) {
-            // qmllint disable missing-property
-            if (AppController.selectProjectFromBrowser(index))
-                root.workspaceRequested("home", root.workspaceRouteForType(projectType));
-            // qmllint enable missing-property
+        property bool visited: false
+        active: root.currentRoute === "home" || visited
+        asynchronous: true
+        onLoaded: visited = true
+        sourceComponent: Component {
+            HomePage {
+                // qmllint disable missing-property stale-property-read
+                projectModel: AppController.projectBrowserModel
+                // qmllint enable missing-property stale-property-read
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.margins: 0
+                onRequestNewProject: function (projectType) {
+                    root.newProjectRequested(projectType, "home");
+                }
+                onOpenProject: function (index, projectType) {
+                    // qmllint disable missing-property
+                    if (AppController.selectProjectFromBrowser(index))
+                        root.workspaceRequested("home", root.workspaceRouteForType(projectType));
+                // qmllint enable missing-property
+                }
+            }
         }
     }
 
-    ProjectsHubPage {
-        // qmllint disable missing-property stale-property-read
-        projectModel: AppController.projectBrowserModel
-        // qmllint enable missing-property stale-property-read
+    Loader {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: 0
-        onRequestNewProject: function (projectType) {
-            root.newProjectRequested(projectType, "projects");
-        }
-        onOpenProject: function (index, projectType) {
-            // qmllint disable missing-property
-            if (AppController.selectProjectFromBrowser(index))
-                root.workspaceRequested("projects", root.workspaceRouteForType(projectType));
-        // qmllint enable missing-property
+        property bool visited: false
+        active: root.currentRoute === "projects" || visited
+        asynchronous: true
+        onLoaded: visited = true
+        sourceComponent: Component {
+            ProjectsHubPage {
+                // qmllint disable missing-property stale-property-read
+                projectModel: AppController.projectBrowserModel
+                // qmllint enable missing-property stale-property-read
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.margins: 0
+                onRequestNewProject: function (projectType) {
+                    root.newProjectRequested(projectType, "projects");
+                }
+                onOpenProject: function (index, projectType) {
+                    // qmllint disable missing-property
+                    if (AppController.selectProjectFromBrowser(index))
+                        root.workspaceRequested("projects", root.workspaceRouteForType(projectType));
+                // qmllint enable missing-property
+                }
+            }
         }
     }
 
@@ -287,7 +356,9 @@ StackLayout {
         sourceComponent: Component {
             SettingsWorkspace {
                 currentRoute: root.currentRoute
-                onNavigateRequested: function(route) { root.navigateRequested(route); }
+                onNavigateRequested: function (route) {
+                    root.navigateRequested(route);
+                }
             }
         }
     }

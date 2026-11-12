@@ -88,6 +88,13 @@ def load_settings() -> dict:
 
 
 def save_settings(settings: dict) -> dict:
+    # The merge and replacement are one transaction, including background
+    # editor-layout saves and foreground language/device changes.
+    with _SETTINGS_LOCK:
+        return _save_settings_locked(settings)
+
+
+def _save_settings_locked(settings: dict) -> dict:
     # Callers that only own one setting (for example the runtime device
     # controller) must not reset newer preferences added by another feature.
     # Merge the persisted document first, then normalize the complete result.

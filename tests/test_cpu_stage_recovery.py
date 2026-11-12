@@ -189,7 +189,9 @@ def test_worker_reports_real_cpu_forwards_without_changing_audio_or_gpu_path(tmp
     with (patch.object(voice, "_write_status_file", side_effect=lambda _p, payload: statuses.append(payload)),
           patch.object(voice, "_cpu_voice_threads", side_effect=AssertionError("post-load resampling"))):
         assert voice._worker_main(str(path), runtime) == 0
-    assert len(audio) == 1 and np.array_equal(audio[0], expected_audio)
+    from haizflow.pipeline.tts_quality import calibrate_omnivoice_level
+    # The activity hook must not change the existing output calibration.
+    assert len(audio) == 1 and np.array_equal(audio[0], calibrate_omnivoice_level(expected_audio, 24000))
     assert statuses[-1]["completed"] == 1
     if device == "cpu":
         assert statuses[-1]["inference_forwards"] == 4

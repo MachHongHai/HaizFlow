@@ -12,6 +12,8 @@ Item {
     property var notificationHandler: null
     property bool initialized: false
     property string lastPresented: ""
+    property string occurrenceKey: ""
+    onOccurrenceKeyChanged: if (initialized) Qt.callLater(root.present)
     readonly property bool scopeVisible: parent !== null && parent.visible
     implicitWidth: 0
     implicitHeight: 0
@@ -23,8 +25,9 @@ Item {
     }
     onScopeVisibleChanged: if (scopeVisible && initialized) Qt.callLater(root.present)
     function present() {
-        if (!scopeVisible || !details || details === lastPresented) return;
-        lastPresented = details;
+        const fingerprint = occurrenceKey + "\n" + details;
+        if (!scopeVisible || !details || fingerprint === lastPresented) return;
+        lastPresented = fingerprint;
         if (notificationHandler) notificationHandler(title, details, logText);
         else AppController.presentUserError(title, details, logText);
     }

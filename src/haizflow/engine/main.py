@@ -449,9 +449,11 @@ def main(argv: list[str] | None = None) -> int:
 
         index = remaining.index("--hymt2-worker")
         return worker(remaining[index + 1 :])
-    if "--vieneu-worker" in remaining:
+    if "--vieneu-worker" in remaining or "--vieneu-server" in remaining:
         from haizflow.pipeline.vieneu_tts import main as worker
 
+        if "--vieneu-server" in remaining:
+            return worker(["--server"])
         index = remaining.index("--vieneu-worker")
         return worker(remaining[index + 1:])
     if "--omnivoice-worker" in remaining or "--omnivoice-server" in remaining:

@@ -5,6 +5,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import QtMultimedia
 import "."
+import "TimelineViewport.js" as TimelineViewport
 
 Rectangle {
     id: root
@@ -148,16 +149,10 @@ Rectangle {
     }
 
     function decisionIndexForSequence(sequenceMs) {
-        for (let index = 0; index < sourceEditDecisions.length; ++index) {
-            const decision = sourceEditDecisions[index];
-            const duration = Number(decision.source_end_ms || 0)
-                - Number(decision.source_start_ms || 0);
-            const start = Number(decision.sequence_start_ms || 0);
-            if (sequenceMs >= start && sequenceMs < start + duration)
-                return index;
-        }
-        return -1;
+        return TimelineViewport.decisionAt(sourceDecisionIndex, sequenceMs);
     }
+
+    readonly property var sourceDecisionIndex: TimelineViewport.buildDecisionIndex(sourceEditDecisions)
 
     function sourceMsForSequence(sequenceMs) {
         if (sourceEditDecisions.length === 0)
@@ -166,10 +161,9 @@ Rectangle {
         if (index < 0) {
             // A gap has no source frame. Park the decoder at the nearest
             // boundary and let the sequence clock/black pane carry the gap.
-            for (let next = 0; next < sourceEditDecisions.length; ++next) {
-                if (Number(sourceEditDecisions[next].sequence_start_ms || 0) > sequenceMs)
-                    return Number(sourceEditDecisions[next].source_start_ms || 0);
-            }
+            const next = TimelineViewport.decisionAfter(sourceDecisionIndex, sequenceMs);
+            if (next >= 0)
+                return Number(sourceEditDecisions[next].source_start_ms || 0);
             return Math.max(0, Number(sourceEditDecisions[sourceEditDecisions.length - 1].source_end_ms || 0) - 1);
         }
         const decision = sourceEditDecisions[index];
@@ -1459,7 +1453,7 @@ Rectangle {
                 && root.watermarkInteractive
                 && String(root.resultBaseSource).length > 0
             editing: interactive && root.watermarkEditEnabled
-            livePreviewVisible: pane === resultPane && pane.overlaysReady
+            livePreviewVisible: pane === resultPane && pane.visible && !fullscreenLayer.visible && pane.overlaysReady
             onActivated: root.activateWatermarkEditor()
             onEditingDismissed: root.watermarkEditingDismissed()
             onScalePreviewChanged: function(value) {
@@ -1481,7 +1475,7 @@ Rectangle {
             timeSeconds: root.positionSeconds
             playing: root.resultPlaybackRequested && !root.resultPriming
             interactive: pane === resultPane && !fullscreenLayer.visible && pane.overlaysReady
-            mediaActive: pane === resultPane && !fullscreenLayer.visible
+            mediaActive: pane === resultPane && pane.visible && !fullscreenLayer.visible
             onClipSelected: function(clipId) { root.editorClipSelected(clipId); }
         }
         }

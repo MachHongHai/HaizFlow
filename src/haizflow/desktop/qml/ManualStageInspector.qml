@@ -13,6 +13,7 @@ InspectorPanel {
     property string pendingSettingsVideoId: ""
     property var subtitleSegments: []
     property int selectedSubtitleIndex: -1
+    property int currentSubtitleIndex: -1
     property real playheadSeconds: 0
     property var selectedEditorClip: ({})
     property var subtitleDrafts: ({})
@@ -149,7 +150,16 @@ InspectorPanel {
 
     function refreshExportPreflight() {
         if (root.toolId === "export" && AppController.hasSelectedVideo)
-            root.exportPreflight = AppController.manualExportPreflight();
+            exportPreflightTimer.restart();
+    }
+
+    Timer {
+        id: exportPreflightTimer
+        interval: 120
+        onTriggered: {
+            if (root.visible && root.toolId === "export" && AppController.hasSelectedVideo)
+                root.exportPreflight = AppController.manualExportPreflight();
+        }
     }
 
     Component.onDestruction: {
@@ -190,7 +200,10 @@ InspectorPanel {
     }
 
     function openVoiceDialog() {
-        const configuration = AppController.manualVoiceConfiguration("");
+        const current = root.currentSubtitleIndex >= 0 && root.currentSubtitleIndex < root.subtitleSegments.length
+            ? root.subtitleSegments[root.currentSubtitleIndex] : null;
+        const configuration = AppController.manualVoiceConfiguration(current
+            ? String(current.segment_id || "") : "");
         voiceDialogLoader.invoke("openForVoice", [
             Boolean(configuration.hasPublishedVoice),
             configuration
@@ -231,6 +244,10 @@ InspectorPanel {
         title: qsTr("Xử lý chưa hoàn tất")
         details: root.toolState.state === "error" ? String(root.toolState.errorMessage || qsTr("Tác vụ gặp lỗi.")) : ""
         logText: AppController.logs
+        occurrenceKey: String(AppController.selectedProjectFailureRevision || "")
+        notificationHandler: function(title, detail, logText) {
+            AppController.presentSelectedProjectFailure(title, detail, logText);
+        }
     }
 
     Flickable {
@@ -504,9 +521,9 @@ InspectorPanel {
         parent: root
         sourceComponent: Component {
             ManualVoiceDialog {
-                onConfirmed: function(provider, voice, scope, segmentId, speakerMode) {
+                onConfirmed: function(provider, voice, scope, segmentId, speakerMode, segmentIds) {
                     if (AppController.configureAndRunManualVoice(
-                            provider, voice, scope, segmentId, speakerMode))
+                            provider, voice, scope, segmentId, speakerMode, segmentIds))
                         root.settingsCommitted();
                 }
                 onCloneRequested: voiceCloneDialogLoader.invoke("openForSelectedVideo", [])

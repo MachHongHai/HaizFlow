@@ -44,8 +44,7 @@ ApplicationWindow {
     property int routeHistoryIndex: 0
     readonly property bool compactNavigation: width < 1280
     readonly property bool videoProcessing: AppController.isProcessing && !AppController.isSwitchingProcessingDevice
-    readonly property var activeExportJob: AppController.videoExportJobs.find(
-        job => job.status === "rendering" || job.status === "exporting" || job.status === "pending") || ({})
+    readonly property var activeExportJob: AppController.videoExportSummary.activeJob || ({})
     readonly property bool exportWorking: AppController.videoExportBusy
         && Boolean(activeExportJob.videoId)
     // qmllint disable stale-property-read
@@ -288,8 +287,8 @@ ApplicationWindow {
         function onVideoExportRequested() { videoExportDialogLoader.invoke("openForSelection", []); }
         function onAutoProcessingRequested() { videoExportDialogLoader.invoke("openForProcessing", []); }
         function onBatchProcessingRequested(processFirst) { videoExportDialogLoader.invoke("openForBatch", [processFirst]); }
-        function onVideoExportStarted() { videoExportJobsDialogLoader.invoke("open", []); }
-        function onVideoExportProgressRequested() { videoExportJobsDialogLoader.invoke("open", []); }
+        function onVideoExportStarted() { videoExportJobsDialogLoader.invoke("openForVideos", [AppController.videoExportScope]); }
+        function onVideoExportProgressRequested() { videoExportJobsDialogLoader.invoke("openForVideos", [AppController.videoExportScope]); }
     }
 
     LazyDialogLoader {

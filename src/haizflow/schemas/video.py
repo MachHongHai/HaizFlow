@@ -3,6 +3,7 @@ from typing import Annotated, Any, Dict, Literal, Optional
 from pydantic import AfterValidator, BaseModel, Field, field_validator
 
 from haizflow.core.subtitle_fonts import normalise_subtitle_font
+from haizflow.core.model_choices import default_tts_voice
 from haizflow.core.translation_models import valid_translation_model
 
 VIDEO_METADATA_SCHEMA_VERSION = 19
@@ -101,8 +102,11 @@ class VideoConfig(BaseModel):
     gemini_translation_instructions: str = Field(default="", max_length=4000)
     gemini_translation_glossary: str = Field(default="", max_length=4000)
     gemini_translation_style: GeminiTranslationStyle = "balanced"
-    tts_provider: TTSProvider = "omnivoice"
-    tts_voice: str = "omnivoice:female"
+    # New configurations only. Persisted VideoInfo/migrations retain their
+    # original provider; unsupported output languages keep OmniVoice.
+    tts_provider: TTSProvider = Field(default_factory=lambda data:
+        "vieneu-gpu" if data.get("target_language", "vi") == "vi" else "omnivoice")
+    tts_voice: str = Field(default_factory=lambda data: default_tts_voice(data["tts_provider"]))
     speaker_mode: SpeakerMode = "single"
     subtitle_style: SubtitleStyle = Field(default_factory=SubtitleStyle)
     subtitle_layout_override: bool = False

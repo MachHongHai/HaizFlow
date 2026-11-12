@@ -82,7 +82,7 @@ def test_all_seven_free_models_use_real_toggle_or_mandatory_reasoning_metadata(t
     monkeypatch.setattr(reasoning, "_PATH", tmp_path / "absent-reasoning.json")
     rows = [row for row in cache.load() if row.get("pricing_kind") == "free"]
     assert len(rows) == 7
-    mandatory = {"recursive/flint-v1.0:free", "liquid/lfm-2.5-2.6b:free"}
+    mandatory = {"recursive/flint-v1.0:free", "liquid/lfm-2.5-2.6b:free", "liquid/lfm-3-1.7b:free"}
     for row in rows:
         model = row["value"]
         info = capabilities("openrouter", model)
@@ -95,6 +95,11 @@ def test_all_seven_free_models_use_real_toggle_or_mandatory_reasoning_metadata(t
             for effort in ("disabled", "none", "enabled"):
                 with pytest.raises(ValueError):
                     request_options("openrouter", model, effort)
+        elif model == "stealth/crouton-alpha":
+            assert info["mandatory"] and info["parameter"] == "reasoning.effort"
+            assert info["default"] == "minimal"
+            assert request_options("openrouter", model) == {"reasoning": {"effort": "minimal", "exclude": True}}
+            assert limits["reasoning_active"] and limits["max_tokens"] >= 8192
         else:
             assert info["parameter"] == "reasoning.enabled" and info["values"] == ["disabled", "enabled"]
             assert request_options("openrouter", model) == {"reasoning": {"enabled": False, "exclude": True}}

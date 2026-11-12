@@ -9,6 +9,7 @@ import uuid
 from collections.abc import Callable
 from contextlib import contextmanager
 from copy import deepcopy
+from bisect import bisect_left
 from pathlib import Path
 
 from haizflow.schemas.editor import (
@@ -454,19 +455,13 @@ def _reconcile_media_assets(
 
     voice, source_segments = _published_voice_sources(video)
     resolved = dict((voice or {}).get("resolved_outputs") or {})
-    clip_outputs = [
-        value
-        for key, value in sorted(
-            (
-                (key, value)
-                for key, value in resolved.items()
-                if str(key).startswith("clip_")
-            ),
-            key=lambda item: int(str(item[0]).split("_", 1)[1])
-            if str(item[0]).split("_", 1)[1].isdigit()
-            else 10**9,
-        )
-    ]
+    # Scoped generation can publish clip_6 without clips 1–5. Keep original
+    # indices: compacting the paths would attach its speech to the first cue.
+    clip_outputs = {
+        int(str(key).split("_", 1)[1]) - 1: value
+        for key, value in resolved.items()
+        if str(key).startswith("clip_") and str(key).split("_", 1)[1].isdigit()
+    }
     current_segments = (
         (subtitle_segments if subtitle_segments is not None else _legacy_segments(video))
         if source_segments and clip_outputs else []
@@ -493,7 +488,7 @@ def _reconcile_media_assets(
     subtitle_by_id = {clip.segment_id: clip for clip in subtitle_clips}
     matched_voice_segments: set[str] = set()
     for current_index, index in source_indices.items():
-        if index >= len(clip_outputs):
+        if index not in clip_outputs:
             continue
         current = current_by_order[current_index]
         current_id = str(current.get("segment_id") or current.get("id") or "")
@@ -873,11 +868,20 @@ def import_asset(video_id: str, source_path: str, kind: str) -> EditorAsset:
     )
 
 
-def evaluate_keyframes(clip: EditorClip, property_name: str, time_ms: int, default: float) -> float:
+def keyframe_index(clip: EditorClip) -> dict:
+    groups = {}
+    for frame in clip.keyframes:
+        groups.setdefault(frame.property_name, []).append(frame)
+    return {name: (tuple(frame.time_ms for frame in frames), tuple(frames))
+            for name, values in groups.items()
+            for frames in [sorted(values, key=lambda frame: frame.time_ms)]}
+
+
+def evaluate_keyframes(clip: EditorClip, property_name: str, time_ms: int, default: float, *, index=None) -> float:
     frames = sorted(
         (frame for frame in clip.keyframes if frame.property_name == property_name),
         key=lambda item: item.time_ms,
-    )
+    ) if index is None else index.get(property_name, ((), ()))[1]
     if not frames:
         return float(default)
     local_time = max(0, int(time_ms) - clip.start_ms)
@@ -885,12 +889,9 @@ def evaluate_keyframes(clip: EditorClip, property_name: str, time_ms: int, defau
         return float(frames[0].value)
     if local_time >= frames[-1].time_ms:
         return float(frames[-1].value)
-    left = frames[0]
-    right = frames[-1]
-    for index in range(1, len(frames)):
-        if local_time <= frames[index].time_ms:
-            left, right = frames[index - 1], frames[index]
-            break
+    times = [frame.time_ms for frame in frames] if index is None else index[property_name][0]
+    right_index = bisect_left(times, local_time)
+    left, right = frames[right_index - 1], frames[right_index]
     span = max(1, right.time_ms - left.time_ms)
     progress = (local_time - left.time_ms) / span
     interpolation = right.interpolation

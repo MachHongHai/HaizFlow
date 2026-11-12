@@ -250,6 +250,8 @@ def test_manual_scheduler_regenerates_only_text_edited_multispeaker_clips(tmp_pa
             return {"resolved_outputs": {"manifest": str(stage / "manifest.json")}}
 
         with (patch.object(manual_tools.manual_artifacts, "resolve", side_effect=resolve),
+              patch.object(manual_tools.manual_artifacts, "resolve_many", return_value={
+                  key: resolve(video.video_id, "tts_clip", key) for key in old_signatures}),
               patch.object(manual_tools.manual_artifacts, "create_staging_directory", return_value=stage),
               patch.object(manual_tools.manual_artifacts, "publish", side_effect=publish),
               patch.object(manual_tools.manual_artifacts, "activate"),

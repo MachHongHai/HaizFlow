@@ -34,6 +34,13 @@ _NON_TRANSLATION = re.compile(r"(?:^|/)(?:ui-tars|schematron|jev)(?:[-/]|$)", re
 # subtitle JSON payload in the 2026-11-03 controlled compatibility check.
 # This is not a claim that the underlying model has been retired.
 _INCOMPATIBLE_OPENROUTER_MODELS = frozenset({"google/gemma-2-27b-it"})
+# Live free-translation audit, 2026-11-08: Gemma 26B repeatedly returned
+# upstream 429; Xing alternated upstream 429 with incorrect translation.
+# Temporarily omit these unstable routes, not the underlying paid models.
+# Gemma 31B recovered and passed the extended check, so it stays available.
+_UNAVAILABLE_OPENROUTER_MODELS = frozenset({
+    "google/gemma-4-26b-a4b-it:free", "xingchen-agi/xing4.0-29b-a4b:free",
+})
 
 
 def protocol_metadata(row):
@@ -91,6 +98,7 @@ def _option(provider, row):
             return None
     if provider == "openrouter":
         if (model in _RETIRED_OPENROUTER_MODELS or model in _INCOMPATIBLE_OPENROUTER_MODELS
+                or model in _UNAVAILABLE_OPENROUTER_MODELS
                 or _NON_TRANSLATION.search(model)):
             return None
         architecture = row.get("architecture")

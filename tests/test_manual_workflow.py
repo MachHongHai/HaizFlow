@@ -638,9 +638,11 @@ class ManualWorkflowTests(unittest.TestCase):
         self.assertEqual(video.tts_provider, "edge")
         self.assertEqual(video.tts_voice, "vi-VN-NamMinhNeural")
         self.assertEqual(
-            video.files["manual_voice_overrides"]["segment-a"],
+            {key: video.files["manual_voice_overrides"]["segment-a"][key] for key in ("provider", "voice")},
             {"provider": "omnivoice", "voice": "omnivoice:female"},
         )
+        self.assertEqual(video.files["manual_voice_selection"], ["segment-a"])
+        self.assertTrue(video.files["manual_voice_overrides"]["segment-a"]["generation"])
         host.runManualTool.assert_called_once_with("voice")
         host._record_manual_voice_configuration_change.assert_called_once()
 

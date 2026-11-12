@@ -11,11 +11,52 @@ from haizflow.pipeline import render, sequence_compiler
 from haizflow.schemas.editor import EditorAsset, EditorClip, EditorDocument, EditorSequence, EditorTrack
 from haizflow.schemas.video import CropSettings, SubtitleStyle
 from haizflow.utils.ffmpeg import _binary, get_video_dimensions, get_video_duration
+from haizflow.schemas.editor import SourceEditDecision
 
 
 def ffmpeg(*args):
     return subprocess.run([_binary("ffmpeg"), "-y", "-v", "error", *args],
                           capture_output=True, check=True, timeout=45).stdout
+
+
+@pytest.mark.parametrize("speed", [1, 2])
+@pytest.mark.parametrize("overlay_audio", [False, True])
+def test_source_edits_and_overlays_share_the_final_encoder(media, tmp_path, monkeypatch, speed, overlay_audio):
+    source, voice, subtitles = media
+    asset = tmp_path / ("overlay.mp4" if overlay_audio else "overlay.bmp")
+    if overlay_audio:
+        ffmpeg("-f", "lavfi", "-i", "color=red:size=24x24:rate=20:duration=2",
+               "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000:duration=2",
+               "-c:v", "libx264", "-c:a", "aac", "-shortest", str(asset))
+    else:
+        ffmpeg("-f", "lavfi", "-i", "color=red:size=24x24", "-frames:v", "1", str(asset))
+    document = EditorDocument(video_id="fused-editor", sequence=EditorSequence(
+        source_asset_id="source", duration_ms=1600, edit_decisions=[
+            SourceEditDecision(decision_id="a", source_start_ms=1400, source_end_ms=1900, sequence_start_ms=0),
+            SourceEditDecision(decision_id="b", source_start_ms=0, source_end_ms=600, sequence_start_ms=700)]),
+        tracks=[EditorTrack(track_id="overlays", kind="overlay", name="Overlays")],
+        assets=[EditorAsset(asset_id="source", kind="source", name="Source", path=str(source), width=192, height=108),
+                EditorAsset(asset_id="mark", kind="video" if overlay_audio else "image", name="Mark", path=str(asset))],
+        clips=[EditorClip(clip_id="mark", track_id="overlays", kind="video" if overlay_audio else "image",
+                          asset_id="mark", duration_ms=1000)])
+    original, commands = subprocess.Popen, []
+    def capture(command, **kwargs):
+        commands.append(command)
+        return original(command, **kwargs)
+    monkeypatch.setattr(render.subprocess, "Popen", capture)
+    output = tmp_path / "fused-edits.mp4"
+    render.render_video(str(source), str(voice), str(subtitles), str(output), "keep_ratio", SubtitleStyle(),
+                        CropSettings(), "fused-editor", editor_document=document, output_speed=speed)
+    encodes = [command for command in commands if "-c:v" in command]
+    assert len(encodes) == 1
+    graph = encodes[0][encodes[0].index("-filter_complex") + 1]
+    assert "concat=n=2:v=1:a=0" in graph and "overlay=x=" in graph
+    assert get_video_duration(str(output)) == pytest.approx(1.6 / speed, abs=.12)
+    assert get_video_dimensions(str(output)) == (192, 108)
+    if overlay_audio:
+        assert "[1:a]" in graph and "[3:a]" not in graph
+        assert "-af" not in encodes[0] if speed != 1 else True
+    assert not list(tmp_path.glob("sequence-source*"))
 
 
 @pytest.fixture

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import heapq
+import logging
 import os
 import queue
 import threading
@@ -200,6 +201,10 @@ class SmartWarmupController:
                 continue
             try:
                 with self._condition:
+                    # Budget/pack probes above can take time. Foreground may
+                    # have suspended warming after the earlier state check.
+                    if self._suspended or self._host._processing_queue.has_work or self._stopping:
+                        continue
                     self._active_capability = request.capability
                     self._active_context = dict(request.context)
                 self._events.put(
@@ -381,6 +386,14 @@ class SmartWarmupController:
             for capability in residents:
                 self._resident_since.pop(capability, None)
                 self._resident_contexts.pop(capability, None)
+        if "voice" in residents or reason in {"shutdown", "storage-move", "device-switch", "memory-pressure"}:
+            # Foreground VieNeu owns a separate resident process, not the
+            # external pool's speculative residency marker.
+            import sys
+
+            vieneu = sys.modules.get("haizflow.pipeline.vieneu_tts")
+            if vieneu is not None:
+                vieneu.clear_runtime(only_idle=reason == "idle")
         if reason in {"shutdown", "storage-move", "device-switch", "memory-pressure"} and "voice" not in residents:
             # A foreground job may leave an imports-only worker after all
             # speculative resident markers have been removed. It still owns
@@ -493,15 +506,31 @@ class SmartWarmupController:
         with self._condition:
             self._suspended = True
             self._requests.clear()
+        if "voice" not in required:
+            import sys
+
+            vieneu = sys.modules.get("haizflow.pipeline.vieneu_tts")
+            if vieneu is not None:
+                vieneu.clear_runtime()
+        with self._condition:
             active = self._active_capability
         if active and active not in required:
             self._preempt_active_warm(active)
         deadline = time.monotonic() + max(0.5, float(timeout_seconds))
         with self._condition:
-            while self._active_capability and time.monotonic() < deadline:
+            # A matching in-flight load is not a model to release. Its runtime
+            # request/model lock already serializes the foreground call, which
+            # will reuse the result. Waiting here incorrectly turned a slow
+            # cold load into a fatal "cannot release" after exactly 30 seconds.
+            while self._active_capability and self._active_capability not in required and time.monotonic() < deadline:
                 self._condition.wait(timeout=0.1)
-            if self._active_capability:
+            if self._active_capability and self._active_capability not in required:
+                logging.getLogger(__name__).warning("Warm-up handoff timed out: active=%s required=%s",
+                                                   self._active_capability, sorted(required))
                 raise RuntimeError("Không thể giải phóng model đã chuẩn bị trước khi xử lý.")
+            if self._active_capability:
+                logging.getLogger(__name__).info("Warm-up foreground reuses in-flight capability=%s",
+                                                self._active_capability)
         if required:
             with self._condition:
                 speculative = self._resident.difference(required)

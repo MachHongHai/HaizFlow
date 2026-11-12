@@ -79,7 +79,7 @@ def test_render_to_copy_transition_does_not_reset_or_finish_early(monkeypatch):
 
 def test_activity_strip_reads_same_export_meter_in_render_and_save_phases():
     source = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
-    assert 'job.status === "rendering" || job.status === "exporting"' in source
+    assert 'AppController.videoExportSummary.activeJob' in source
     assert 'Number(root.activeExportJob.progress || 0) / 100' in source
 
 
@@ -87,10 +87,15 @@ def test_real_dialog_updates_and_reopens_without_sweeping_measured_progress():
     app = QGuiApplication.instance() or QGuiApplication([])
     engine = QQmlEngine()
     controller = QQmlPropertyMap()
+    from haizflow.desktop.video_export_controller import ExportJobModel, export_job_summary
+    jobs = ExportJobModel(controller)
+    controller.insert("videoExportJobModel", jobs)
     controller.insert("videoExportBusy", True)
     def update(status, progress, measured):
         controller.insert("videoExportJobs", [{"videoId": "a", "name": "fff.mp4", "path": "fff.mp4",
             "status": status, "progress": progress, "progressMeasured": measured, "error": ""}])
+        jobs.sync(controller.value("videoExportJobs"))
+        controller.insert("videoExportSummary", export_job_summary(controller.value("videoExportJobs")))
         app.processEvents()
     update("rendering", 61, True)
     engine.rootContext().setContextProperty("progressController", controller)

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from concurrent.futures import CancelledError, ThreadPoolExecutor
+from bisect import bisect_right
 
 from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 
 from haizflow.pipeline.text_overlay_sprite import render_text_overlay_sprite, sprite_key
+from haizflow.core.interval_index import IntervalIndex
 from haizflow.services import editor_documents
 
 
@@ -66,6 +68,39 @@ class ManualPreviewCompositionController(QObject):
             if clip.track_id == "overlays" and clip.track_id in visible_tracks and clip.enabled
         ] if document else []
         self._assets = {asset.asset_id: asset for asset in document.assets} if document else {}
+        self._decisions = sorted(
+            (item for item in document.sequence.edit_decisions if item.source_end_ms > item.source_start_ms),
+            key=lambda item: item.sequence_start_ms,
+        ) if document else []
+        self._decision_starts = [item.sequence_start_ms for item in self._decisions]
+        self._decisions_disjoint = all(
+            current.sequence_start_ms >= previous.sequence_start_ms + previous.source_end_ms - previous.source_start_ms
+            for previous, current in zip(self._decisions, self._decisions[1:])
+        )
+        self._overlay_payloads = []
+        self._keyframe_indices = {}
+        if document:
+            source = self._assets.get(document.sequence.source_asset_id)
+            width = max(1, int(source.width if source else 0) or 1920)
+            height = max(1, int(source.height if source else 0) or 1080)
+            for clip in self._overlay_clips:
+                asset = self._assets.get(clip.asset_id)
+                asset_payload = asset.model_dump() if asset else {}
+                asset_payload["sourceUrl"] = QUrl.fromLocalFile(asset.path) if asset and asset.path else QUrl()
+                style = editor_documents.resolved_text_style(document, clip) if clip.kind == "text" else None
+                key = sprite_key(clip.name, style, width, height) if style else ""
+                payload = {
+                    **clip.model_dump(exclude={"transform", "keyframes"}),
+                    "asset": asset_payload,
+                    "style": style.model_dump() if style else {},
+                    "referenceWidth": width,
+                    "referenceHeight": height,
+                }
+                self._overlay_payloads.append((clip, payload, clip.transform.model_dump(), key, style))
+                self._keyframe_indices[clip.clip_id] = editor_documents.keyframe_index(clip)
+        self._overlay_index = IntervalIndex(
+            (entry[0].start_ms, entry[0].start_ms + entry[0].duration_ms, entry)
+            for entry in self._overlay_payloads)
         self._update_frame()
 
     def _update_frame(self) -> None:
@@ -74,73 +109,50 @@ class ManualPreviewCompositionController(QObject):
             next_frame = {"timeMs": self._time_ms, "overlays": [], "sourceTimeMs": self._time_ms}
         else:
             overlays = []
-            source_asset = self._assets.get(document.sequence.source_asset_id)
-            reference_width = max(1, int(source_asset.width if source_asset else 0) or 1920)
-            reference_height = max(1, int(source_asset.height if source_asset else 0) or 1080)
-            for clip in self._overlay_clips:
-                if (
-                    self._time_ms < clip.start_ms
-                    or self._time_ms >= clip.start_ms + clip.duration_ms
-                ):
-                    continue
-                transform = clip.transform.model_dump()
+            for clip, payload, base_transform, key, style in self._overlay_index.intersect(self._time_ms, self._time_ms + 1):
+                keyframes = self._keyframe_indices[clip.clip_id]
+                transform = dict(base_transform)
                 transform["position_x_percent"] = editor_documents.evaluate_keyframes(
-                    clip, "position_x", self._time_ms, clip.transform.position_x_percent
+                    clip, "position_x", self._time_ms, clip.transform.position_x_percent, index=keyframes
                 )
                 transform["position_y_percent"] = editor_documents.evaluate_keyframes(
-                    clip, "position_y", self._time_ms, clip.transform.position_y_percent
+                    clip, "position_y", self._time_ms, clip.transform.position_y_percent, index=keyframes
                 )
                 scale = editor_documents.evaluate_keyframes(
-                    clip, "scale", self._time_ms, clip.transform.scale_x_percent
+                    clip, "scale", self._time_ms, clip.transform.scale_x_percent, index=keyframes
                 )
                 transform["scale_x_percent"] = scale
                 transform["scale_y_percent"] = scale if clip.transform.lock_aspect_ratio else clip.transform.scale_y_percent
                 transform["rotation_degrees"] = editor_documents.evaluate_keyframes(
-                    clip, "rotation", self._time_ms, clip.transform.rotation_degrees
+                    clip, "rotation", self._time_ms, clip.transform.rotation_degrees, index=keyframes
                 )
                 transform["opacity_percent"] = editor_documents.evaluate_keyframes(
-                    clip, "opacity", self._time_ms, clip.transform.opacity_percent
-                )
-                asset = self._assets.get(clip.asset_id)
-                asset_payload = asset.model_dump() if asset else {}
-                asset_payload["sourceUrl"] = (
-                    QUrl.fromLocalFile(asset.path) if asset and asset.path else QUrl()
-                )
-                style_payload = (
-                    editor_documents.resolved_text_style(document, clip).model_dump()
-                    if clip.kind == "text"
-                    else {}
+                    clip, "opacity", self._time_ms, clip.transform.opacity_percent, index=keyframes
                 )
                 sprite_payload = {}
-                if clip.kind == "text":
-                    style = editor_documents.resolved_text_style(document, clip)
-                    key = sprite_key(clip.name, style, reference_width, reference_height)
+                if key:
                     sprite_payload = dict(self._sprites.get(key) or {})
                     if sprite_payload:
                         sprite_payload["sourceUrl"] = QUrl.fromLocalFile(
                             str(sprite_payload.get("path") or "")
                         )
                     else:
-                        self._request_sprite(
-                            key,
-                            clip.name,
-                            style,
-                            reference_width,
-                            reference_height,
-                        )
+                        self._request_sprite(key, clip.name, style,
+                                             payload["referenceWidth"], payload["referenceHeight"])
                 overlays.append(
                     {
-                        **clip.model_dump(exclude={"transform", "keyframes"}),
+                        **payload,
                         "transform": transform,
-                        "asset": asset_payload,
-                        "style": style_payload,
                         "sprite": sprite_payload,
-                        "referenceWidth": reference_width,
-                        "referenceHeight": reference_height,
                     }
                 )
             source_time = self._time_ms
-            for decision in document.sequence.edit_decisions:
+            if self._decisions_disjoint:
+                index = bisect_right(self._decision_starts, self._time_ms) - 1
+                decisions = self._decisions[index:index + 1] if index >= 0 else []
+            else:
+                decisions = document.sequence.edit_decisions
+            for decision in decisions:
                 duration = max(0, decision.source_end_ms - decision.source_start_ms)
                 if decision.sequence_start_ms <= self._time_ms < decision.sequence_start_ms + duration:
                     source_time = decision.source_start_ms + self._time_ms - decision.sequence_start_ms

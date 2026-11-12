@@ -38,6 +38,7 @@ def main() -> int:
                 "hymt2_server": [executable, "--hymt2-worker", "--server"],
                 "omnivoice_worker": [executable, "--omnivoice-worker"],
                 "vieneu_worker": [executable, "--vieneu-worker"],
+                "vieneu_server": [executable, "--vieneu-server"],
                 "omnivoice_server": [executable, "--omnivoice-server"],
                 "demucs": [executable, "--demucs-separate"],
                 "demucs_task": [executable],

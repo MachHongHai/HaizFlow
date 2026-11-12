@@ -794,6 +794,27 @@
       "max_completion_tokens": 4000
     },
     {
+      "value": "stealth/crouton-alpha",
+      "label": "Crouton Alpha",
+      "pricing_kind": "free",
+      "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
+    },
+    {
       "value": "~deepseek/deepseek-flash-latest",
       "label": "DeepSeek: DeepSeek Flash Latest",
       "pricing_kind": "paid",
@@ -1653,23 +1674,6 @@
       }
     },
     {
-      "value": "google/gemma-4-26b-a4b-it:free",
-      "label": "Google: Gemma 4 26B A4B (free)",
-      "pricing_kind": "free",
-      "output_format": "json_object",
-      "context_length": 262144,
-      "max_completion_tokens": 32768,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "disabled",
-          "enabled"
-        ],
-        "default": "disabled",
-        "toggle": true
-      }
-    },
-    {
       "value": "google/gemma-4-31b-it",
       "label": "Google: Gemma 4 31B",
       "pricing_kind": "paid",
@@ -1842,6 +1846,20 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 128000,
+      "max_completion_tokens": 8192,
+      "reasoning_supported": true,
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "liquid/lfm-3-1.7b:free",
+      "label": "LiquidAI: LFM3-1.7B (free)",
+      "pricing_kind": "free",
+      "output_format": "json_schema",
+      "context_length": 262144,
       "max_completion_tokens": 8192,
       "reasoning_supported": true,
       "reasoning_capabilities": {
@@ -5439,23 +5457,6 @@
       }
     },
     {
-      "value": "xingchen-agi/xing4.0-29b-a4b:free",
-      "label": "XingChen: Xing4.0 29B A4B (free)",
-      "pricing_kind": "free",
-      "output_format": "json_schema",
-      "context_length": 262144,
-      "max_completion_tokens": 235929,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "disabled",
-          "enabled"
-        ],
-        "default": "disabled",
-        "toggle": true
-      }
-    },
-    {
       "value": "z-ai/glm-4.6",
       "label": "Z.ai: GLM 4.6",
       "pricing_kind": "paid",
@@ -5683,5 +5684,6 @@
         "mandatory": true
       }
     }
-  ]
+  ],
+  "free_models_checked_at": "2026-11-08"
 }

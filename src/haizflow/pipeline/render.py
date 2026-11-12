@@ -1640,6 +1640,7 @@ def render_video(
     watermark_moving: bool = True,
     watermark_position: dict | None = None,
     subtitle_language: str = "",
+    editor_document=None,
 ):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
     subtitle_style = SubtitleStyle.model_validate(subtitle_style.model_dump())
@@ -1815,7 +1816,13 @@ def render_video(
     crop_filter = _crop_filter(crop)
     if crop_filter:
         filters.append(crop_filter)
-    complete_source_duration = get_video_duration(video_path)
+    from haizflow.pipeline.sequence_compiler import source_video_filter
+
+    source_graph, source_label = source_video_filter(editor_document)
+    if source_graph and (source_start_seconds or source_duration_seconds is not None):
+        raise ValueError("Fused editor export requires the complete sequence clock.")
+    complete_source_duration = (editor_document.sequence.duration_ms / 1000
+                                if source_graph else get_video_duration(video_path))
     if complete_source_duration <= 0:
         raise RuntimeError("Unable to determine the source video duration before rendering.")
     available_duration = max(0.0, complete_source_duration - source_start_seconds)
@@ -1905,6 +1912,37 @@ def render_video(
         else:
             vf_filter = f"{working_scale},{vf_filter}"
 
+    if source_graph:
+        if not vf_filter.endswith("[outv]"):
+            vf_filter = f"[0:v]{vf_filter}[outv]"
+        vf_filter = source_graph + ";" + vf_filter.replace("[0:v]", source_label)
+
+    overlay_inputs = []
+    overlay_audio = ""
+    if editor_document is not None:
+        from haizflow.pipeline.sequence_compiler import _active_overlays, apply_overlays
+        if _active_overlays(editor_document):
+            plan = apply_overlays(video_path, output_path, editor_document, process_key, _return_graph=True)
+            if isinstance(plan, dict):
+                import re
+                first_overlay_input = 3 if use_media_watermark else 2
+
+                def remap(match):
+                    index, stream = int(match.group(1)), match.group(2)
+                    if index == 0:
+                        return "[render_base]" if stream == "v" else "[1:a]"
+                    return f"[{index + first_overlay_input - 1}:{stream}]"
+
+                if vf_filter.endswith("[outv]"):
+                    vf_filter = vf_filter[:-6] + "[render_base]"
+                else:
+                    vf_filter = f"[0:v]{vf_filter}[render_base]"
+                overlay_graph = re.sub(r"\[(\d+):([av])\]", remap, ";".join(plan["filters"]))
+                vf_filter += ";" + overlay_graph + f";[{plan['video']}]null[outv]"
+                overlay_inputs = plan["inputs"]
+                if plan["audio"] == "[aout]":
+                    overlay_audio = "[aout]"
+
     # Keep every overlay/caption on the original clock, then transform the
     # completed pixels in this same pass instead of re-encoding an MP4.
     if transform["video"]:
@@ -1970,13 +2008,18 @@ def render_video(
             if subtitle_timeline_offset_seconds is not None and watermark_clock_offset > 0:
                 cmd_prefix.extend(["-ss", f"{watermark_clock_offset:.6f}"])
             cmd_prefix.extend(["-i", rel_watermark_media])
-    if use_media_watermark or removal_prefix or output_format == "blur_background_9_16":
+    cmd_prefix.extend(overlay_inputs)
+    if use_media_watermark or removal_prefix or output_format == "blur_background_9_16" or source_graph or overlay_inputs:
         cmd_prefix.extend(["-filter_complex", vf_filter, "-map", "[outv]"])
     else:
         cmd_prefix.extend(["-map", "0:v:0", "-vf", vf_filter])
     output_duration = source_duration / transform["speed"]
-    cmd_prefix.extend(["-map", "1:a:0", "-t", f"{output_duration:.6f}"])
-    audio_args = (["-af", ",".join(transform["audio"])] if transform["audio"] else [])
+    if overlay_audio and transform["audio"]:
+        graph_index = cmd_prefix.index("-filter_complex") + 1
+        cmd_prefix[graph_index] += f";{overlay_audio}{','.join(transform['audio'])}[final_audio]"
+        overlay_audio = "[final_audio]"
+    cmd_prefix.extend(["-map", overlay_audio or "1:a:0", "-t", f"{output_duration:.6f}"])
+    audio_args = (["-af", ",".join(transform["audio"])] if transform["audio"] and not overlay_audio else [])
     if transform["video"]:
         audio_args += ["-movflags", "+faststart"]
     audio_args += ["-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-ac", "2", rel_output]

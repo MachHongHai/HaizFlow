@@ -11,9 +11,10 @@ from haizflow.utils.atomic_file import atomic_json
 
 _PATH = Path(RUNTIME_DATA_DIR) / "translation-data-consent.json"
 _LOCK = threading.RLock()
-# Confirmed by public terms and data-policy 404 responses on 2026-11-03.
+# Confirmed by public terms and data-policy responses, last checked 2026-11-08.
 COLLECTION_MODELS = frozenset({
     "nvidia/nemotron-3.5-super-vl:free", "liquid/lfm-2.5-2.6b:free",
+    "liquid/lfm-3-1.7b:free",
 })
 
 

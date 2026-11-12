@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import queue
+import threading
 
 from haizflow.desktop.media import thumbnail_source
 from haizflow.schemas.video import CropSettings
@@ -13,6 +15,69 @@ from haizflow.services.subtitle_language import manual_subtitle_language
 class ProjectWorkspaceController:
     def __init__(self, host):
         self._host = host
+        self._refresh_events = queue.Queue()
+        self._refresh_running = False
+        self._refresh_again = False
+        self._closed = False
+        self._maintenance_keys = set()
+        self._catalog_members_source = None
+        self._catalog_members = {}
+
+    def _index_catalog_members(self):
+        host = self._host
+        self._catalog_members = {}
+        for key, video in host._catalog_videos.items():
+            self._catalog_members.setdefault(host._video_project_key(video), {})[key] = None
+        self._catalog_members_source = host._catalog_videos
+
+    def close(self):
+        self._closed = True
+
+    def _cleanup_batch(self, key):
+        if key in self._maintenance_keys:
+            return
+        self._maintenance_keys.add(key)
+
+        def cleanup():
+            try:
+                from haizflow.core.storage_ownership import managed_storage_guard
+                with managed_storage_guard:
+                    if not self._closed:
+                        video_store.cleanup_batch_project_orphans(key)
+            except (OSError, RuntimeError, ValueError):
+                pass
+            finally:
+                self._refresh_events.put(("maintenance", key))
+
+        threading.Thread(target=cleanup, daemon=True, name="batch-orphan-maintenance").start()
+
+    def drain_events(self):
+        while not self._closed:
+            try:
+                kind, payload = self._refresh_events.get_nowait()
+            except queue.Empty:
+                break
+            if kind == "maintenance":
+                self._maintenance_keys.discard(payload)
+                continue
+            self._refresh_running = False
+            if kind == "error":
+                import logging
+                logging.getLogger(__name__).warning("Catalog refresh failed: %s", payload)
+                if getattr(self._host, "_project_catalog_state", "loading") != "ready":
+                    self._host._project_catalog_state = "error"
+                    signal = getattr(self._host, "projectCatalogChanged", None)
+                    if signal is not None:
+                        signal.emit()
+            elif self._refresh_again or payload[0] != video_store.metadata_revision():
+                self._refresh_again = False
+                self.refresh_videos()
+                continue
+            else:
+                self._apply_catalog(*payload)
+            if self._refresh_again:
+                self._refresh_again = False
+                self.refresh_videos()
 
     @staticmethod
     def _persist_current_draft(host) -> None:
@@ -32,6 +97,9 @@ class ProjectWorkspaceController:
             # fields with the next video's values.  The QML debounce can then
             # be cancelled safely without losing the user's last quick edit.
             self._persist_current_draft(host)
+            overlay = getattr(host, "_subtitle_overlay", None)
+            if overlay is not None:
+                overlay.release()
         host._selected_video_id = video.video_id
         # Set only after selecting the source record.  Every field below is
         # loaded from this exact video, so autosave may safely target it.
@@ -248,16 +316,7 @@ class ProjectWorkspaceController:
         self._persist_current_draft(host)
         host._settings_owner_video_id = None
         if project["project_type"] == "batch":
-            try:
-                removed = video_store.cleanup_batch_project_orphans(project["key"])
-                if removed:
-                    host._status_message = f"Cleaned {len(removed)} stale batch folder(s)."
-                    host.statusMessageChanged.emit()
-            except (OSError, RuntimeError, ValueError):
-                # Opening the project must remain possible when a media player
-                # temporarily locks an old export; deletion can be retried on
-                # the next open or explicit video removal.
-                pass
+            self._cleanup_batch(project["key"])
         videos = project["videos"]
         host._project_name = project["project_name"]
         host._project_directory = project["project_directory"] or host._project_directory
@@ -301,19 +360,40 @@ class ProjectWorkspaceController:
             host.prepareChannelImport()
 
     def refresh_videos(self) -> None:
+        if self._closed:
+            return
+        if not hasattr(self._host, "_background_events_timer"):
+            # Headless command/test hosts have no Qt dispatcher.
+            self._apply_catalog(*self._collect_catalog())
+            return
+        if self._refresh_running:
+            self._refresh_again = True
+            return
+        self._refresh_running = True
+
+        def collect():
+            try:
+                snapshot = self._collect_catalog()
+                if not self._closed:
+                    self._refresh_events.put(("catalog", snapshot))
+            except Exception as exc:
+                if not self._closed:
+                    self._refresh_events.put(("error", str(exc)))
+
+        threading.Thread(target=collect, daemon=True, name="project-catalog-refresh").start()
+
+    def _collect_catalog(self):
         host = self._host
-        # Probe every catalog entry in the background before building project
-        # cards.  Previously only the open batch queue requested dimensions,
-        # leaving single-project cards permanently labelled as unknown.
-        all_videos = [host._ensure_video_dimensions(video) for video in video_store.list_videos()]
-        host._catalog_videos = {video.video_id: video for video in all_videos}
-        host.videos.set_videos(all_videos[:40])
-        summaries = host._build_project_summaries(all_videos, project_store.list_projects())
+        revision = video_store.metadata_revision()
+        projects = project_store.list_projects()
+        all_videos = video_store.list_videos(projects=projects)
+        summaries = host._build_project_summaries(all_videos, projects)
+        records = {project["key"]: project for project in projects}
         for summary in summaries:
             if summary["project_type"] != "publish":
                 continue
             try:
-                publish_summary = tiktok_publish.summarize(project_store.project_root_for_key(summary["key"]))
+                publish_summary = tiktok_publish.summarize(project_store.project_root_for_record(records[summary["key"]]))
             except (OSError, RuntimeError, ValueError):
                 continue
             summary.update(
@@ -322,6 +402,19 @@ class ProjectWorkspaceController:
                 progress=publish_summary["progress"],
                 thumbnail_source=thumbnail_source(publish_summary["thumbnail_path"]),
             )
+        missing = host._missing_thumbnail_ids(all_videos)
+        return revision, all_videos, summaries, missing
+
+    def _apply_catalog(self, revision, all_videos, summaries, missing_thumbnails):
+        host = self._host
+        previous_selection = getattr(host, "_selected_video_snapshot", None)
+        if previous_selection is None:
+            previous_selection = getattr(host, "_catalog_videos", {}).get(host._selected_video_id)
+        for video in all_videos:
+            host._ensure_video_dimensions(video)
+        host._catalog_videos = {video.video_id: video for video in all_videos}
+        self._index_catalog_members()
+        host.videos.set_videos(all_videos[:40])
         host._project_summaries_by_key = {project["key"]: project for project in summaries}
         host.projects.set_projects(summaries)
         host.single_projects.set_projects([project for project in summaries if project["project_type"] == "single"])
@@ -330,11 +423,14 @@ class ProjectWorkspaceController:
         host.download_projects.set_projects([project for project in summaries if project["project_type"] == "download"])
         host.publish_projects.set_projects([project for project in summaries if project["project_type"] == "publish"])
         host._refresh_batch_model()
-        host._selected_video_snapshot = (
-            video_store.get_video(host._selected_video_id) if host._selected_video_id else None
-        )
-        host.selectedVideoChanged.emit()
-        missing_thumbnails = host._missing_thumbnail_ids(all_videos)
+        host._selected_video_snapshot = host._catalog_videos.get(host._selected_video_id)
+        if getattr(host, "_project_catalog_state", "loading") != "ready":
+            host._project_catalog_state = "ready"
+            signal = getattr(host, "projectCatalogChanged", None)
+            if signal is not None:
+                signal.emit()
+        if previous_selection != host._selected_video_snapshot:
+            host.selectedVideoChanged.emit()
         if missing_thumbnails and not host._thumbnail_refresh_running:
             host._thumbnail_refresh_running = True
             import threading
@@ -346,10 +442,15 @@ class ProjectWorkspaceController:
                 daemon=True,
             )
             host._thumbnail_refresh_thread.start()
-        host._last_video_metadata_revision = video_store.metadata_revision()
+        host._last_video_metadata_revision = revision
 
     def apply_video_metadata_changes(self, video_ids: set[str]) -> bool:
         host = self._host
+        host._batch_metadata_settings_changed = False
+        host._batch_metadata_results_changed = False
+        batch_ids = set(getattr(host, "_batch_video_ids", []))
+        if self._catalog_members_source is not host._catalog_videos:
+            self._index_catalog_members()
         changed = []
         affected_project_keys = set()
         export_only_selected = False
@@ -358,6 +459,18 @@ class ProjectWorkspaceController:
             current = video_store.get_video(video_id)
             if previous is None or current is None:
                 return False
+            if video_id in batch_ids:
+                from haizflow.services.batch_settings import FIELDS, ASSETS
+
+                def settings_signature(video):
+                    files = dict(getattr(video, "files", {}) or {})
+                    return ([getattr(video, field, None) for field in FIELDS.values()],
+                            getattr(video, "subtitle_style", None), getattr(video, "subtitle_layout_override", False),
+                            [files.get(field) for field in (*ASSETS.values(), "video_input", "thumbnail")],
+                            getattr(video, "active_artifacts", {}))
+                host._batch_metadata_settings_changed |= settings_signature(previous) != settings_signature(current)
+                host._batch_metadata_results_changed |= any(getattr(previous, field, None) != getattr(current, field, None)
+                    for field in ("status", "error", "step", "original_filename"))
             if video_id == host._selected_video_id and getattr(current, "project_type", "") == "manual":
                 def preview_fields(video):
                     values = video.model_dump()
@@ -369,6 +482,11 @@ class ProjectWorkspaceController:
                 export_only_selected = (previous.output_speed != current.output_speed
                                         and preview_fields(previous) == preview_fields(current))
             host._catalog_videos[video_id] = current
+            previous_key = host._video_project_key(previous)
+            current_key = host._video_project_key(current)
+            if previous_key != current_key:
+                self._catalog_members.get(previous_key, {}).pop(video_id, None)
+            self._catalog_members.setdefault(current_key, {})[video_id] = None
             changed.append(current)
             affected_project_keys.add(host._video_project_key(previous))
             affected_project_keys.add(host._video_project_key(current))
@@ -381,9 +499,7 @@ class ProjectWorkspaceController:
             previous_summary = host._project_summaries_by_key.get(project_key)
             if previous_summary is None:
                 return False
-            project_videos = [
-                video for video in host._catalog_videos.values() if host._video_project_key(video) == project_key
-            ]
+            project_videos = [host._catalog_videos[key] for key in self._catalog_members.get(project_key, {})]
             summaries = host._build_project_summaries(project_videos, [previous_summary])
             if len(summaries) != 1:
                 return False

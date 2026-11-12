@@ -67,18 +67,26 @@ def test_additive_engine_contract_keeps_existing_models_and_requires_vieneu_comm
     payload.update({name: ['engine.exe'] for name in ENGINE_REQUIRED_COMMANDS[definition.pack_id]})
     # Even a fabricated command on an older contract must not serve VieNeu.
     payload['vieneu_worker'] = ['engine.exe', '--vieneu-worker']
+    payload['vieneu_server'] = ['engine.exe', '--vieneu-server']
     manifest = tmp_path / 'engine.json'
     manifest.write_text(json.dumps(payload), encoding='utf-8')
     with (patch.object(manager, '_engine_marker', return_value=marker),
           patch.object(manager, '_bundled_engine_available', return_value=False)):
         assert manager._engine_is_valid(definition) is valid
         assert bool(manager.engine_command(definition.pack_id, 'vieneu_worker')) is vieneu_ready
+        assert bool(manager.engine_command(definition.pack_id, 'vieneu_server')) is vieneu_ready
         if contract == 7:
             payload.pop('vieneu_worker')
             manifest.write_text(json.dumps(payload), encoding='utf-8')
             assert not manager._engine_is_valid(definition)
             with pytest.raises(ResourcePackError, match='vieneu_worker'):
                 manager._verify_engine_staging(definition, tmp_path)
+
+
+def test_older_installed_engine_without_server_keeps_safe_one_shot_path():
+    with patch('haizflow.services.resource_packs.installed_engine_command', return_value=[]), \
+            patch.object(vieneu_tts.sys, 'frozen', True, create=True):
+        assert vieneu_tts.server_command('gpu') == []
 
 
 def test_native_voice_bank_and_gender_mapping_never_use_narrator_preset():

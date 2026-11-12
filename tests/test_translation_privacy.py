@@ -30,6 +30,15 @@ def test_consent_survives_restart_but_never_follows_another_model_connection_or_
     assert not privacy.allowed(current)
 
 
+def test_new_lfm3_requires_its_own_explicit_consent():
+    existing = profile("liquid/lfm-2.5-2.6b:free")
+    current = profile("liquid/lfm-3-1.7b:free")
+    privacy.grant(existing)
+    assert privacy.required(current) and not privacy.allowed(current)
+    privacy.grant(current)
+    assert privacy.allowed(current)
+
+
 @pytest.mark.parametrize("body", ["broken", "[]", '{"version":2,"grants":[]}',
                                   '{"version":1,"grants":null}', "x" * (256 * 1024 + 1)],
                          ids=["broken", "array", "wrong-version", "null-grants", "oversized"])

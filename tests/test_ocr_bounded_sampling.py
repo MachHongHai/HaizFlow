@@ -10,6 +10,15 @@ import pytest
 from haizflow.pipeline import subtitle_ocr
 
 
+@pytest.fixture(autouse=True)
+def compatibility_sampler(monkeypatch):
+    # These tests retain coverage of the older-engine fallback. Native
+    # persistent decoding has its own real-media and cancellation tests.
+    monkeypatch.setattr(subtitle_ocr, "_sample_frames_with_av", Mock(
+        side_effect=subtitle_ocr._SamplingUnavailable("compatibility test")))
+    monkeypatch.setattr(subtitle_ocr, "log_to_video", Mock())
+
+
 @pytest.mark.parametrize("duration,width,height,seeks", [
     (1800, 3840, 2160, True), (300, 1280, 720, True),
     (60, 3840, 2160, False), (1800, 320, 180, False),
@@ -58,9 +67,11 @@ def test_existing_cache_returns_without_decoder_or_ocr(tmp_path, monkeypatch):
 
 
 def test_cancel_between_seek_samples_never_starts_next_decoder(tmp_path, monkeypatch):
-    checks = Mock(side_effect=[None, RuntimeError("cancelled")])
-    monkeypatch.setattr(subtitle_ocr, "check_cancellation", checks)
     launch = Mock(return_value=Mock(returncode=0))
+    def check(_):
+        if launch.called:
+            raise RuntimeError("cancelled")
+    monkeypatch.setattr(subtitle_ocr, "check_cancellation", check)
     monkeypatch.setattr(subtitle_ocr.subprocess, "Popen", launch)
     monkeypatch.setattr(subtitle_ocr, "communicate_process", Mock(return_value=("", "")))
     with pytest.raises(RuntimeError, match="cancelled"):

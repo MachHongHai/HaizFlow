@@ -541,6 +541,8 @@ def test_reordered_multispeaker_clips_reuse_only_matching_voice_configuration(tm
             patch.object(manual_tools, "published_voice_source_segments", return_value=original),
             patch.object(manual_tools, "_voice_manifest_payload", return_value={"clips": signatures}),
             patch.object(manual_tools.manual_artifacts, "resolve", side_effect=resolve),
+            patch.object(manual_tools.manual_artifacts, "resolve_many", return_value={
+                key: resolve(video.video_id, "tts_clip", key) for key in signatures}),
             patch.object(manual_tools.manual_artifacts, "create_staging_directory", return_value=stage),
             patch.object(manual_tools.manual_artifacts, "publish", side_effect=publish),
             patch.object(manual_tools.manual_artifacts, "activate"),
@@ -555,7 +557,7 @@ def test_reordered_multispeaker_clips_reuse_only_matching_voice_configuration(tm
             assert generate.call_args.kwargs["segment_indices"] == [1, 2]
         else:
             generate.assert_not_called()
-        assert completed.call_count == 2
+        assert completed.call_count == 1
         ready.assert_called_once()
 
 

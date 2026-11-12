@@ -75,6 +75,18 @@ def test_retired_free_models_cannot_reappear_even_with_stale_capability_metadata
     assert catalog._option("openrouter", router(model, pricing={"prompt": "0", "completion": "0"})) is None
 
 
+@pytest.mark.parametrize("model", sorted(catalog._UNAVAILABLE_OPENROUTER_MODELS))
+def test_live_audit_unstable_free_routes_are_omitted_without_removing_paid_variant(model):
+    assert catalog._option("openrouter", router(model, pricing={"prompt": "0", "completion": "0"})) is None
+    assert catalog._option("openrouter", router(model.removesuffix(":free"))) is not None
+
+
+def test_recovered_gemma_31b_is_kept_as_json_mode_not_schema():
+    row = router("google/gemma-4-31b-it:free", supported_parameters=["response_format"],
+                 pricing={"prompt": "0", "completion": "0"})
+    assert catalog._option("openrouter", row)["output_format"] == "json_object"
+
+
 @pytest.mark.parametrize("model", ["google/gemma-2-27b-it", "bytedance/ui-tars-1.5-7b",
                                  "inference-net/schematron-v2-small", "typesafe/jev-router"])
 def test_unsuitable_or_confirmed_incompatible_models_are_not_recommended(model):

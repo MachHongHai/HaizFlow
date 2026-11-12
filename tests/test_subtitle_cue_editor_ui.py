@@ -19,6 +19,10 @@ class CaptionController(QObject):
     manualSubtitleSaved = Signal(str, int, str)
     manualSubtitleSaveFailed = Signal(str, str, str)
 
+    @Slot(str, str, str)
+    def presentUserError(self, _title, _details, _log):
+        pass
+
     def __init__(self):
         super().__init__()
         self.requests = []

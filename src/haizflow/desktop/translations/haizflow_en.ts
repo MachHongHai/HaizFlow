@@ -5769,4 +5769,18 @@ Author and owner of HaizFlow.</translation>
     <message><source>GPU thiếu bộ nhớ. Giải phóng VRAM hoặc chọn CPU rồi chạy lại.</source><translation>Not enough GPU memory. Free VRAM or select CPU and try again.</translation></message>
     <message><source>GPU không khả dụng. Kiểm tra GPU hoặc chọn CPU rồi chạy lại.</source><translation>GPU is unavailable. Check your GPU or select CPU and try again.</translation></message>
 </context>
+<context>
+    <name>ManualVoiceScope</name>
+    <message><source>Phạm vi</source><translation>Scope</translation></message>
+    <message><source>Toàn bộ</source><translation>All sentences</translation></message>
+    <message><source>Câu này</source><translation>This sentence</translation></message>
+    <message><source>Chọn câu…</source><translation>Select sentences…</translation></message>
+    <message><source>Phạm vi tạo giọng</source><translation>Voice generation scope</translation></message>
+    <message><source>Chọn một câu trên timeline hoặc danh sách phụ đề.</source><translation>Select a sentence on the timeline or in the subtitle list.</translation></message>
+    <message><source>Tìm câu…</source><translation>Find a sentence…</translation></message>
+    <message><source>Đã chọn %1 / %2 câu</source><translation>%1 / %2 sentences selected</translation></message>
+    <message><source>Chọn tất cả</source><translation>Select all</translation></message>
+    <message><source>Bỏ chọn</source><translation>Clear selection</translation></message>
+    <message><source>Câu %1: %2</source><translation>Sentence %1: %2</translation></message>
+</context>
 </TS>

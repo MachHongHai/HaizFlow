@@ -5,6 +5,7 @@ import queue
 import re
 import shutil
 import threading
+import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -206,6 +207,9 @@ class HaizFlowController(QObject):
     videoDeleted = Signal()
     batchDeleted = Signal()
     batchChanged = Signal()
+    batchResultsChanged = Signal()
+    projectCatalogChanged = Signal()
+
     settingsChanged = Signal()
     hardwareChanged = Signal()
     languageOptionsChanged = Signal()
@@ -414,6 +418,8 @@ class HaizFlowController(QObject):
         self._subtitle_overlay = SubtitleOverlayRenderer(self)
         self._manual_audio = ManualPreviewAudioController(self)
         self._last_manual_preview_audio_error = ""
+        from haizflow.desktop.project_failure_notice import ProjectFailureNotice
+        self._project_failure_notice = ProjectFailureNotice()
         self._manual_audio.errorChanged.connect(self._report_manual_preview_audio_error)
         self.selectedVideoChanged.connect(self._clear_manual_preview_audio_error)
         self._manual_subtitles.changed.connect(self.refreshManualPreviewAudio)
@@ -587,8 +593,14 @@ class HaizFlowController(QObject):
         from haizflow.desktop.mcp_bridge import McpBridge
 
         self._mcp_bridge = McpBridge(self)
-        # Let Qt render the first frame before migrations touch large workspaces or invoke FFmpeg.
+        # Publish the initial catalog before maintenance competes for the same
+        # index lock and disk. A failed load still lets recovery run.
+        self.projectCatalogChanged.connect(self._start_startup_maintenance)
         QTimer.singleShot(0, self._start_startup_maintenance)
+
+    @Property(str, notify=projectCatalogChanged)
+    def projectCatalogState(self):
+        return getattr(self, "_project_catalog_state", "loading")
 
     @Property(QObject, constant=True)
     def mcpBridge(self):
@@ -604,6 +616,9 @@ class HaizFlowController(QObject):
         self._audio_preview.drain_events()
 
     def _drain_background_events(self) -> None:
+        workspace = getattr(self, "_project_workspace", None)
+        if workspace is not None:
+            workspace.drain_events()
         commands = getattr(self, "_project_commands", None)
         if commands is not None:
             commands.drain_deletion_events()
@@ -667,6 +682,8 @@ class HaizFlowController(QObject):
 
     def _start_startup_maintenance(self) -> None:
         if self._shutdown_started or self._startup_maintenance_thread:
+            return
+        if getattr(self, "_project_catalog_state", "loading") == "loading":
             return
         self._startup_maintenance_thread = threading.Thread(
             target=self._run_startup_maintenance,
@@ -853,7 +870,6 @@ class HaizFlowController(QObject):
                         self._manual_subtitles.segments,
                     )
                     self._manual_editor_document.set_document(document)
-                    self._manual_preview_composition.refresh()
                 except (OSError, RuntimeError, TypeError, ValueError):
                     # Cache recovery must not make the workspace unusable. The
                     # next explicit project load retries the same reconciliation.
@@ -916,6 +932,16 @@ class HaizFlowController(QObject):
         return HaizFlowController._runtime_device_for(self)._confirm_application_close()
 
     def shutdown(self):
+        workspace = getattr(self, "_project_workspace", None)
+        if workspace is not None:
+            workspace.close()
+        preference_writer = getattr(self, "_editor_preferences_writer", None)
+        self._editor_preferences_closed = True
+        if preference_writer is not None:
+            preference_writer.shutdown(wait=True)
+        view_writer = getattr(self, "_editor_view_writer", None)
+        if view_writer is not None:
+            view_writer.close()
         bridge = getattr(self, "_mcp_bridge", None)
         if bridge is not None:
             bridge.close()
@@ -1596,7 +1622,8 @@ class HaizFlowController(QObject):
         return self._tts_provider_options_for_language(str(language_code or "vi"))
 
     @Slot(str, str, result=bool)
-    def validateTtsProviderForLanguage(self, language_code, provider):
+    @Slot(str, str, "QVariantList", result=bool)
+    def validateTtsProviderForLanguage(self, language_code, provider, segment_ids=None):
         from haizflow.core.vieneu_voices import unsupported_language_notice
         from haizflow.services.subtitle_import import has_import, voice_notice
 
@@ -1620,6 +1647,9 @@ class HaizFlowController(QObject):
                     # A new project may not have a source/document yet. Its
                     # ordinary readiness checks still prevent starting a job.
                     segments = []
+            if segment_ids is not None:
+                requested_ids = set(segment_ids)
+                segments = [item for item in segments if str(item.get("segment_id") or "") in requested_ids]
             notice = voice_notice(video, provider, segments, getattr(self, "_settings_language", "vi"))
             if notice:
                 HaizFlowController._show_app_alert(self, *notice, "warning")
@@ -1681,6 +1711,20 @@ class HaizFlowController(QObject):
         logging.getLogger("haizflow.user_errors").error("%s: %s", str(title or "HaizFlow"), safe)
         self.userErrorRequested.emit(str(title or "HaizFlow"), safe,
                                      redact_diagnostic_text(str(log_text or ""))[-64000:])
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedProjectFailureRevision(self):
+        notice = self._project_failure_notice
+        return f"{notice.video_id}:{notice.revision}"
+
+    @Slot(str, str, str)
+    def presentSelectedProjectFailure(self, title, detail, log_text):
+        if self._project_failure_notice.claim(self._selected_video_id):
+            # Tool rows arrive asynchronously; a fast retry can still show an
+            # older row when the new failure revision reaches QML first.
+            video = self._selected_video()
+            current = str(getattr(video, "error", "") or getattr(video, "step_detail", "") or detail)
+            self.presentUserError(title, current, log_text)
 
     @Slot(str, str, str, str, result=bool)
     def showProjectSessionAlertOnce(self, notice_key: str, title: str, message: str, severity: str) -> bool:
@@ -2500,6 +2544,9 @@ class HaizFlowController(QObject):
         self._selected_video_snapshot = (
             video_store.get_video(self._selected_video_id) if self._selected_video_id else None
         )
+        notice = getattr(self, "_project_failure_notice", None)
+        if notice is not None:
+            notice.observe(self._selected_video_snapshot)
         editor = getattr(self, "_manual_editor_document", None)
         if editor is not None and editor.video_id == self._selected_video_id:
             editor.ocrLayersChanged.emit()
@@ -3492,21 +3539,45 @@ class HaizFlowController(QObject):
     def editorViewState(self, video_id):
         from haizflow.services import editor_view_state
 
-        return editor_view_state.load(str(video_id or ""))
+        writer = getattr(self, "_editor_view_writer", None)
+        return writer.load(str(video_id or "")) if writer else editor_view_state.load(str(video_id or ""))
 
     @Slot(str, "QVariantMap", result=bool)
     def saveEditorViewState(self, video_id, state):
         from haizflow.services import editor_view_state
 
-        return editor_view_state.save(str(video_id or ""), dict(state or {}))
+        if getattr(self, "_editor_view_writer", None) is None:
+            self._editor_view_writer = editor_view_state.EditorViewStateWriter()
+        identifier, snapshot = str(video_id or ""), dict(state or {})
+        if self._editor_view_writer._closed:
+            return editor_view_state.save(identifier, snapshot)
+        return self._editor_view_writer.schedule(identifier, snapshot)
 
     @Slot("QVariantMap")
     def saveManualEditorWorkspace(self, workspace):
-        saved = desktop_settings.save_settings({"manual_editor_workspace": dict(workspace or {})})
-        normalized = dict(saved["manual_editor_workspace"])
+        normalized = desktop_settings._normalize_manual_workspace(dict(workspace or {}))
         if normalized != self._manual_editor_workspace:
             self._manual_editor_workspace = normalized
+            HaizFlowController._save_editor_preferences(self, {"manual_editor_workspace": normalized})
             self.settingsChanged.emit()
+
+    def _save_editor_preferences(self, values):
+        if not hasattr(self, "_background_events_timer") or getattr(self, "_editor_preferences_closed", False):
+            return desktop_settings.save_settings(values)
+        from concurrent.futures import ThreadPoolExecutor
+        writer = getattr(self, "_editor_preferences_writer", None)
+        if writer is None:
+            writer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="editor-preferences-save")
+            self._editor_preferences_writer = writer
+        future = writer.submit(desktop_settings.save_settings, dict(values))
+
+        def report_failure(completed):
+            try:
+                completed.result()
+            except OSError:
+                import logging
+                logging.getLogger(__name__).exception("Could not save editor layout")
+        future.add_done_callback(report_failure)
 
     @Slot(int, int, bool)
     def saveManualEditorLayout(self, inspector_width, timeline_height, compare):
@@ -3517,7 +3588,7 @@ class HaizFlowController(QObject):
         }
         if layout == self._manual_editor_layout:
             return
-        desktop_settings.save_settings({
+        HaizFlowController._save_editor_preferences(self, {
             "manual_editor_inspector_width": layout["inspectorWidth"],
             "manual_editor_timeline_height": layout["timelineHeight"],
             "manual_editor_compare": layout["compare"],
@@ -4582,13 +4653,18 @@ class HaizFlowController(QObject):
         return queued
 
     @Slot(result="QVariantMap")
-    def manualExportPreflight(self):
+    @Slot(bool, result="QVariantMap")
+    def manualExportPreflight(self, force=False):
         from haizflow.pipeline.sequence_compiler import export_preflight
 
         video = self._selected_video()
         if not video or video.project_type != "manual":
             return {"canExport": False, "issues": [], "requiredBytes": 0, "availableBytes": 0}
-        document = editor_documents.ensure(video)
+        model = getattr(self, "_manual_editor_document", None)
+        document = (model.document_object if not force and model is not None
+                    and model.video_id == video.video_id else None)
+        if document is None:
+            document = editor_documents.ensure(video)
         input_path = self._resolve_video_file(
             video, ("video_input", "input_video"), ("input", "video.mp4")
         )
@@ -4599,7 +4675,13 @@ class HaizFlowController(QObject):
             Path(output_path).parent
             if output_path else Path(video_store.get_video_dir(video.video_id)) / "output"
         )
-        return export_preflight(document, input_path, output_directory)
+        key = (video.video_id, id(document), getattr(model, "_revision", None), input_path, output_directory)
+        cached = getattr(self, "_manual_preflight_presentation", None)
+        if not force and cached and cached[0] == key and time.monotonic() - cached[1] < 1.0:
+            return copy.deepcopy(cached[2])
+        result = export_preflight(document, input_path, output_directory)
+        self._manual_preflight_presentation = (key, time.monotonic(), copy.deepcopy(result))
+        return result
 
     @Slot(result="QVariantMap")
     def manualExportSettings(self):
@@ -4612,6 +4694,37 @@ class HaizFlowController(QObject):
     @Property("QVariantList", notify=exportStateChanged)
     def videoExportJobs(self):
         return [dict(job) for job in self._video_exports.jobs]
+
+    @Property(QObject, constant=True)
+    def videoExportJobModel(self):
+        return self._video_exports.job_model
+
+    @Property(QObject, constant=True)
+    def videoExportDialogModel(self):
+        return self._video_exports.dialog_job_model
+
+    @Slot("QVariantList")
+    def setVideoExportDialogScope(self, video_ids):
+        self._video_exports.set_dialog_scope(video_ids)
+
+    @Property("QVariantMap", notify=exportStateChanged)
+    def videoExportSummary(self):
+        return dict(self._video_exports.summary)
+
+    @Property("QVariantList", notify=selectedVideoChanged)
+    def videoExportScope(self):
+        if self._project_type == "batch":
+            return list(self._batch_video_ids)
+        return [str(self._selected_video_id)] if self._selected_video_id else []
+
+    @Slot("QVariantList")
+    def cancelVideoExportsFor(self, video_ids):
+        if video_ids:
+            self._video_exports.cancel_all(set(map(str, video_ids)))
+
+    @Slot("QVariantList", result=bool)
+    def retryVideoExportsFor(self, video_ids):
+        return bool(video_ids) and self._video_exports.retry_failed(set(map(str, video_ids)))
 
     @Slot()
     def requestVideoExport(self):
@@ -4704,6 +4817,14 @@ class HaizFlowController(QObject):
         if self._batch_video_ids and not self.isBatchRunning and not self.videoExportBusy:
             self.batchProcessingRequested.emit(True)
 
+    @Slot(str, str, result=bool)
+    def removeBatchVideo(self, project_key, video_id):
+        return HaizFlowController._project_commands_for(self).remove_batch_video(str(project_key), str(video_id))
+
+    @Slot(str, result=bool)
+    def batchVideoRemovalPending(self, video_id):
+        return str(video_id) in HaizFlowController._project_commands_for(self)._video_deletions
+
     @Slot(result="QVariantMap")
     def batchExportSettings(self):
         return self._video_exports.batch_settings()
@@ -4711,6 +4832,10 @@ class HaizFlowController(QObject):
     @Slot(result=str)
     def chooseBatchExportDestination(self):
         return self._video_exports.choose_batch_directory()
+
+    @Slot(QUrl, result=str)
+    def exportFolderPath(self, url):
+        return url.toLocalFile() if url.isLocalFile() else ""
 
     @Slot(str, result=bool)
     def batchExportDestinationExists(self, directory):
@@ -4720,6 +4845,7 @@ class HaizFlowController(QObject):
     def processBatchTo(self, project_key, video_ids, preset, directory, overwrite, process):
         started = self._video_exports.start_batch_to(
             str(project_key), list(video_ids), str(preset), str(directory), overwrite=bool(overwrite), process=bool(process),
+            background=True,
         )
         if started:
             self.videoExportStarted.emit()
@@ -4788,6 +4914,15 @@ class HaizFlowController(QObject):
         # stale persisted snapshot left behind while editing project options.
         build_config = getattr(self, "_build_config", None)
         effective_config = build_config() if callable(build_config) else video
+        if tool_id == "voice" and (getattr(video, "files", {}) or {}).get("manual_voice_selection"):
+            from copy import copy
+
+            choice_id = video.files["manual_voice_selection"][0]
+            choice = dict(video.files.get("manual_voice_overrides") or {}).get(choice_id, {})
+            effective_config = copy(effective_config)
+            effective_config.tts_provider = choice.get("provider", video.tts_provider)
+            effective_config.tts_voice = choice.get("voice", video.tts_voice)
+            effective_config.speaker_mode = choice.get("speaker_mode", "single")
         if tool_id == "voice":
             from haizflow.services.subtitle_import import has_import, voice_notice
 
@@ -4799,6 +4934,9 @@ class HaizFlowController(QObject):
                     segments = _load_segments(video, validate=False)
                 except FileNotFoundError:
                     segments = []
+                requested = (video.files or {}).get("manual_voice_selection")
+                if requested is not None:
+                    segments = [item for item in segments if item.get("segment_id") in requested]
                 notice = voice_notice(video, provider, segments, self._settings_language)
                 if notice:
                     self.appAlertRequested.emit(*notice, "warning")
@@ -4885,7 +5023,7 @@ class HaizFlowController(QObject):
             ensure_current_subtitle_document(video.video_id, validate=False)
             video = video_store.get_video(video.video_id) or video
         if tool_id == "export":
-            preflight = self.manualExportPreflight()
+            preflight = self.manualExportPreflight(True)
             blocking = [
                 item for item in preflight.get("issues", [])
                 if item.get("severity") == "error"
@@ -5012,6 +5150,7 @@ class HaizFlowController(QObject):
             "globalVoice": global_voice,
             "speakerMode": str(video.speaker_mode or "single"),
             "segmentOverride": bool(override),
+            "segmentId": segment_key,
             "hasPublishedVoice": bool(published_voice_record(video, validate=False)),
         }
 
@@ -5037,6 +5176,7 @@ class HaizFlowController(QObject):
         return self.runManualTool(tool_id)
 
     @Slot(str, str, str, str, str, result=bool)
+    @Slot(str, str, str, str, str, "QVariantList", result=bool)
     def configureAndRunManualVoice(
         self,
         provider: str,
@@ -5044,6 +5184,7 @@ class HaizFlowController(QObject):
         scope: str,
         segment_id: str,
         speaker_mode: str,
+        segment_ids=None,
     ) -> bool:
         """Commit a confirmed Manual voice draft and run only the Voice tool."""
         video = self._selected_video()
@@ -5057,27 +5198,36 @@ class HaizFlowController(QObject):
             )
             return False
 
+        selected_scope = str(scope or "all").strip().lower()
+        if selected_scope not in {"all", "segment", "selection"}:
+            return False
+        segments = self._manual_subtitles.segments
+        selected = [str(segment_id or "")] if selected_scope == "segment" else segment_ids
+        if selected_scope != "all":
+            from haizflow.services.manual_voice_scope import selected_ids
+
+            try:
+                selected_set = selected_ids({"manual_voice_selection": selected}, segments)
+            except ValueError as exc:
+                self.appAlertRequested.emit("Chưa chọn câu", str(exc), "info")
+                return False
+            selected = [str(item["segment_id"]) for item in segments if item.get("segment_id") in selected_set]
+        else:
+            selected = None
+        if any(value in {"saving", "error"} for value in getattr(self._manual_subtitles, "_states", {}).values()):
+            self.appAlertRequested.emit("Chưa lưu phụ đề", "Lưu phụ đề xong rồi tạo giọng.", "info")
+            return False
         language = HaizFlowController._selected_voice_language(self)
         selected_provider = self._normalized_tts_provider(language, provider)
-        if not HaizFlowController.validateTtsProviderForLanguage(self, language, selected_provider):
+        if not HaizFlowController.validateTtsProviderForLanguage(self, language, selected_provider, selected):
             return False
         selected_voice = self._normalized_voice_for_language(
             language,
             voice,
             selected_provider,
         )
-        selected_scope = "segment" if str(scope or "").strip().lower() == "segment" else "all"
-        selected_segment = str(segment_id or "")
-        segments = self._manual_subtitles.segments
-        if selected_scope == "segment" and not any(
-            str(item.get("segment_id") or "") == selected_segment for item in segments
-        ):
-            self.appAlertRequested.emit(
-                "Chưa chọn đoạn",
-                "Chọn một đoạn phụ đề trước khi tạo giọng riêng cho đoạn đó.",
-                "info",
-            )
-            return False
+        selected_mode = ("multiple" if selected_provider.startswith(("omnivoice", "vieneu"))
+                         and str(speaker_mode or "").strip().lower() == "multiple" else "single")
 
         if selected_voice in {"omnivoice:clone", "vieneu:clone"} and not self.voiceCloneReferencePath:
             self.appAlertRequested.emit(
@@ -5094,24 +5244,24 @@ class HaizFlowController(QObject):
             for key, value in dict(files.get("manual_voice_overrides") or {}).items()
             if isinstance(value, dict)
         }
-        if selected_scope == "segment":
-            if selected_provider == video.tts_provider and selected_voice == video.tts_voice:
-                overrides.pop(selected_segment, None)
-            else:
+        if selected_scope != "all":
+            import uuid
+
+            token = uuid.uuid4().hex
+            for selected_segment in selected:
                 overrides[selected_segment] = {
                     "provider": selected_provider,
                     "voice": selected_voice,
+                    "speaker_mode": selected_mode,
+                    "generation": token,
                 }
+            files["manual_voice_selection"] = selected
         else:
+            files.pop("manual_voice_selection", None)
             overrides.clear()
             self._tts_provider = selected_provider
             self._tts_voice = selected_voice
-            self._speaker_mode = (
-                "multiple"
-                if selected_provider.startswith(("omnivoice", "vieneu"))
-                and str(speaker_mode or "").strip().lower() == "multiple"
-                else "single"
-            )
+            self._speaker_mode = selected_mode
             self.ttsProviderChanged.emit()
             self.ttsProviderOptionsChanged.emit()
             self.ttsVoiceChanged.emit()
@@ -5130,7 +5280,7 @@ class HaizFlowController(QObject):
         video_store.log_to_video(
             video.video_id,
             "Manual voice request confirmed for "
-            + (f"segment {selected_segment}." if selected_scope == "segment" else "the full video."),
+            + (f"{len(selected)} selected segments." if selected is not None else "the full video."),
         )
         self._record_manual_voice_configuration_change(
             video.video_id,
@@ -5310,7 +5460,24 @@ class HaizFlowController(QObject):
         self._subtitle_overlay.release()
         self._manual_voice_refresh_timer.stop()
         self._editor_transform_drafts.clear()
-        self._manual_editor_document.clear()
+        # Keep one lightweight editor snapshot, not native media/PCM handles.
+        # Settings round-trips can reuse it; another source/revision cannot.
+        document_video_id = self._manual_editor_document.video_id
+        video = video_store.get_video(document_video_id) if document_video_id else None
+        self._manual_editor_warm_identity = HaizFlowController._editor_warm_identity(video)
+
+    @staticmethod
+    def _editor_warm_identity(video):
+        if video is None:
+            return None
+        source = str((video.files or {}).get("video_input") or (video.files or {}).get("input_video") or "")
+        try:
+            source_stat = os.stat(source)
+            source_state = (source_stat.st_size, source_stat.st_mtime_ns, source_stat.st_ino)
+        except OSError:
+            source_state = None
+        return (video.video_id, video.updated_at, video.editor_document_revision, source, source_state,
+                tuple(sorted((getattr(video, "active_artifacts", {}) or {}).items())))
 
     @Slot("QVariantMap", result=bool)
     def setOriginalSubtitleRegion(self, region):
@@ -6780,17 +6947,22 @@ class HaizFlowController(QObject):
             self._manual_voice_video_id = str(self._selected_video_id or "")
             self._manual_voice_refresh_pending = False
             self._manual_voice_refresh_enabled = False
-        self._manual_subtitles.load(str(self._selected_video_id or ""), self.reviewSegments)
         selected_video = getattr(self, "_selected_video", None)
         selected = selected_video() if callable(selected_video) else None
-        if selected and selected.project_type == "manual":
+        warm = (selected is not None
+                and getattr(self, "_manual_editor_warm_identity", None) == HaizFlowController._editor_warm_identity(selected)
+                and self._manual_editor_document.video_id == selected.video_id
+                and self._manual_subtitles.video_id == selected.video_id)
+        self._manual_editor_warm_identity = None
+        if not warm:
+            self._manual_subtitles.load(str(self._selected_video_id or ""), self.reviewSegments)
+        if selected and selected.project_type == "manual" and not warm:
             try:
                 document = editor_documents.sync_subtitle_clips(
                     selected,
                     self._manual_subtitles.segments,
                 )
                 self._manual_editor_document.set_document(document)
-                self._manual_preview_composition.refresh()
             except (OSError, RuntimeError, TypeError, ValueError):
                 # The legacy workspace remains usable when migration cannot be
                 # completed.  The backup created by ``ensure`` is untouched.
@@ -6813,7 +6985,10 @@ class HaizFlowController(QObject):
             # bed, music and voice clips.  The delay is short enough to be
             # imperceptible but prevents the three media paths from competing
             # during workspace construction.
-            QTimer.singleShot(180, refresh_after_first_frame)
+            # The warm path deliberately emits no document/subtitle change,
+            # so this is its first audio request. Do not add the cold-start
+            # delay again after reopening an already hydrated editor.
+            QTimer.singleShot(0 if warm else 180, refresh_after_first_frame)
         schedule_cache = getattr(self, "_schedule_manual_cache_migration", None)
         if callable(schedule_cache):
             def migrate_after_workspace_paint() -> None:
@@ -6883,7 +7058,6 @@ class HaizFlowController(QObject):
             try:
                 document = editor_documents.sync_subtitle_clips(video, self._manual_subtitles.segments)
                 self._manual_editor_document.set_document(document)
-                self._manual_preview_composition.refresh()
             except (OSError, RuntimeError, TypeError, ValueError):
                 pass
         # Publish UI state only after subtitle/voice reconciliation. Undo
@@ -7244,6 +7418,9 @@ class HaizFlowController(QObject):
             self._open_path(video_store.get_video_dir(self._selected_video_id))
 
     def poll_videos(self):
+        workspace = getattr(self, "_project_workspace", None)
+        if workspace is not None and workspace._refresh_running:
+            return
         revision = video_store.metadata_revision()
         if revision == self._last_video_metadata_revision:
             return
@@ -7253,6 +7430,7 @@ class HaizFlowController(QObject):
             self.batchChanged.emit()
             return
         changes = video_store.metadata_changes_since(self._last_video_metadata_revision)
+        presentation_changed = True
         if changes is None:
             self.refreshVideos()
         else:
@@ -7261,7 +7439,11 @@ class HaizFlowController(QObject):
                 self.refreshVideos()
             else:
                 self._last_video_metadata_revision = revision
-        self.batchChanged.emit()
+                presentation_changed = getattr(self, "_batch_metadata_settings_changed", True)
+                if not presentation_changed and getattr(self, "_batch_metadata_results_changed", False):
+                    self.batchResultsChanged.emit()
+        if presentation_changed:
+            self.batchChanged.emit()
 
     @classmethod
     def _video_settings_snapshot(cls, video) -> dict[str, object]:
@@ -7308,6 +7490,7 @@ class HaizFlowController(QObject):
         video = video_store.get_video(video_id) or video
         files = dict(video.files or {})
         overrides = dict(snapshot.get("overrides") or {})
+        files.pop("manual_voice_selection", None)
         if overrides:
             files["manual_voice_overrides"] = overrides
         else:

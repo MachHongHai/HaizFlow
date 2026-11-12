@@ -83,6 +83,26 @@ def test_cancellation_during_metering_is_not_swallowed(tmp_path):
             tts._level_voice_peers(peers,[peers[0]],'fixture','vi')
 
 
+def test_partial_generation_never_decodes_other_speakers(tmp_path):
+    peers = [write_clip(tmp_path, i, .1, speaker='a') for i in range(3)]
+    unrelated = [write_clip(tmp_path, i, .1, speaker='b') for i in range(3, 6)]
+    requested = write_clip(tmp_path, 7, .1, speaker='a')
+    import subprocess
+
+    launch = subprocess.Popen
+    commands = []
+
+    def observe(command, **options):
+        commands.append(command)
+        return launch(command, **options)
+
+    with patch.object(tts, '_is_valid_mp3', return_value=True), patch('subprocess.Popen', side_effect=observe):
+        assert not tts._level_voice_peers(peers + unrelated, [requested], 'fixture', 'vi')
+    forbidden = {item['output_path'] for item in unrelated}
+    assert len(commands) == 4
+    assert all(not forbidden.intersection(command) for command in commands)
+
+
 def test_peer_policy_changes_manual_and_auto_voice_keys_but_not_edge():
     from types import SimpleNamespace
     from haizflow.pipeline import manual_tools,process_video,tts_quality

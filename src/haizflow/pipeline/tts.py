@@ -145,8 +145,11 @@ def _level_voice_peers(peers, requested, video_id, language):
     def key(item):
         return (item.get('voice'), item.get('speaker_id') or 'narrator')
 
+    requested_identities = {key(item) for item in requested}
     groups = {}
     for item in peers:
+        if key(item) not in requested_identities:
+            continue
         group = groups.setdefault(key(item),[])
         if (len(group) < 12 and is_level_reference_text(item['text'],language)
                 and _is_valid_mp3(item['output_path'])):
@@ -239,6 +242,7 @@ def generate_voice_parts(
     narrator_anchor_text: str = "",
     status_callback=None,
     level_peer_indices: list[int] | None = None,
+    speaker_mode_override: str | None = None,
 ):
     backend = resolve_tts_provider(provider, target_language)
     device = "gpu" if provider.endswith("-gpu") else "cpu"
@@ -293,7 +297,7 @@ def generate_voice_parts(
         return
     current_video = get_video(video_id)
     current_files = dict((current_video.files if current_video else {}) or {})
-    speaker_mode = str(getattr(current_video, "speaker_mode", "single") or "single")
+    speaker_mode = speaker_mode_override or str(getattr(current_video, "speaker_mode", "single") or "single")
     if backend == "vieneu":
         from haizflow.core.vieneu_voices import native_voice, speaker_voice
         from haizflow.pipeline.vieneu_tts import synthesize_batch_to_mp3

@@ -10,6 +10,24 @@ from haizflow.schemas.video import VideoConfig
 from haizflow.services import editor_documents, editor_view_state, project_store, video_store
 
 
+@pytest.mark.parametrize("provider,family,fallback", [
+    ("omnivoice-gpu", "omnivoice", "omnivoice:female"),
+    ("vieneu-gpu", "vieneu", "vieneu:Hải Đăng"),
+])
+def test_replacement_clone_reset_uses_saved_provider_not_new_config_default(
+        tmp_path, monkeypatch, provider, family, fallback):
+    monkeypatch.setattr(project_store, "PROJECT_INDEX_PATH", str(tmp_path / "projects.json"))
+    monkeypatch.setattr(video_store, "LEGACY_VIDEO_WORKSPACES_DIR", str(tmp_path / "legacy"))
+    config = VideoConfig(project_type="manual", project_name="Clone reset", project_directory=str(tmp_path),
+                         tts_provider=provider, tts_voice=family + ":clone")
+    video = video_store.create_video(f"clone-{tmp_path.name}", "old.mp4", config)
+    Path(video.files["video_input"]).write_bytes(b"old")
+    source = tmp_path / "new.mp4"
+    source.write_bytes(b"new")
+    replaced = video_store.replace_video_input(video.video_id, str(source))
+    assert replaced.tts_provider == provider and replaced.tts_voice == fallback
+
+
 def test_manual_replacement_clears_layers_assets_drafts_and_preserves_model_choices(tmp_path, monkeypatch):
     monkeypatch.setattr(project_store, "PROJECT_INDEX_PATH", str(tmp_path / "projects.json"))
     monkeypatch.setattr(video_store, "LEGACY_VIDEO_WORKSPACES_DIR", str(tmp_path / "legacy"))

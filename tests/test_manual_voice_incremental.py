@@ -32,7 +32,7 @@ def voice_project(tmp_path, monkeypatch):
     monkeypatch.setattr(video_store, "get_video", lambda _: video)
     monkeypatch.setattr(video_store, "update_video", update)
     monkeypatch.setattr(video_store, "log_to_video", Mock())
-    monkeypatch.setattr(editor_documents, "mark_voice_clips_ready", Mock())
+    monkeypatch.setattr(editor_documents, "mark_voice_clips_ready", Mock(wraps=editor_documents.mark_voice_clips_ready))
     monkeypatch.setattr(manual_tools, "_is_valid_mp3", lambda path: Path(path).is_file() and Path(path).stat().st_size > 0)
     monkeypatch.setattr(manual_tools, "ensure_narrator_anchor", lambda _: "stable narrator")
     monkeypatch.setattr(manual_tools, "shutdown_hymt2_worker", Mock())
@@ -42,10 +42,11 @@ def voice_project(tmp_path, monkeypatch):
     def synthesize(segments_path, parts_dir, _voice, _id, **kwargs):
         segments = json.loads(Path(segments_path).read_text(encoding="utf-8"))
         indices = list(kwargs["segment_indices"])
-        requests.append({"indices": indices, "segments": segments, "provider": kwargs["provider"]})
+        requests.append({"indices": indices, "segments": segments, "provider": kwargs["provider"],
+                         "voice": _voice, "speaker_mode": kwargs.get("speaker_mode_override")})
         for index in indices:
             Path(parts_dir, f"voice_{index:04d}.mp3").write_bytes(
-                f"ID3 generated request={len(requests)} sentence={index} text={segments[index-1]['text']}".encode())
+                f"ID3 generated voice={_voice} request={len(requests)} sentence={index} text={segments[index-1]['text']}".encode())
     monkeypatch.setattr(manual_tools, "generate_voice_parts", synthesize)
     segments = [{"segment_id": f"cue-{index}", "start": index * 2, "end": index * 2 + 1.5,
         "text": "Cảm ơn mẹ" if index == 5 else f"Câu nói {index+1}",
@@ -179,3 +180,149 @@ def test_legacy_idless_manifest_reuses_unchanged_multi_speaker_parts_after_struc
     assert len(mapping) == len(edited) - (operation == "merge")
     for new_index, old_index in mapping.items():
         assert Path(current["resolved_outputs"][f"clip_{new_index + 1}"]).read_bytes() == old_bytes[old_index]
+
+
+def select_voice_cues(video, indices, *, token="new-attempt", provider="vieneu-gpu", voice="vieneu:Trúc Ly"):
+    files = dict(video.files)
+    files["manual_voice_selection"] = [f"cue-{index - 1}" for index in indices]
+    overrides = dict(files.get("manual_voice_overrides") or {})
+    for key in files["manual_voice_selection"]:
+        overrides[key] = {"provider": provider, "voice": voice,
+                          "speaker_mode": "single", "generation": token}
+    files["manual_voice_overrides"] = overrides
+    video_store.update_video(video.video_id, files=files)
+
+
+@pytest.mark.parametrize("indices", [[6], [6, 15]])
+@pytest.mark.parametrize("provider,voice", [("vieneu-gpu", "vieneu:Trúc Ly"), ("omnivoice-gpu", "omnivoice:female")])
+def test_explicit_scope_only_generates_targets_and_preserves_other_bytes(voice_project, indices, provider, voice, monkeypatch):
+    video, _segments, requests = voice_project
+    old = manual_tools.published_voice_record(video, validate=True)
+    audio = {i: Path(old["resolved_outputs"][f"clip_{i}"]).read_bytes() for i in range(1, 23)}
+    select_voice_cues(video, indices, provider=provider, voice=voice)
+    register = Mock(wraps=manual_artifacts.register_existing)
+    monkeypatch.setattr(manual_artifacts, "register_existing", register)
+    generations = dict(video.manual_tool_generations)
+    assert not manual_tools.prepare_manual_rerun(video.video_id, "voice", force=True)
+    assert video.manual_tool_generations == generations
+    manual_tools._run_voice(video, SimpleNamespace(update=Mock()))
+    assert [i for request in requests for i in request["indices"]] == indices
+    assert all(request["voice"] == voice and request["speaker_mode"] == "single" for request in requests)
+    assert [call.args[1] for call in register.call_args_list] == ["tts_clip"] * len(indices)
+    current = manual_tools.published_voice_record(video, validate=True)
+    for i in range(1, 23):
+        assert (Path(current["resolved_outputs"][f"clip_{i}"]).read_bytes() != audio[i]) == (i in indices)
+        assert Path(old["resolved_outputs"][f"clip_{i}"]).read_bytes() == audio[i]
+    assert "manual_voice_selection" not in video.files
+    assert video.speaker_mode == "multiple" and video.tts_voice == "vieneu:Hải Đăng"
+
+
+def test_first_partial_generation_and_later_selection_are_cumulative(voice_project):
+    video, _segments, requests = voice_project
+    video.active_artifacts.pop("tts_manifest", None)
+    video.manual_tool_generations["voice"] = 100
+    select_voice_cues(video, [6])
+    manual_tools._run_voice(video, SimpleNamespace(update=Mock()))
+    first = manual_tools.published_voice_record(video, validate=True)
+    assert set(first["resolved_outputs"]) == {"manifest", "clip_6"}
+    assert manual_tools._voice_manifest_payload(first)["partial"]
+    audio = Path(first["resolved_outputs"]["clip_6"]).read_bytes()
+    select_voice_cues(video, [15], token="second")
+    manual_tools._run_voice(video, SimpleNamespace(update=Mock()))
+    current = manual_tools.published_voice_record(video, validate=True)
+    assert set(current["resolved_outputs"]) == {"manifest", "clip_6", "clip_15"}
+    assert Path(current["resolved_outputs"]["clip_6"]).read_bytes() == audio
+    assert [i for request in requests for i in request["indices"]] == [6, 15]
+    # Real editor reconciliation must not compact sparse paths to cue 1/2.
+    document = editor_documents.ensure(video)
+    enabled = {clip.segment_id: clip for clip in document.clips if clip.track_id == "voice" and clip.enabled}
+    assert set(enabled) == {"cue-5", "cue-14"}
+    for segment_id, index in (("cue-5", 6), ("cue-14", 15)):
+        asset = editor_documents.asset_by_id(document, enabled[segment_id].asset_id)
+        assert asset.path == current["resolved_outputs"][f"clip_{index}"]
+    sources = manual_tools._audible_manual_voice_sources(video, document)
+    assert set(sources) == {"cue-5", "cue-14"}
+    again = editor_documents.ensure(video)
+    assert {clip.segment_id for clip in again.clips if clip.track_id == "voice" and clip.enabled} == set(enabled)
+
+
+def test_scope_does_not_fill_an_unselected_missing_clip(voice_project):
+    video, _segments, requests = voice_project
+    prior = manual_tools.published_voice_record(video, validate=True)
+    key = manual_tools._voice_manifest_payload(prior)["clips"][1]
+    Path(prior["resolved_outputs"]["clip_2"]).unlink()
+    Path(manual_artifacts.resolve(video.video_id, "tts_clip", key)["resolved_outputs"]["audio"]).unlink()
+    select_voice_cues(video, [6, 15])
+    manual_tools._run_voice(video, SimpleNamespace(update=Mock()))
+    assert [i for request in requests for i in request["indices"]] == [6, 15]
+    assert "clip_2" not in manual_tools.published_voice_record(video, validate=True)["resolved_outputs"]
+
+
+def test_failed_selection_keeps_published_manifest_and_resumes_completed_cues(voice_project, monkeypatch):
+    video, _segments, requests = voice_project
+    old = video.active_artifacts["tts_manifest"]
+    select_voice_cues(video, [6, 15])
+    original = manual_tools.generate_voice_parts
+    def fail(path, output, voice, key, **kwargs):
+        original(path, output, voice, key, **{**kwargs, "segment_indices": [6]})
+        raise RuntimeError("Simulated cancellation")
+    monkeypatch.setattr(manual_tools, "generate_voice_parts", fail)
+    with pytest.raises(RuntimeError, match="cancellation"):
+        manual_tools._run_voice(video, SimpleNamespace(update=Mock()))
+    assert video.active_artifacts["tts_manifest"] == old
+    assert video.files["manual_voice_selection"] == ["cue-5", "cue-14"]
+    monkeypatch.setattr(manual_tools, "generate_voice_parts", original)
+    requests.clear()
+    manual_tools._run_voice(video, SimpleNamespace(update=Mock()))
+    assert [i for request in requests for i in request["indices"]] == [15]
+
+
+def test_scope_supports_legacy_idless_subtitle_documents(voice_project):
+    from haizflow.services.subtitle_identity import legacy_segment_id
+
+    video, segments, requests = voice_project
+    legacy = [{key: value for key, value in item.items() if key != "segment_id"} for item in segments]
+    manual_tools.publish_edited_subtitles(video.video_id, legacy)
+    video.manual_tool_generations["voice"] = 50
+    manual_tools._run_voice(video, SimpleNamespace(update=Mock()))
+    old = manual_tools.published_voice_record(video, validate=True)
+    before = {i: Path(old["resolved_outputs"][f"clip_{i}"]).read_bytes() for i in range(1, 23)}
+    requests.clear()
+    cue_id = legacy_segment_id(video.video_id, 5, legacy[5])
+    video.files["manual_voice_selection"] = [cue_id]
+    video.files["manual_voice_overrides"] = {cue_id: {
+        "provider": "vieneu-gpu", "voice": "vieneu:Trúc Ly", "speaker_mode": "single", "generation": "legacy-test"}}
+    manual_tools._run_voice(video, SimpleNamespace(update=Mock()))
+    assert [i for request in requests for i in request["indices"]] == [6], {
+        "overrides": video.files.get("manual_voice_overrides"),
+        "selected": video.files.get("manual_voice_selection"),
+        "segments": manual_tools._load_segments(video)[5],
+        "manifest": manual_tools._voice_manifest_payload(manual_tools.published_voice_record(video))}
+    current = manual_tools.published_voice_record(video, validate=True)
+    for index in range(1, 23):
+        if index != 6:
+            assert Path(current["resolved_outputs"][f"clip_{index}"]).read_bytes() == before[index]
+
+
+def test_explicit_restart_discards_selected_progress_without_global_regeneration(voice_project, monkeypatch):
+    from haizflow.services.processing_resume import configuration_snapshot
+
+    video, _segments, requests = voice_project
+    select_voice_cues(video, [6, 15])
+    original = manual_tools.generate_voice_parts
+    def fail(path, output, voice, key, **kwargs):
+        original(path, output, voice, key, **{**kwargs, "segment_indices": [6]})
+        raise RuntimeError("Simulated pause")
+    monkeypatch.setattr(manual_tools, "generate_voice_parts", fail)
+    with pytest.raises(RuntimeError, match="pause"):
+        manual_tools._run_voice(video, SimpleNamespace(update=Mock()))
+    video.manual_target_tool = "voice"
+    video.status = "paused"
+    video.processing_configuration = configuration_snapshot(video, "cpu")
+    generation = dict(video.manual_tool_generations)
+    assert manual_tools.prepare_manual_rerun(video.video_id, "voice", force=True)
+    assert video.manual_tool_generations == generation
+    monkeypatch.setattr(manual_tools, "generate_voice_parts", original)
+    requests.clear()
+    manual_tools._run_voice(video, SimpleNamespace(update=Mock()))
+    assert [i for request in requests for i in request["indices"]] == [6, 15]

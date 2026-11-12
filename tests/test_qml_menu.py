@@ -169,6 +169,8 @@ class QmlMenuTests(unittest.TestCase):
         cls.addClassCleanup(maintenance.stop)
 
     def test_status_strip_tracks_independent_segment_export_and_returns_to_ready(self):
+        from haizflow.desktop.video_export_controller import export_job_summary
+
         source = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
         exports = source.split('    readonly property var activeExportJob:', 1)[1].split(
             '    // qmllint disable stale-property-read', 1)[0]
@@ -179,6 +181,7 @@ class QmlMenuTests(unittest.TestCase):
         state = QQmlPropertyMap()
         for key, value in {
             "videoExportBusy": False, "videoExportJobs": [], "isSelectedVideoProcessing": False,
+            "videoExportSummary": export_job_summary([]),
             "selectedStepId": "", "selectedProgress": 0, "selectedStageLabel": "",
             "selectedFailureMessage": "", "selectedProgressDetail": "",
         }.items():
@@ -205,8 +208,10 @@ class QmlMenuTests(unittest.TestCase):
             percent = tray.findChild(QQuickItem, "activityProgressPercent")
             state.insert("videoExportBusy", True)
             for status, progress in (("pending", 0), ("exporting", 1), ("exporting", 35), ("exporting", 85)):
-                state.insert("videoExportJobs", [{"videoId": "long-video", "status": status,
-                    "progress": progress, "rangeMs": [0, 240000]}])
+                jobs = [{"videoId": "long-video", "status": status,
+                         "progress": progress, "rangeMs": [0, 240000]}]
+                state.insert("videoExportJobs", jobs)
+                state.insert("videoExportSummary", export_job_summary(jobs))
                 self.app.processEvents()
                 self.assertEqual(tray.property("activityState"), "exporting")
                 self.assertEqual(tray.property("message"), "Đang chuẩn bị xuất" if status == "pending" else "Đang hoàn thiện và lưu video")
@@ -217,7 +222,9 @@ class QmlMenuTests(unittest.TestCase):
                     self.assertAlmostEqual(tray.property("progress"), progress / 100)
                     self.assertEqual(percent.property("text"), f"{progress}%")
             for status in ("done", "cancelled", "failed"):
-                state.insert("videoExportJobs", [{"videoId": "long-video", "status": status, "progress": 100}])
+                jobs = [{"videoId": "long-video", "status": status, "progress": 100}]
+                state.insert("videoExportJobs", jobs)
+                state.insert("videoExportSummary", export_job_summary(jobs))
                 state.insert("videoExportBusy", False)
                 self.app.processEvents()
                 self.assertEqual(tray.property("activityState"), "ready")

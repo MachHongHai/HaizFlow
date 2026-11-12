@@ -65,7 +65,9 @@ _CACHE_DIRECTORIES = {
 # state.  Cache a successful digest by file identity so a large preview/export
 # is not re-read on every binding evaluation.  A size or mtime change creates a
 # different key and therefore forces a fresh checksum.
-_VALIDATED_DIGESTS: dict[tuple[str, int, int, str], bool] = {}
+# One-use producer verification receipts, not a permanent checksum cache.
+# Windows can report identical write times for rapid same-size rewrites.
+_VALIDATED_DIGESTS: dict[tuple, bool] = {}
 _PRESENTATION_BATCH = threading.local()
 
 
@@ -290,6 +292,21 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _file_identity(stat) -> tuple:
+    # Reading a file can update atime; it is not evidence of changed content.
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+
+def _digest_key(path: Path, stat, digest: str) -> tuple:
+    return (str(path), *_file_identity(stat), digest)
+
+
+def _remember_digest(path: Path, stat, digest: str) -> None:
+    if len(_VALIDATED_DIGESTS) >= 4096:
+        _VALIDATED_DIGESTS.clear()
+    _VALIDATED_DIGESTS[_digest_key(path, stat, digest)] = True
+
+
 def _has_expected_digest(path: Path, expected_size: int, expected_digest: str) -> bool:
     try:
         stat = path.stat()
@@ -297,14 +314,11 @@ def _has_expected_digest(path: Path, expected_size: int, expected_digest: str) -
         return False
     if stat.st_size != expected_size:
         return False
-    key = (str(path), stat.st_size, stat.st_mtime_ns, expected_digest)
-    if key in _VALIDATED_DIGESTS:
+    key = _digest_key(path, stat, expected_digest)
+    if _VALIDATED_DIGESTS.pop(key, False):
         return True
-    if _sha256(path) != expected_digest:
+    if _sha256(path) != expected_digest or _file_identity(path.stat()) != _file_identity(stat):
         return False
-    if len(_VALIDATED_DIGESTS) >= 4096:
-        _VALIDATED_DIGESTS.clear()
-    _VALIDATED_DIGESTS[key] = True
     return True
 
 
@@ -318,9 +332,14 @@ def _output_records(directory: Path, relative_outputs: dict[str, str]) -> tuple[
             raise ValueError(f"Artifact output escapes its cache directory: {relative}")
         if not candidate.is_file() or candidate.stat().st_size <= 0:
             raise FileNotFoundError(f"Manual artifact output is missing or empty: {candidate}")
-        size = candidate.stat().st_size
+        before = candidate.stat()
+        size = before.st_size
+        digest = _sha256(candidate)
+        if _file_identity(candidate.stat()) != _file_identity(before):
+            raise RuntimeError("Artifact output changed while being verified.")
+        _remember_digest(candidate, before, digest)
         outputs[name] = relative.replace("\\", "/")
-        checksums[name] = {"size": size, "sha256": _sha256(candidate)}
+        checksums[name] = {"size": size, "sha256": digest}
         total_size += size
     return outputs, checksums, total_size
 
@@ -410,7 +429,21 @@ def publish(
                     retired = final.with_name(f".partial-replaced-{uuid.uuid4().hex}")
                     _replace_cache_directory(final, retired)
                 try:
+                    verified = {
+                        name: (staging / relative).stat()
+                        for name, relative in outputs.items()
+                    }
                     _replace_cache_directory(staging, final)
+                    for name, relative in outputs.items():
+                        before = verified[name]
+                        digest = str(checksums[name]["sha256"])
+                        target = final / relative
+                        # Reuse only the verification of this exact unchanged
+                        # file moved on the same filesystem, never a copy or
+                        # an existing destination with similar timestamps.
+                        if (_VALIDATED_DIGESTS.pop(_digest_key(staging / relative, before, digest), False)
+                                and _file_identity(target.stat()) == _file_identity(before)):
+                            _remember_digest(target, before, digest)
                 except Exception:
                     if retired is not None and not final.exists():
                         _replace_cache_directory(retired, final)
@@ -525,6 +558,31 @@ def resolve(video_id: str, kind: str, artifact_signature: str) -> dict[str, Any]
             _save_manifest(video_id, manifest)
             return None
         return {**record, "resolved_outputs": outputs}
+
+
+def resolve_many(video_id: str, kind: str, signatures: Iterable[str]) -> dict[str, dict[str, Any]]:
+    """Verify sentence caches against one manifest snapshot, not N JSON reads."""
+    resolved = {}
+    changed = False
+    with _manifest_lock(video_id):
+        manifest = load_manifest(video_id)
+        for artifact_signature in dict.fromkeys(signatures):
+            if not artifact_signature:
+                continue
+            key = artifact_id(kind, artifact_signature)
+            record = manifest["artifacts"].get(key)
+            if not isinstance(record, dict) or record.get("status") != "complete":
+                continue
+            outputs = _validated_outputs(video_id, record)
+            if outputs is None:
+                record["status"] = "invalid"
+                record["error"] = "Cached files are missing or corrupted."
+                changed = True
+            else:
+                resolved[artifact_signature] = {**record, "resolved_outputs": outputs}
+        if changed:
+            _save_manifest(video_id, manifest)
+    return resolved
 
 
 def peek(video_id: str, kind: str, artifact_signature: str) -> dict[str, Any] | None:

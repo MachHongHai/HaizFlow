@@ -80,7 +80,7 @@ Item {
     onVisibleChanged: syncVideoPlayback()
     onPlayingChanged: syncVideoPlayback()
     onTimeSecondsChanged: {
-        if (videoMode && watermarkVideoPlayer.duration > 0 && !playing) {
+        if (visible && videoMode && watermarkVideoPlayer.duration > 0 && !playing) {
             const expected = Math.round((timeSeconds * 1000) % watermarkVideoPlayer.duration);
             if (Math.abs(watermarkVideoPlayer.position - expected) > 120)
                 watermarkVideoPlayer.setPosition(expected);

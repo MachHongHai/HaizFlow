@@ -48,6 +48,19 @@ def test_identity_and_unrelated_manual_settings_do_not_block_translation():
     assert can_resume(host, video)
 
 
+def test_scoped_voice_resume_requires_the_same_sentence_selection():
+    host, video = fixture()
+    video.manual_target_tool = "voice"
+    video.files["manual_voice_selection"] = ["a", "c"]
+    video.files["manual_voice_overrides"] = {"a": {"generation": "first"}}
+    video.processing_configuration = configuration_snapshot(video, "cpu")
+    assert can_resume(host, video)
+    video.files["manual_voice_selection"] = ["b"]
+    assert not can_resume(host, video)
+    video.files["manual_voice_selection"] = ["a", "c"]
+    assert can_resume(host, video)
+
+
 def test_legacy_pause_without_snapshot_is_not_silently_resumed():
     host, video = fixture()
     video.processing_configuration = {}

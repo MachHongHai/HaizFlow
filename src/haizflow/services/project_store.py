@@ -248,6 +248,11 @@ def project_root_for_key(project_key_value: str) -> str:
     return _record_root(record)
 
 
+def project_root_for_record(record: dict[str, Any]) -> str:
+    """Resolve a validated list_projects snapshot without rereading the index."""
+    return _record_root(record)
+
+
 def project_exports_dir_for_key(project_key_value: str) -> str:
     return os.path.join(project_root_for_key(project_key_value), "exports")
 
@@ -497,6 +502,7 @@ def _write_migration_backup(path: str, data: Any) -> None:
 def _remember_project_directories(records: list[dict[str, Any]]) -> None:
     registry_path = _project_roots_path()
     directories: set[str] = set()
+    saved = None
     try:
         saved = _read_json(registry_path)
         if isinstance(saved, list):
@@ -508,8 +514,11 @@ def _remember_project_directories(records: list[dict[str, Any]]) -> None:
         for record in records
         if str(record.get("project_directory") or "").strip()
     )
+    normalized = sorted(directories, key=str.lower)
+    if saved == normalized:
+        return
     try:
-        _write_json_atomic(registry_path, sorted(directories, key=str.lower))
+        _write_json_atomic(registry_path, normalized)
     except OSError:
         pass
 

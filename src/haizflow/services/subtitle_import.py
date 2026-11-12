@@ -17,7 +17,7 @@ from haizflow.desktop.catalog import TARGET_LANGUAGE_CODES
 MAX_BYTES = 8 * 1024 * 1024
 TEXT_KINDS = {"recognition", "translation", "subtitle_document", "tts_manifest", "audio_mix", "export"}
 TEXT_FILES = {"source_segments", "transcript_json", "srt_output", "voice_output", "voice_parts_dir",
-              "manual_voice_overrides", "translation_review_draft", "final_video",
+              "manual_voice_overrides", "manual_voice_selection", "translation_review_draft", "final_video",
               "tts_narrator_anchors", "tts_narrator_anchor_text", "tts_narrator_anchor_config"}
 
 

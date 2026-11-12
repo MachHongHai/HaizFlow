@@ -1555,3 +1555,19 @@ def test_voice_studio_and_library_are_no_longer_exposed(commands, bridge):
         assert not hasattr(commands, "_" + name)
         with pytest.raises(ValueError):
             commands.dispatch(name, {})
+
+
+def test_manual_voice_selection_reuses_bounded_controller_contract(commands, bridge):
+    video = commands.host._catalog_videos["test-video"]
+    video.project_type = "manual"
+    commands.host._project_type = "manual"
+    commands.host.configureAndRunManualVoice = Mock(return_value=True)
+    bridge.setPermission("write", True)
+    assert commands.dispatch("voice_run", {"video_id": video.video_id,
+        "provider": "vieneu-gpu", "voice": "vieneu:Trúc Ly", "segment_ids": ["a", "c"]})["accepted"]
+    commands.host.configureAndRunManualVoice.assert_called_once_with(
+        "vieneu-gpu", "vieneu:Trúc Ly", "selection", "", "single", ["a", "c"])
+    for patch in ({"segment_ids": []}, {"segment_ids": ["a", "a"]}, {"segment_ids": ["a"], "segment_id": "b"}):
+        with pytest.raises(ValueError):
+            commands.dispatch("voice_run", {"video_id": video.video_id,
+                "provider": "vieneu-gpu", "voice": "vieneu:Trúc Ly", **patch})

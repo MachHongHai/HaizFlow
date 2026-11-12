@@ -4,7 +4,7 @@ Loader {
     id: root
 
     active: false
-    asynchronous: false
+    asynchronous: true
 
     property string pendingMethod: ""
     property var pendingArguments: []

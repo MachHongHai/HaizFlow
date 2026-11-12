@@ -35,6 +35,7 @@ def write_document(path: Path, segments: list[dict], revision: int) -> None:
 
 class ManualSubtitleModel(QAbstractListModel):
     changed = Signal()
+    contentChanged = Signal()
     saved = Signal(str, int, str)
     saveFailed = Signal(str, str, str)
     published = Signal(str, int, bool)
@@ -46,6 +47,7 @@ class ManualSubtitleModel(QAbstractListModel):
         super().__init__(parent)
         self.video_id = ""
         self._segments = []
+        self._display_segments = []
         self._revision = 0
         self._states = {}
         self._history = history
@@ -70,9 +72,23 @@ class ManualSubtitleModel(QAbstractListModel):
         offset = role - Qt.UserRole - 1
         return values[offset] if 0 <= offset < len(values) else None
 
-    @Property("QVariantList", notify=changed)
+    @Property("QVariantList", notify=contentChanged)
     def segments(self):
         return copy.deepcopy(self._segments)
+
+    @Property("QVariantList", notify=contentChanged)
+    def displaySegments(self):
+        # PySide converts QVariantList into an owned QML value. Keep the
+        # detached snapshot stable while only save/progress state changes.
+        return self._display_segments
+
+    @Property(str, notify=contentChanged)
+    def videoId(self):
+        return self.video_id
+
+    def _publish_content(self):
+        self._display_segments = copy.deepcopy(self._segments)
+        self.contentChanged.emit()
 
     @Property(int, notify=changed)
     def revision(self):
@@ -93,6 +109,7 @@ class ManualSubtitleModel(QAbstractListModel):
         self._revision = max((int(s.get("revision", 0)) for s in identified), default=0)
         self._states.clear()
         self.endResetModel()
+        self._publish_content()
         self.changed.emit()
 
     def wait_for_saves(self) -> None:
@@ -149,6 +166,7 @@ class ManualSubtitleModel(QAbstractListModel):
         self._segments = incoming
         self._states = {str(item["segment_id"]): "saving" for item in incoming}
         self.endResetModel()
+        self._publish_content()
         self.changed.emit()
 
         video_id = self.video_id
@@ -231,6 +249,7 @@ class ManualSubtitleModel(QAbstractListModel):
         revision = self._revision
         self._states[segment_id] = "saving"
         self.dataChanged.emit(self.index(index), self.index(index))
+        self._publish_content()
         self.changed.emit()
         video_id = self.video_id
         snapshot = copy.deepcopy(items)

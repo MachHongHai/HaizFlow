@@ -47,7 +47,7 @@ FloatingToolDialog {
     property int draftSubtitleMaxChars: 32
     property var settingOverrides: []
     property string openedProjectKey: ""
-    property bool replaceOverrides: false
+    property bool replaceOverrides: true
     property bool draftBackgroundMusicLoop: true
     property bool draftAudioDuckingEnabled: false
     property int draftAudioDuckingReductionDb: -12
@@ -127,7 +127,7 @@ FloatingToolDialog {
         const selected = previewSources.findIndex(item => item.videoId === AppController.selectedVideoId);
         previewIndex = Math.max(0, selected);
         refreshPreview();
-        replaceOverrides = false;
+        replaceOverrides = true;
         draftVoiceReferencePath = settings.voiceReferencePath || "";
         draftBackgroundMusicLoop = settings.backgroundMusicLoop !== false;
         draftAudioDuckingEnabled = Boolean(settings.audioDuckingEnabled);

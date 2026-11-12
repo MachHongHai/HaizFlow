@@ -252,6 +252,51 @@ def materialize_source_sequence(
     return str(edited_video), str(edited_audio)
 
 
+def materialize_source_audio(audio_path, document, output_directory, process_id):
+    """Edit the source bed without encoding an unused intermediate picture."""
+    if not audio_path or not has_source_edits(document):
+        return audio_path
+    decisions = sorted(document.sequence.edit_decisions, key=lambda item: item.sequence_start_ms)
+    filters, inputs = [], []
+    for index, start, end, gap in _source_ranges_with_gaps(decisions):
+        delay = f",adelay=delays={gap * 1000:.3f}:all=1" if gap else ""
+        filters.append(f"[0:a]atrim=start={start:.6f}:end={end:.6f},asetpts=PTS-STARTPTS{delay}[a{index}]")
+        inputs.append(f"[a{index}]")
+    if not inputs:
+        raise RuntimeError("The editor sequence contains only empty source ranges.")
+    duration = document.sequence.duration_ms / 1000
+    filters.append(f"{''.join(inputs)}concat=n={len(inputs)}:v=0:a=1,apad=whole_dur={duration:.6f},atrim=duration={duration:.6f}[audio]")
+    output = Path(output_directory) / "sequence-audio.wav"
+    _run([_binary("ffmpeg"), "-y", "-i", os.path.abspath(audio_path),
+          "-filter_complex", ";".join(filters), "-map", "[audio]", "-vn",
+          "-c:a", "pcm_s16le", str(output)], cwd=str(output.parent),
+         process_id=process_id, label="Editor source audio")
+    return str(output)
+
+
+def source_video_filter(document: EditorDocument | None) -> tuple[str, str]:
+    """Compile source edits into a graph that can precede the final encoder."""
+    if not has_source_edits(document):
+        return "", "[0:v]"
+    decisions = sorted(document.sequence.edit_decisions, key=lambda item: item.sequence_start_ms)
+    filters = []
+    inputs = []
+    for index, start, end, gap in _source_ranges_with_gaps(decisions):
+        video_gap = f",tpad=start_mode=add:start_duration={gap:.6f}" if gap else ""
+        filters.append(f"[0:v]trim=start={start:.6f}:end={end:.6f},setpts=PTS-STARTPTS{video_gap}[v{index}]")
+        inputs.append(f"[v{index}]")
+    if not inputs:
+        raise RuntimeError("The editor sequence contains only empty source ranges.")
+    filters.append(f"{''.join(inputs)}concat=n={len(inputs)}:v=1:a=0[sequence_v]")
+    source_end_ms = max(item.sequence_start_ms + item.source_end_ms - item.source_start_ms for item in decisions)
+    tail_seconds = max(0, document.sequence.duration_ms - source_end_ms) / 1000
+    label = "[sequence_v]"
+    if tail_seconds > 0:
+        filters.append(f"[sequence_v]tpad=stop_mode=clone:stop_duration={tail_seconds:.6f}[padded_v]")
+        label = "[padded_v]"
+    return ";".join(filters), label
+
+
 def materialize_source_video(
     video_path: str,
     document: EditorDocument | None,
@@ -267,39 +312,17 @@ def materialize_source_video(
     """
     if not has_source_edits(document):
         return video_path
-    decisions = sorted(document.sequence.edit_decisions, key=lambda item: item.sequence_start_ms)
     output_dir = Path(output_directory)
     output_dir.mkdir(parents=True, exist_ok=True)
     edited_video = output_dir / "sequence-source.mp4"
-    filters: list[str] = []
-    inputs: list[str] = []
-    for index, start, end, gap in _source_ranges_with_gaps(decisions):
-        video_gap = f",tpad=start_mode=add:start_duration={gap:.6f}" if gap else ""
-        filters.append(
-            f"[0:v]trim=start={start:.6f}:end={end:.6f},setpts=PTS-STARTPTS{video_gap}[v{index}]"
-        )
-        inputs.append(f"[v{index}]")
-    if not inputs:
-        raise RuntimeError("The editor sequence contains only empty source ranges.")
-    filters.append(f"{''.join(inputs)}concat=n={len(inputs)}:v=1:a=0[sequence_v]")
-    source_end_ms = max(
-        decision.sequence_start_ms + decision.source_end_ms - decision.source_start_ms
-        for decision in decisions
-    )
-    tail_seconds = max(0, document.sequence.duration_ms - source_end_ms) / 1000
-    video_label = "[sequence_v]"
-    if tail_seconds > 0:
-        filters.append(
-            f"[sequence_v]tpad=stop_mode=clone:stop_duration={tail_seconds:.6f}[padded_v]"
-        )
-        video_label = "[padded_v]"
+    graph, video_label = source_video_filter(document)
     encode_inputs = [
         _binary("ffmpeg"),
         "-y",
         "-i",
         os.path.abspath(video_path),
         "-filter_complex",
-        ";".join(filters),
+        graph,
         "-map",
         video_label,
         "-an",
@@ -628,7 +651,8 @@ def apply_overlays(
     passthrough: bool = False,
     export_preset: str | None = None,
     output_speed: float = 1.0,
-) -> str:
+    _return_graph: bool = False,
+) -> str | dict | None:
     """Return the composed path; opt-in passthrough leaves the input untouched.
 
     Private staging producers can honor the returned path and rename their
@@ -638,6 +662,8 @@ def apply_overlays(
     check_cancellation(process_id)
     overlays = _active_overlays(document)
     if not overlays:
+        if _return_graph:
+            return None
         if export_preset is not None:
             return finish_export_resolution(input_path, output_path, export_preset, process_id,
                 passthrough=passthrough, output_speed=output_speed, progress_callback=progress_callback)
@@ -782,6 +808,8 @@ def apply_overlays(
         stage += 1
 
     if stage == 0:
+        if _return_graph:
+            return None
         if export_preset is not None:
             return finish_export_resolution(input_path, output_path, export_preset, process_id,
                 passthrough=passthrough, output_speed=output_speed, progress_callback=progress_callback)
@@ -797,7 +825,7 @@ def apply_overlays(
     output_audio_map = "0:a?"
     audio_codec = "copy"
     if overlay_audio_labels:
-        base_has_audio = "audio" in get_media_stream_types(input_path)
+        base_has_audio = _return_graph or "audio" in get_media_stream_types(input_path)
         mix_inputs = ("[0:a]" if base_has_audio else "") + "".join(overlay_audio_labels)
         input_count = len(overlay_audio_labels) + (1 if base_has_audio else 0)
         filters.append(
@@ -806,6 +834,9 @@ def apply_overlays(
         )
         output_audio_map = "[aout]"
         audio_codec = "aac"
+    if _return_graph:
+        return {"inputs": inputs[4:], "filters": filters, "video": base,
+                "audio": output_audio_map, "inputCount": len(media_indices)}
     duration = window_duration if window_duration is not None else (
         document.sequence.duration_ms / 1000 if document else get_video_duration(input_path))
     dimensions = (reference_width, reference_height)

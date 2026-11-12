@@ -1241,7 +1241,7 @@ def test_waveform_is_attached_to_audio_clip_without_mutating_document():
     model.close()
 
 
-def test_many_waveform_results_emit_one_clip_update_not_document_refresh():
+def test_many_waveform_results_emit_one_waveform_update_not_document_refresh():
     from PySide6.QtWidgets import QApplication
     from PySide6.QtTest import QSignalSpy
 
@@ -1253,11 +1253,13 @@ def test_many_waveform_results_emit_one_clip_update_not_document_refresh():
     model._document = EditorDocument(video_id="many-clips")
     documents = QSignalSpy(model.changed)
     clips = QSignalSpy(model.clipsChanged)
+    waveforms = QSignalSpy(model.waveformsChanged)
     for index in range(50):
         model._accept_waveform("many-clips", str(index), {"peaks": [0.1, 0.5]})
     assert documents.count() == 0
-    assert clips.wait(1000)
-    assert clips.count() == 1
+    assert waveforms.wait(1000)
+    assert waveforms.count() == 1
+    assert clips.count() == 0
     assert documents.count() == 0
     assert len(model._waveforms) == 50
     model.close()

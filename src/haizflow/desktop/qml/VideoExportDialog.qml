@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Dialogs
 import "."
 
 AppDialog {
@@ -12,6 +13,7 @@ AppDialog {
     property bool destinationExists: false
     property bool processBeforeExport: false
     property bool batchMode: false
+    property string pendingFolder: ""
     readonly property bool targetExportActive: (root.controller.videoExportJobs || []).some(job =>
         job.videoId === (root.configuration.videoId || "") &&
         (["pending", "rendering", "exporting"].indexOf(job.status) >= 0
@@ -33,10 +35,58 @@ AppDialog {
     }
     function openForProcessing() { openForSelection(true); }
     function openForBatch(processFirst = true) {
-        openForSelection(processFirst);
         batchMode = true;
+        processBeforeExport = processFirst;
         configuration = controller.batchExportSettings();
+        destination = "";
+        destinationExists = false;
+        exportRange.currentIndex = 0;
+        batchScope.scope = processFirst ? "unfinished" : "all";
+        batchScope.selectedIds = [];
         quality.currentIndex = Math.max(0, (configuration.presets || []).findIndex(item => item.value === configuration.preset));
+        open();
+    }
+    BatchVideoScope {
+        id: batchScope
+        visible: root.batchMode
+        Layout.fillWidth: true
+        videos: root.configuration.videos || []
+    }
+    FolderDialog {
+        id: batchFolder
+        title: qsTr("Chọn thư mục xuất video")
+        onAccepted: {
+            root.pendingFolder = root.controller.exportFolderPath(selectedFolder);
+            if (root.controller.batchExportDestinationExists(root.pendingFolder))
+                replaceBatchFiles.open();
+            else {
+                root.destination = root.pendingFolder;
+                root.destinationExists = false;
+            }
+        }
+    }
+    AppDialog {
+        id: replaceBatchFiles
+        title: qsTr("Thay thế tệp đã có?")
+        Text {
+            Layout.fillWidth: true
+            text: qsTr("Thư mục đã có video trùng tên. Thay thế khi xuất?")
+            color: Theme.text
+            font.pixelSize: TypeScale.control
+            wrapMode: Text.Wrap
+        }
+        footerActions: [
+            StudioButton { text: qsTr("Hủy"); onClicked: replaceBatchFiles.close() },
+            StudioButton {
+                text: qsTr("Thay thế")
+                variant: "primary"
+                onClicked: {
+                    root.destination = root.pendingFolder;
+                    root.destinationExists = true;
+                    replaceBatchFiles.close();
+                }
+            }
+        ]
     }
     RowLayout {
         Layout.fillWidth: true
@@ -95,7 +145,7 @@ AppDialog {
         Text {
             Layout.fillWidth: true
             visible: root.batchMode
-            text: qsTr("%1 video · Giữ cài đặt riêng").arg(root.configuration.count || 0)
+            text: qsTr("%1 video").arg(batchScope.targetIds.length)
             textFormat: Text.PlainText
             color: Theme.textMuted
             font.pixelSize: TypeScale.metadata
@@ -129,8 +179,11 @@ AppDialog {
                 text: qsTr("Chọn…")
                 iconName: "folder"
                 onClicked: {
-                    const path = root.batchMode ? root.controller.chooseBatchExportDestination()
-                        : root.controller.chooseVideoExportDestination(root.configuration.videoId);
+                    if (root.batchMode) {
+                        batchFolder.open();
+                        return;
+                    }
+                    const path = root.controller.chooseVideoExportDestination(root.configuration.videoId);
                     if (path.length > 0) {
                         root.destination = path;
                         root.destinationExists = root.batchMode ? root.controller.batchExportDestinationExists(path)
@@ -147,12 +200,13 @@ AppDialog {
             readyText: root.processBeforeExport ? qsTr("Xử lý và xuất") : qsTr("Xuất")
             variant: "primary"
             actionEnabled: root.destination.length > 0
+                && (!root.batchMode || batchScope.targetIds.length > 0)
                 && (root.processBeforeExport && !root.batchMode
                     ? !root.targetExportActive : !root.controller.videoExportBusy)
                 && (root.batchMode || (!root.controller.isSelectedVideoProcessing
                     && !root.controller.isSelectedVideoQueued))
             actionContext: ({ batch: root.batchMode, process: root.processBeforeExport,
-                projectKey: root.configuration.projectKey || "", videoIds: root.configuration.videoIds || [],
+                projectKey: root.configuration.projectKey || "", videoIds: batchScope.targetIds.slice(),
                 videoId: root.configuration.videoId || "", preset: quality.currentValue,
                 destination: root.destination, overwrite: root.destinationExists, segmentId: exportRange.currentValue || "" })
             onExecute: context => {

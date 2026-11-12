@@ -49,6 +49,13 @@ def exercise():
         selected = project_store.create_project("Selected manual project", directory, "manual")
         created_keys.append(selected["key"])
         host.refreshVideos()
+        deadline = time.monotonic() + 5
+        while selected["key"] not in host._project_summaries_by_key and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(.01)
+        assert selected["key"] in host._project_summaries_by_key, (
+            host.projectCatalogState, host._project_workspace._refresh_running,
+            host._project_workspace._refresh_again)
         assert host._select_project_summary(host._project_summaries_by_key[selected["key"]])
         print("NAVIGATION_CATALOG_READY", flush=True)
         engine = QQmlEngine()

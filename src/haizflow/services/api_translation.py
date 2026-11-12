@@ -220,8 +220,13 @@ def _request_chunk(profile, chunk, *, key, model, source_language, target_langua
 
     if profile["provider"] == "openrouter":
         from haizflow.services import translation_privacy
-        from haizflow.services.translation_model_catalog import _INCOMPATIBLE_OPENROUTER_MODELS
+        from haizflow.services.translation_model_catalog import (
+            _INCOMPATIBLE_OPENROUTER_MODELS, _UNAVAILABLE_OPENROUTER_MODELS,
+        )
 
+        if profile["model"] in _UNAVAILABLE_OPENROUTER_MODELS:
+            raise RuntimeError("OpenRouter: model miễn phí đang lưu hiện không ổn định hoặc bị giới hạn phía nhà cung cấp. "
+                               "Hãy chọn model khác trong Model dịch; app chưa gửi yêu cầu API.")
         if translation_privacy.required(profile) and not translation_privacy.allowed(profile):
             raise RuntimeError("OpenRouter: model này yêu cầu quyền thu thập dữ liệu. "
                                "Chọn lại model trong dự án và đồng ý cảnh báo trước khi dịch; "

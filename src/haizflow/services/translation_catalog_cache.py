@@ -14,6 +14,7 @@ from haizflow.services.translation_model_catalog import (
     _NON_TEXT,
     _NON_TRANSLATION,
     _RETIRED_OPENROUTER_MODELS,
+    _UNAVAILABLE_OPENROUTER_MODELS,
 )
 from haizflow.utils.atomic_file import atomic_json
 
@@ -32,6 +33,7 @@ def _clean(options):
         if (not isinstance(model, str) or not _MODEL.fullmatch(model)
                 or _NON_TEXT.search(model) or model.startswith("openrouter/")
                 or model in _RETIRED_OPENROUTER_MODELS or model in _INCOMPATIBLE_OPENROUTER_MODELS
+                or model in _UNAVAILABLE_OPENROUTER_MODELS
                 or _NON_TRANSLATION.search(model)):
             continue
         label = row.get("label", model)

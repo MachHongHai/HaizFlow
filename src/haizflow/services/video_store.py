@@ -924,7 +924,8 @@ def replace_video_input(
             # A clone cannot remain selected after its source reference has
             # been replaced together with the input directory.
             if video.tts_voice in {"omnivoice:clone", "vieneu:clone"}:
-                video.tts_voice = "vieneu:Hải Đăng" if video.tts_provider.startswith("vieneu") else defaults.tts_voice
+                from haizflow.core.model_choices import default_tts_voice
+                video.tts_voice = default_tts_voice(video.tts_provider)
             video.review_approved = False
             video.status = "pending"
             video.progress = 0
@@ -1125,10 +1126,10 @@ def prepare_video_restart(video_id: str) -> Optional[VideoInfo]:
         return video
 
 
-def _project_video_ids() -> list[str]:
+def _project_video_ids(projects=None) -> list[str]:
     video_ids: list[str] = []
-    for project in project_store.list_projects():
-        videos_dir = project_store.project_videos_dir_for_key(project["key"])
+    for project in project_store.list_projects() if projects is None else projects:
+        videos_dir = os.path.join(project_store.project_root_for_record(project), "videos")
         if not os.path.isdir(videos_dir):
             continue
         for name in os.listdir(videos_dir):
@@ -1143,10 +1144,10 @@ def _project_video_ids() -> list[str]:
     return video_ids
 
 
-def list_videos() -> List[VideoInfo]:
+def list_videos(*, projects=None) -> List[VideoInfo]:
     videos = []
     seen = set()
-    for video_id in _project_video_ids():
+    for video_id in _project_video_ids(projects):
         try:
             video_info = get_video(video_id)
         except RuntimeError:

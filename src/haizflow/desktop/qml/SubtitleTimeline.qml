@@ -20,6 +20,8 @@ Rectangle {
     property bool snappingEnabled: true
     property var editorTracks: []
     property var editorClips: []
+    property var waveformModel: null
+    readonly property int waveformRevision: waveformModel ? waveformModel.waveformRevision : 0
     readonly property bool sourceTrimEnabled: false
     property var selectedClipIds: []
     property var visibleSegments: []
@@ -69,6 +71,7 @@ Rectangle {
     readonly property real pixelsPerSecond: fitPixelsPerSecond * zoomFactor
     readonly property real trackWidth: Math.max(usableWidth, timelineDuration * pixelsPerSecond)
     readonly property real snapDistanceSeconds: Math.min(0.16, 8 / Math.max(1, pixelsPerSecond))
+    readonly property var snapIndex: TimelineViewport.buildSnapIndex(segments, editorClips)
     readonly property real tickStep: TimelineViewport.tickInterval(pixelsPerSecond)
     readonly property var clipIndicesById: {
         const indices = {};
@@ -79,6 +82,13 @@ Rectangle {
     readonly property var indexedSegments: segments.map(function(segment, index) {
         return Object.assign({ "sourceIndex": index }, segment);
     })
+    readonly property var subtitleIntervalIndex: TimelineViewport.buildIndex(indexedSegments, false)
+    readonly property var clipIntervalIndices: {
+        const indices = {};
+        for (const trackId in clipsByTrack)
+            indices[trackId] = TimelineViewport.buildIndex(clipsByTrack[trackId], true);
+        return indices;
+    }
     readonly property var clipsByTrack: {
         const groups = {};
         for (let index = 0; index < editorClips.length; ++index) {
@@ -164,21 +174,13 @@ Rectangle {
         // A short magnetic threshold is always active. It is intentionally
         // not exposed as a toolbar mode: editors should feel precise without
         // asking users to understand or manage another persistent setting.
-        const targets = snapTargets("");
+        const trailing = [];
         if (includePrevious && index > 0)
-            targets.push(previousEnd(index));
+            trailing.push(previousEnd(index));
         if (includeNext && index + 1 < segments.length)
-            targets.push(nextStart(index));
-        let result = value;
-        let bestDistance = snapDistanceSeconds;
-        for (let targetIndex = 0; targetIndex < targets.length; ++targetIndex) {
-            const distance = Math.abs(value - targets[targetIndex]);
-            if (distance <= bestDistance) {
-                result = targets[targetIndex];
-                bestDistance = distance;
-            }
-        }
-        return result;
+            trailing.push(nextStart(index));
+        return TimelineViewport.snap(snapIndex, value, snapDistanceSeconds,
+            [0, duration, timelineDuration, position], trailing);
     }
 
     function snapTargets() {
@@ -199,17 +201,8 @@ Rectangle {
     function snapAnyTime(value) {
         if (!snappingEnabled)
             return value;
-        const targets = snapTargets();
-        let result = value;
-        let bestDistance = snapDistanceSeconds;
-        for (let index = 0; index < targets.length; ++index) {
-            const distance = Math.abs(value - targets[index]);
-            if (distance <= bestDistance) {
-                result = targets[index];
-                bestDistance = distance;
-            }
-        }
-        return result;
+        return TimelineViewport.snap(snapIndex, value, snapDistanceSeconds,
+            [0, duration, timelineDuration, position], []);
     }
 
     function zoomAt(viewX, requestedFactor) {
@@ -270,17 +263,15 @@ Rectangle {
             / Math.max(0.001, pixelsPerSecond) + buffer;
         visibleStartSeconds = left;
         visibleEndSeconds = right;
-        const next = [];
-        for (let index = 0; index < indexedSegments.length; ++index) {
-            const segment = indexedSegments[index];
-            if (Number(segment.end || 0) < left || Number(segment.start || 0) > right)
-                continue;
-            next.push(segment);
-        }
+        const next = TimelineViewport.intersect(subtitleIntervalIndex, left, right);
         visibleSegments = next;
         TimelineViewport.sync(visibleSegmentModel, next.map(function(segment) {
             return { "entryKey": String(segment.sourceIndex), "entryIndex": segment.sourceIndex };
         }));
+        TimelineViewport.sync(visibleSourceClipModel,
+            TimelineViewport.intersect(clipIntervalIndices["source-video"], left, right).map(function(clip) {
+                return {"entryKey": String(clip.clip_id), "entryIndex": root.clipIndicesById[String(clip.clip_id)]};
+            }));
         const firstTick = Math.max(0, Math.floor(left / tickStep));
         const lastTick = Math.min(Math.ceil(timelineDuration / tickStep),
             Math.ceil(right / tickStep));
@@ -300,6 +291,7 @@ Rectangle {
     }
 
     onPositionChanged: ensurePositionVisible()
+    onEditorClipsChanged: scheduleVisibleRefresh()
     onSegmentsChanged: {
         editingClip = false;
         scheduleVisibleRefresh();
@@ -309,9 +301,22 @@ Rectangle {
     onDurationChanged: scheduleVisibleRefresh()
     onTimelineDurationChanged: scheduleVisibleRefresh()
     onEditingClipChanged: if (!editingClip) scheduleVisibleRefresh()
-    Component.onCompleted: scheduleVisibleRefresh()
+    Component.onCompleted: {
+        syncTrackModel();
+        scheduleVisibleRefresh();
+    }
+    onExtraTracksChanged: syncTrackModel()
+    function syncTrackModel() {
+        if (!layerTrackModel)
+            return;
+        TimelineViewport.sync(layerTrackModel, extraTracks.map(function(track, index) {
+            return {entryKey: String(track.track_id || ""), entryIndex: index};
+        }));
+    }
+    ListModel { id: layerTrackModel }
 
     ListModel { id: visibleSegmentModel }
+    ListModel { id: visibleSourceClipModel }
     ListModel { id: visibleTickModel }
 
     Timer {
@@ -493,29 +498,30 @@ Rectangle {
                 }
 
                 Repeater {
-                    model: root.extraTracks
+                    model: layerTrackModel
 
                     delegate: Item {
                         id: layerTrack
                         objectName: "timelineTrack-" + trackId
                         required property int index
-                        required property var modelData
+                        required property int entryIndex
+                        readonly property var modelData: root.extraTracks[entryIndex] || ({})
                         readonly property string trackId: String(modelData.track_id || "")
                         readonly property bool combinedVoice: trackId === "voice"
                         readonly property bool canEditClips: trackId !== "overlays"
                         readonly property bool canMoveClips: canEditClips && trackId !== "result"
-                        readonly property var clips: (root.clipsByTrack[trackId] || []).filter(function(clip) {
-                            const start = Number(clip.start_ms || 0) / 1000;
-                            const end = start + Number(clip.duration_ms || 0) / 1000;
-                            return end >= root.visibleStartSeconds
-                                && start <= root.visibleEndSeconds;
-                        })
-                        onClipsChanged: {
-                            TimelineViewport.sync(layerClipModel, clips.map(function(clip) {
+                        readonly property var clips: TimelineViewport.intersect(root.clipIntervalIndices[trackId],
+                            root.visibleStartSeconds, root.visibleEndSeconds)
+                        readonly property var clipEntries: clips.map(function(clip) {
                                 const key = String(clip.clip_id || "");
                                 return { "entryKey": key, "entryIndex": root.clipIndicesById[key] };
-                            }));
+                            }).filter(entry => entry.entryIndex !== undefined)
+                        function syncClips() {
+                            if (layerClipModel)
+                                TimelineViewport.sync(layerClipModel, clipEntries);
                         }
+                        onClipEntriesChanged: syncClips()
+                        Component.onCompleted: syncClips()
                         ListModel { id: layerClipModel }
                         x: 0
                         y: combinedVoice ? 104 + root.resultTrackOffset : root.trackY(index)
@@ -613,7 +619,9 @@ Rectangle {
 
                                 Row {
                                     id: waveformRow
-                                    readonly property var peaks: editorClip.modelData.waveform || []
+                                    readonly property var peaks: root.waveformModel && root.waveformRevision >= 0
+                                        ? root.waveformModel.waveformPeaks(String(editorClip.modelData.asset_id || ""))
+                                        : editorClip.modelData.waveform || []
                                     readonly property int barCount: Math.min(peaks.length,
                                         Math.max(1, Math.floor(width / 3)))
                                     anchors.left: parent.left
@@ -623,7 +631,7 @@ Rectangle {
                                     anchors.rightMargin: 3
                                     height: parent.height - 8
                                     spacing: 1
-                                    visible: (editorClip.modelData.waveform || []).length > 0
+                                    visible: peaks.length > 0
                                     opacity: layerTrack.combinedVoice ? 0.8 : 0.42
 
                                     Repeater {
@@ -860,12 +868,11 @@ Rectangle {
                     }
 
                     Repeater {
-                        model: root.editorClips.filter(function(clip) {
-                            return String(clip.track_id || "") === "source-video";
-                        })
+                        model: visibleSourceClipModel
                         delegate: Rectangle {
                             id: sourceClip
-                            required property var modelData
+                            required property int entryIndex
+                            readonly property var modelData: root.editorClips[entryIndex] || ({})
                             readonly property string clipId: String(modelData.clip_id || "")
                             property int previewStartMs: Number(modelData.start_ms || 0)
                             property int previewDurationMs: Number(modelData.duration_ms || 0)

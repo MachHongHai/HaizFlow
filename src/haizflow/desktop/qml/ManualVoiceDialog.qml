@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
@@ -16,12 +17,12 @@ AppDialog {
     property string openedVideoId: ""
     property var voiceModel: []
 
-    signal confirmed(string provider, string voice, string scope, string segmentId, string speakerMode)
-    signal cloneRequested()
+    signal confirmed(string provider, string voice, string scope, string segmentId, string speakerMode, var segmentIds)
+    signal cloneRequested
 
     title: replacingVoice ? qsTr("Đổi hoặc tạo lại giọng") : qsTr("Tạo giọng đọc")
-    preferredWidth: 560
-    maximumHeight: 680
+    preferredWidth: 640
+    maximumHeight: 760
 
     function firstAvailableVoice(options) {
         for (let index = 0; index < options.length; ++index) {
@@ -37,8 +38,7 @@ AppDialog {
             voiceModel = updatedOptions;
         const requested = String(preferredVoice || "");
         for (let index = 0; index < voiceModel.length; ++index) {
-            if (String(voiceModel[index].voice || "") === requested
-                    && (voiceModel[index].available === undefined || voiceModel[index].available !== false)) {
+            if (String(voiceModel[index].voice || "") === requested && (voiceModel[index].available === undefined || voiceModel[index].available !== false)) {
                 draftVoice = requested;
                 return;
             }
@@ -54,6 +54,7 @@ AppDialog {
         draftSpeakerMode = String(configuration.speakerMode || "single");
         draftProvider = globalProvider;
         refreshVoices(globalVoice);
+        scopePicker.reset(AppController.manualSubtitleModel.segments, String(configuration.segmentId || ""));
         open();
     }
 
@@ -84,89 +85,102 @@ AppDialog {
         }
     }
 
-    ColumnLayout {
+    ScrollView {
+        id: formScroll
         Layout.fillWidth: true
-        spacing: Theme.space16
+        Layout.fillHeight: true
+        Layout.minimumHeight: 0
+        implicitHeight: voiceForm.implicitHeight
+        contentWidth: availableWidth
+        clip: true
 
-        GridLayout {
-            Layout.fillWidth: true
-            columns: 1
-            columnSpacing: Theme.space12
-            rowSpacing: Theme.space8
+        ColumnLayout {
+            id: voiceForm
+            width: formScroll.availableWidth
+            spacing: Theme.space16
 
-            SettingLabel { text: qsTr("Công cụ") }
-            StudioComboBox {
+            ManualVoiceScope {
+                id: scopePicker
+                objectName: "manualVoiceScopePicker"
                 Layout.fillWidth: true
-                model: AppController.ttsProviderOptions
-                textRole: "label"
-                valueRole: "provider"
-                currentIndex: {
-                    for (let i = 0; i < model.length; ++i) {
-                        if (model[i].provider === root.draftProvider)
-                            return i;
+                cueListHeight: Math.max(180, Math.min(280, (root.parent ? root.parent.height : 900) - 520))
+            }
+
+            GridLayout {
+                Layout.fillWidth: true
+                columns: 1
+                columnSpacing: Theme.space12
+                rowSpacing: Theme.space8
+
+                SettingLabel {
+                    text: qsTr("Công cụ")
+                }
+                StudioComboBox {
+                    Layout.fillWidth: true
+                    model: AppController.ttsProviderOptions
+                    textRole: "label"
+                    valueRole: "provider"
+                    currentIndex: {
+                        for (let i = 0; i < model.length; ++i) {
+                            if (model[i].provider === root.draftProvider)
+                                return i;
+                        }
+                        return 0;
                     }
-                    return 0;
-                }
-                onActivated: {
-                    if (!AppController.validateTtsProviderForLanguage(AppController.manualVoiceLanguage, currentValue)) {
-                        currentIndex = Qt.binding(function() {
-                            for (let i = 0; i < model.length; ++i) {
-                                if (model[i].provider === root.draftProvider)
-                                    return i;
-                            }
-                            return 0;
-                        });
-                        return;
+                    onActivated: {
+                        if (!AppController.validateTtsProviderForLanguage(AppController.manualVoiceLanguage, currentValue, scopePicker.scope === "all" ? AppController.manualSubtitleModel.segments.map(item => String(item.segment_id || "")) : scopePicker.targetIds())) {
+                            currentIndex = Qt.binding(function () {
+                                for (let i = 0; i < model.length; ++i) {
+                                    if (model[i].provider === root.draftProvider)
+                                        return i;
+                                }
+                                return 0;
+                            });
+                            return;
+                        }
+                        root.draftProvider = currentValue;
+                        root.draftSpeakerMode = "single";
+                        root.refreshVoices(root.draftVoice);
                     }
-                    root.draftProvider = currentValue;
-                    root.draftSpeakerMode = "single";
-                    root.refreshVoices(root.draftVoice);
                 }
-            }
 
-            SettingLabel {
-                Layout.fillWidth: true
-                text: qsTr("Giọng đọc")
-                helpText: qsTr("Nhận diện nhiều người nói chọn giọng thư viện ổn định cho từng người; kết quả có thể cần chỉnh lại. Giọng nhân bản dùng mẫu do bạn cung cấp.")
-            }
-
-
-            Text {
-                Layout.fillWidth: true
-                visible: root.draftProvider === "edge"
-                text: qsTr("Cần Internet. Nội dung phụ đề được gửi tới Microsoft để tạo giọng.")
-                color: Theme.textMuted
-                font.pixelSize: TypeScale.metadata
-                wrapMode: Text.Wrap
-            }
-
-            VoicePicker {
-                id: voicePicker
-                Layout.fillWidth: true
-                model: root.voiceModel
-                currentValue: root.draftSpeakerMode === "multiple" ? "omnivoice:multiple" : root.draftVoice
-                allowMultipleSpeakers: root.draftProvider.indexOf("omnivoice") === 0 || root.draftProvider.indexOf("vieneu") === 0
-                allowVoiceClone: root.draftProvider.indexOf("omnivoice") === 0 || root.draftProvider.indexOf("vieneu") === 0
-                onCloneRequested: root.cloneRequested()
-                previewEnabled: true
-                previewSource: AppController.audioPreviewSource
-                previewState: AppController.audioPreviewState
-                onSelected: function(voice) {
-                    root.draftSpeakerMode = voice === "omnivoice:multiple" ? "multiple" : "single";
-                    root.draftVoice = voice === "omnivoice:multiple" ? "omnivoice:female" : voice;
+                SettingLabel {
+                    Layout.fillWidth: true
+                    text: qsTr("Giọng đọc")
+                    helpText: qsTr("Nhận diện nhiều người nói chọn giọng thư viện ổn định cho từng người; kết quả có thể cần chỉnh lại. Giọng nhân bản dùng mẫu do bạn cung cấp.")
                 }
-                onPreviewRequested: function(voice) {
-                    AppController.previewVoiceSample(
-                        root.draftProvider,
-                        voice,
-                        AppController.manualVoiceLanguage
-                    );
+
+                Text {
+                    Layout.fillWidth: true
+                    visible: root.draftProvider === "edge"
+                    text: qsTr("Cần Internet. Nội dung phụ đề được gửi tới Microsoft để tạo giọng.")
+                    color: Theme.textMuted
+                    font.pixelSize: TypeScale.metadata
+                    wrapMode: Text.Wrap
+                }
+
+                VoicePicker {
+                    id: voicePicker
+                    Layout.fillWidth: true
+                    model: root.voiceModel
+                    currentValue: root.draftSpeakerMode === "multiple" ? "omnivoice:multiple" : root.draftVoice
+                    allowMultipleSpeakers: root.draftProvider.indexOf("omnivoice") === 0 || root.draftProvider.indexOf("vieneu") === 0
+                    allowVoiceClone: root.draftProvider.indexOf("omnivoice") === 0 || root.draftProvider.indexOf("vieneu") === 0
+                    onCloneRequested: root.cloneRequested()
+                    previewEnabled: true
+                    previewSource: AppController.audioPreviewSource
+                    previewState: AppController.audioPreviewState
+                    onSelected: function (voice) {
+                        root.draftSpeakerMode = voice === "omnivoice:multiple" ? "multiple" : "single";
+                        root.draftVoice = voice === "omnivoice:multiple" ? "omnivoice:female" : voice;
+                    }
+                    onPreviewRequested: function (voice) {
+                        AppController.previewVoiceSample(root.draftProvider, voice, AppController.manualVoiceLanguage);
+                    }
                 }
             }
         }
-
     }
-
     footerActions: [
         StudioButton {
             text: qsTr("Hủy")
@@ -177,20 +191,21 @@ AppDialog {
             readyText: qsTr("Tạo giọng")
             iconName: "play"
             variant: "primary"
-            actionEnabled: root.draftVoice.length > 0
-            actionContext: ({ videoId: root.openedVideoId, provider: root.draftProvider,
-                voice: root.draftVoice, speakerMode: root.draftSpeakerMode })
+            objectName: "manualVoiceGenerateButton"
+            actionEnabled: root.draftVoice.length > 0 && scopePicker.valid
+            actionContext: ({
+                    videoId: root.openedVideoId,
+                    provider: root.draftProvider,
+                    voice: root.draftVoice,
+                    speakerMode: root.draftSpeakerMode,
+                    scope: scopePicker.scope,
+                    segmentId: scopePicker.currentSegmentId,
+                    segmentIds: scopePicker.targetIds()
+                })
             onExecute: context => {
-                if (!context || context.videoId !== root.openedVideoId
-                        || context.videoId !== String(AppController.selectedVideoId || ""))
+                if (!context || context.videoId !== root.openedVideoId || context.videoId !== String(AppController.selectedVideoId || ""))
                     return;
-                root.confirmed(
-                    context.provider,
-                    context.voice,
-                    "all",
-                    "",
-                    context.speakerMode
-                );
+                root.confirmed(context.provider, context.voice, context.scope, context.segmentId, context.speakerMode, context.segmentIds);
                 root.close();
             }
         }

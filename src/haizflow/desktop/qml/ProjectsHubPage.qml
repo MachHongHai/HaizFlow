@@ -167,12 +167,14 @@ Item {
             EmptyState {
                 anchors.centerIn: parent
                 visible: projectGrid.count === 0
-                title: searchField.text.length > 0 ? qsTr("Không tìm thấy dự án") : qsTr("Chưa có dự án")
-                message: searchField.text.length > 0
+                title: AppController.projectCatalogState === "loading" ? qsTr("Đang tải dự án…")
+                    : AppController.projectCatalogState === "error" ? qsTr("Không tải được dự án")
+                    : searchField.text.length > 0 ? qsTr("Không tìm thấy dự án") : qsTr("Chưa có dự án")
+                message: AppController.projectCatalogState !== "ready" ? "" : searchField.text.length > 0
                     ? qsTr("Thử từ khóa hoặc bộ lọc khác.")
                     : qsTr("Tạo dự án để bắt đầu.")
                 StudioButton {
-                    visible: searchField.text.length > 0
+                    visible: AppController.projectCatalogState === "ready" && searchField.text.length > 0
                     text: qsTr("Xóa bộ lọc")
                     onClicked: root.resetFilters()
                 }

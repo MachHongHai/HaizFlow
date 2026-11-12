@@ -334,6 +334,9 @@ class ProcessingLifecycleController:
                 # payloads instead of crashing the GUI timer.
                 continue
             if item.startswith("__QUEUE_STARTED__:"):
+                notice = getattr(host, "_project_failure_notice", None)
+                if notice is not None:
+                    notice.started(item.partition(":")[2])
                 host.refreshVideos()
                 host.selectedVideoChanged.emit()
                 host.processingChanged.emit()

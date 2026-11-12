@@ -7,6 +7,7 @@ rejects static overlays and watermarks.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -15,7 +16,8 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from fractions import Fraction
 from functools import lru_cache
 from pathlib import Path
 
@@ -23,7 +25,8 @@ from haizflow.config import MODELS_DIR
 from haizflow.core.model_integrity import verify_subtitle_ocr_models
 from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 from haizflow.services.video_store import log_to_video
-from haizflow.utils.ffmpeg import get_video_dimensions, get_video_duration
+from haizflow.utils.atomic_file import atomic_json
+from haizflow.utils.ffmpeg import _binary, get_video_dimensions, get_video_duration
 
 # The detector only needs enough uniformly distributed observations to find
 # the largest reliable subtitle envelope. It deliberately does not build a
@@ -34,6 +37,11 @@ MIN_CONFIDENCE = 0.68
 DETECTOR_CACHE_VERSION = 24
 OCR_FRAME_MAX_WIDTH = 720
 OCR_SEEK_MIN_DURATION = 300
+OCR_SAMPLE_TIMEOUT_SECONDS = 600
+
+
+class _SamplingUnavailable(RuntimeError):
+    """The source needs the compatibility FFmpeg sampler."""
 
 
 @dataclass(frozen=True)
@@ -421,10 +429,137 @@ def _source_state(video_path: str) -> dict[str, int | str]:
     return {"path": os.path.abspath(video_path), "size": state.st_size, "mtime_ns": state.st_mtime_ns}
 
 
+def _sample_frames_with_av(video_path: str, frame_dir: str, video_id: str, *, duration: float,
+                           ocr_width: int, ocr_height: int, sample_count: int) -> list[Path]:
+    """Reuse one demuxer/decoder, seeking from keyframes at the same midpoints.
+
+    Keep only the current decoded frame in memory. Do not skip reference or
+    B frames: OCR still receives the first presented frame at each target.
+    """
+    try:
+        import av
+    except ImportError as exc:
+        raise _SamplingUnavailable("PyAV is not installed in this engine") from exc
+    started = time.monotonic()
+
+    def checkpoint():
+        check_cancellation(video_id)
+        if time.monotonic() - started > OCR_SAMPLE_TIMEOUT_SECONDS:
+            raise RuntimeError("Original subtitle frame sampling timed out.")
+
+    checkpoint()
+    # PyAV does not consistently forward a stream's display matrix to decoded
+    # frames. One small metadata probe is cheaper than 36 decoder launches and
+    # keeps phone rotation/reflection on the proven FFmpeg autorotation path.
+    command = [_binary("ffprobe"), "-v", "error", "-select_streams", "v:0",
+               "-show_entries", "stream_tags=rotate:stream_side_data", "-of", "json", video_path]
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                   encoding="utf-8", errors="replace",
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        metadata, error = communicate_process(video_id, process, label="OCR display metadata", timeout_seconds=15)
+    except (OSError, RuntimeError) as exc:
+        check_cancellation(video_id)
+        raise _SamplingUnavailable("Display metadata probe unavailable") from exc
+    checkpoint()
+    try:
+        streams = json.loads(metadata).get("streams", [])
+        if process.returncode or not streams:
+            raise _SamplingUnavailable(f"Cannot verify video display transform: {error[-200:]}")
+        stream_info = streams[0]
+        if (float(stream_info.get("tags", {}).get("rotate", 0)) != 0
+                or any(item.get("side_data_type") == "Display Matrix"
+                       for item in stream_info.get("side_data_list", []))):
+            raise _SamplingUnavailable("Display transform requires FFmpeg autorotation")
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise _SamplingUnavailable("Cannot verify video display transform") from exc
+    try:
+        with av.open(video_path, timeout=(15, 30)) as container:
+            if len(container.streams.video) != 1:
+                raise _SamplingUnavailable("Video stream selection requires FFmpeg compatibility")
+            stream = container.streams.video[0]
+            if not stream.time_base:
+                raise _SamplingUnavailable("Video stream has no time base")
+            stream.codec_context.thread_count = 2
+            stream.codec_context.thread_type = "AUTO"
+            jpeg = av.CodecContext.create("mjpeg", "w")
+            jpeg.width, jpeg.height = ocr_width, ocr_height
+            jpeg.pix_fmt = "yuvj420p"
+            jpeg.time_base = Fraction(1, 1)
+            jpeg.thread_count = 2
+            jpeg.qscale = True
+            jpeg.global_quality = 4  # Same QP as the compatibility -q:v 4.
+            origin = (float(container.start_time) / av.time_base if container.start_time is not None
+                      else float((stream.start_time or 0) * stream.time_base))
+            paths = []
+            for index in range(sample_count):
+                checkpoint()
+                target = float(f"{min(duration - .05, (index + .5) * duration / sample_count):.6f}") + origin
+                container.seek(int(target / stream.time_base), backward=True, any_frame=False, stream=stream)
+                selected = None
+                for packet in container.demux(stream):
+                    checkpoint()
+                    for frame in packet.decode():
+                        checkpoint()
+                        if frame.pts is None or frame.time_base is None:
+                            raise _SamplingUnavailable("Decoded video frame has no presentation time")
+                        if float(frame.pts * frame.time_base) + 1e-7 >= target:
+                            selected = frame
+                            break
+                    if selected is not None:
+                        break
+                if selected is None:
+                    # Some containers have an audio tail after their last
+                    # picture. Preserve successful samples, not fake repeats.
+                    continue
+                if (getattr(selected, "rotation", 0)
+                        or any(item.type.name == "DISPLAYMATRIX" for item in selected.side_data)):
+                    raise _SamplingUnavailable("Display transform requires FFmpeg autorotation")
+                checkpoint()
+                destination = Path(frame_dir) / f"frame-{index + 1:03d}.jpg"
+                scaled = selected.reformat(width=ocr_width, height=ocr_height,
+                                           format="yuvj420p", interpolation="BICUBIC", threads=2)
+                scaled.pts, scaled.time_base = index, Fraction(1, 1)
+                packets = jpeg.encode(scaled)
+                if len(packets) != 1:
+                    raise _SamplingUnavailable("JPEG encoder did not publish one complete sampled frame")
+                destination.write_bytes(bytes(packets[0]))
+                paths.append(destination)
+                selected = scaled = None
+            checkpoint()
+            if not paths:
+                raise _SamplingUnavailable("Seek decoder did not produce usable video frames")
+            return paths
+    except (av.error.FFmpegError, OSError, ValueError, TypeError, AttributeError) as exc:
+        if isinstance(exc, OSError) and exc.errno in {13, 28, 122}:
+            raise
+        raise _SamplingUnavailable(str(exc)) from exc
+
+
 def _sample_frames(video_path: str, frame_dir: str, video_id: str, *, duration: float,
                    source_width: int, source_height: int, ocr_width: int, ocr_height: int,
                    sample_count: int) -> list[Path]:
-    """Sample long HD sources by bounded seeks, not whole-stream decoding."""
+    """Bounded sampling with one reusable decoder and a cancellable fallback."""
+    check_cancellation(video_id)
+    if duration >= OCR_SEEK_MIN_DURATION:
+        # Private staging prevents a failed native attempt from mixing its
+        # partial observations with the compatibility sampler's frames.
+        with tempfile.TemporaryDirectory(prefix=".seek-", dir=frame_dir) as staging:
+            try:
+                paths = _sample_frames_with_av(video_path, staging, video_id, duration=duration,
+                    ocr_width=ocr_width, ocr_height=ocr_height, sample_count=sample_count)
+            except _SamplingUnavailable as exc:
+                check_cancellation(video_id)
+                log_to_video(video_id, f"OCR frame sampler: using FFmpeg compatibility path ({exc}).")
+            else:
+                result = []
+                for path in paths:
+                    check_cancellation(video_id)
+                    target = Path(frame_dir) / path.name
+                    os.replace(path, target)
+                    result.append(target)
+                log_to_video(video_id, f"OCR frame sampler: reused one decoder for {len(result)} frames (2 threads).")
+                return result
     seek_samples = duration >= OCR_SEEK_MIN_DURATION and source_width * source_height >= 1280 * 720
     if seek_samples:
         # Midpoints match the uniform coverage of the existing fps sampler.
@@ -446,7 +581,8 @@ def _sample_frames(video_path: str, frame_dir: str, video_id: str, *, duration: 
         check_cancellation(video_id)
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        _stdout, stderr = communicate_process(video_id, process, label="Original subtitle scan", timeout_seconds=600)
+        _stdout, stderr = communicate_process(video_id, process, label="Original subtitle scan",
+                                             timeout_seconds=OCR_SAMPLE_TIMEOUT_SECONDS)
         check_cancellation(video_id)
         if process.returncode != 0:
             raise RuntimeError(f"Unable to sample frames for original subtitle detection: {stderr[-500:]}")
@@ -497,13 +633,26 @@ def detect_original_subtitle_region(
             source_width=source_width, source_height=source_height, ocr_width=ocr_width, ocr_height=ocr_height,
             sample_count=sample_count)
         candidates: list[TextCandidate] = []
+        frame_results: dict[bytes, list[TextCandidate]] = {}
+        reused_frames = 0
         if not frame_paths:
             raise RuntimeError("Original subtitle scan did not produce any video frames.")
         update_interval = max(1, len(frame_paths) // 20)
         runtime_detail = ""
         for index, frame_path in enumerate(frame_paths, 1):
             check_cancellation(video_id)
-            candidates.extend(_ocr_candidates(frame_path, index, ocr_width, ocr_height))
+            with frame_path.open("rb") as stream:
+                fingerprint = hashlib.file_digest(stream, "sha256").digest()
+            if fingerprint in frame_results:
+                # Keep the temporal evidence at every sample index. Only
+                # identical image bytes share inference, never similar frames
+                # that might differ by one subtitle character.
+                candidates.extend(replace(item, frame=index) for item in frame_results[fingerprint])
+                reused_frames += 1
+            else:
+                observed = _ocr_candidates(frame_path, index, ocr_width, ocr_height)
+                frame_results[fingerprint] = observed
+                candidates.extend(observed)
             # Do not initialise a runtime just for status (or on a cache hit).
             detail = getattr(_ocr_engine(), "detail", "") if _ocr_engine.cache_info().currsize else ""
             if detail and detail != runtime_detail:
@@ -511,11 +660,15 @@ def detect_original_subtitle_region(
                 log_to_video(video_id, detail)
             if progress_callback and (index == len(frame_paths) or index % update_interval == 0):
                 progress_callback(index, len(frame_paths))
+        if reused_frames:
+            log_to_video(video_id, f"Reused OCR inference for {reused_frames} byte-identical sampled frames.")
+    check_cancellation(video_id)
     region = select_subtitle_region(candidates, sample_count)
+    check_cancellation(video_id)
+    if _source_state(video_path) != source_state:
+        raise RuntimeError("Source video changed during original subtitle detection.")
     payload = {"version": DETECTOR_CACHE_VERSION, "source": source_state, "region": region}
-    temporary = cache_path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    os.replace(temporary, cache_path)
+    atomic_json(cache_path, payload)
     elapsed = time.monotonic() - scan_started
     if region:
         log_to_video(

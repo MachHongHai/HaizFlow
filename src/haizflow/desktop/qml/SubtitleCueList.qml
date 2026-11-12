@@ -11,18 +11,18 @@ ColumnLayout {
     property int selectedIndex: -1
     property real position: -1
     property bool navigationEnabled: true
+    property bool multiSelect: false
+    property var checkedSegmentIds: []
     property string searchStatus: ""
     signal segmentSelected(int index)
     signal segmentActivated(int index)
+    signal segmentToggled(int index)
     spacing: Theme.space8
 
     function formatTime(seconds) {
         const value = Math.max(0, Math.round(Number(seconds || 0) * 1000));
         const hours = Math.floor(value / 3600000);
-        return (hours > 0 ? String(hours).padStart(2, "0") + ":" : "")
-            + String(Math.floor(value / 60000) % 60).padStart(2, "0") + ":"
-            + String(Math.floor(value / 1000) % 60).padStart(2, "0") + "."
-            + String(value % 1000).padStart(3, "0");
+        return (hours > 0 ? String(hours).padStart(2, "0") + ":" : "") + String(Math.floor(value / 60000) % 60).padStart(2, "0") + ":" + String(Math.floor(value / 1000) % 60).padStart(2, "0") + "." + String(value % 1000).padStart(3, "0");
     }
     function revealSelection() {
         if (selectedIndex >= 0 && selectedIndex < segments.length) {
@@ -45,7 +45,13 @@ ColumnLayout {
         }
         searchStatus = qsTr("Không tìm thấy");
     }
-    function focusSearch() { searchField.forceActiveFocus(); }
+    function focusSearch() {
+        searchField.forceActiveFocus();
+    }
+    function resetSearch() {
+        searchField.text = "";
+        searchStatus = "";
+    }
     onSelectedIndexChanged: Qt.callLater(revealSelection)
     onSegmentsChanged: Qt.callLater(revealSelection)
 
@@ -59,7 +65,8 @@ ColumnLayout {
             placeholderText: qsTr("Tìm phụ đề…")
             accessibleName: qsTr("Tìm trong phụ đề")
             onTextEdited: root.searchStatus = ""
-            onAccepted: if (!inputMethodComposing) root.findNext()
+            onAccepted: if (!inputMethodComposing)
+                root.findNext()
         }
         StudioIconButton {
             iconName: "back"
@@ -104,12 +111,14 @@ ColumnLayout {
             reuseItems: true
             cacheBuffer: 140
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            ScrollBar.vertical: ScrollBar {
+                policy: ScrollBar.AsNeeded
+            }
             delegate: ItemDelegate {
                 id: cue
                 required property int index
                 readonly property var segment: root.segments[index] || ({})
-                readonly property bool selected: index === root.selectedIndex
+                readonly property bool selected: root.multiSelect ? root.checkedSegmentIds.includes(String(segment.segment_id || "")) : index === root.selectedIndex
                 objectName: "subtitleCue_" + index
                 width: cueView.width
                 implicitHeight: Math.max(66, contentItem.implicitHeight + 20)
@@ -119,44 +128,58 @@ ColumnLayout {
                 bottomPadding: 10
                 enabled: root.navigationEnabled
                 focusPolicy: Qt.TabFocus
+                checkable: root.multiSelect
+                checked: selected
                 Accessible.name: qsTr("Phụ đề %1: %2").arg(index + 1).arg(String(segment.text || ""))
-                Accessible.role: Accessible.ListItem
-                contentItem: ColumnLayout {
-                    spacing: 4
-                    RowLayout {
+                Accessible.role: root.multiSelect ? Accessible.CheckBox : Accessible.ListItem
+                contentItem: RowLayout {
+                    spacing: Theme.space12
+                    AppCheckBox {
+                        objectName: "subtitleCueCheck_" + cue.index
+                        visible: root.multiSelect
+                        checked: cue.selected
+                        focusPolicy: Qt.NoFocus
+                        Accessible.ignored: true
+                        onClicked: root.segmentToggled(cue.index)
+                    }
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        Text {
-                            text: String(cue.index + 1).padStart(2, "0")
-                            color: cue.selected ? Theme.interactive : Theme.textSubtle
-                            font.family: Theme.fontFamily
-                            font.pixelSize: TypeScale.metadata
-                            font.weight: Font.DemiBold
+                        spacing: Theme.space4
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text {
+                                text: String(cue.index + 1).padStart(2, "0")
+                                color: cue.selected ? Theme.interactive : Theme.textSubtle
+                                font.family: Theme.fontFamily
+                                font.pixelSize: TypeScale.metadata
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                objectName: "subtitleCueTime_" + cue.index
+                                text: root.formatTime(cue.segment.start) + " — " + root.formatTime(cue.segment.end)
+                                color: Theme.textMuted
+                                font.family: Theme.fontFamily
+                                font.pixelSize: TypeScale.metadata
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                            }
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: root.formatTime(cue.segment.start) + " — " + root.formatTime(cue.segment.end)
-                            color: Theme.textMuted
+                            text: String(cue.segment.text || "") || qsTr("Phụ đề trống")
+                            color: Theme.text
                             font.family: Theme.fontFamily
-                            font.pixelSize: TypeScale.metadata
-                            textFormat: Text.PlainText
+                            font.pixelSize: TypeScale.section
+                            wrapMode: Text.Wrap
+                            maximumLineCount: 3
                             elide: Text.ElideRight
+                            textFormat: Text.PlainText
                         }
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        text: String(cue.segment.text || "") || qsTr("Phụ đề trống")
-                        color: Theme.text
-                        font.family: Theme.fontFamily
-                        font.pixelSize: TypeScale.section
-                        wrapMode: Text.Wrap
-                        maximumLineCount: 3
-                        elide: Text.ElideRight
-                        textFormat: Text.PlainText
                     }
                 }
                 background: Rectangle {
-                    color: cue.selected ? Theme.interactiveMuted
-                        : cue.hovered ? Theme.surfaceMuted : "transparent"
+                    color: cue.selected ? Theme.interactiveMuted : cue.hovered ? Theme.surfaceMuted : "transparent"
                     border.width: cue.visualFocus ? 1 : 0
                     border.color: Theme.controlFocus
                     Rectangle {
@@ -166,10 +189,16 @@ ColumnLayout {
                         color: Theme.interactive
                     }
                 }
-                onClicked: root.segmentSelected(index)
-                onDoubleClicked: root.segmentActivated(index)
-                Keys.onReturnPressed: root.segmentActivated(index)
-                Keys.onEnterPressed: root.segmentActivated(index)
+                onClicked: {
+                    if (root.multiSelect)
+                        root.segmentToggled(index);
+                    else
+                        root.segmentSelected(index);
+                }
+                onDoubleClicked: if (!root.multiSelect)
+                    root.segmentActivated(index)
+                Keys.onReturnPressed: root.multiSelect ? root.segmentToggled(index) : root.segmentActivated(index)
+                Keys.onEnterPressed: root.multiSelect ? root.segmentToggled(index) : root.segmentActivated(index)
                 Keys.onUpPressed: root.segmentSelected(Math.max(0, root.selectedIndex - 1))
                 Keys.onDownPressed: root.segmentSelected(Math.min(root.segments.length - 1, root.selectedIndex + 1))
             }

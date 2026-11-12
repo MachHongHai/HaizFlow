@@ -980,6 +980,9 @@ def synthesize_batch_to_mp3(
     _validate_speaker_voices(items, speaker_mode)
     cancellation_id = process_registry_id or video_id
     check_cancellation(cancellation_id)
+    vieneu = sys.modules.get("haizflow.pipeline.vieneu_tts")
+    if vieneu is not None:
+        vieneu.clear_runtime()
     log_to_video(
         video_id,
         "[TTS][PREPARE] provider=omnivoice stage=verifying_runtime "
@@ -1265,8 +1268,12 @@ def runtime_description() -> str:
     return "cuda:0 (isolated worker)" if processing_device_preference() == "gpu" else "cpu (isolated worker)"
 
 
-def clear_runtime() -> None:
+def clear_runtime(*, include_vieneu: bool = True) -> None:
     """Release the long-lived isolated model worker and its GPU allocation."""
+    if include_vieneu:
+        vieneu = sys.modules.get("haizflow.pipeline.vieneu_tts")
+        if vieneu is not None:
+            vieneu.clear_runtime()
     with _PERSISTENT_WORKER_LOCK:
         _stop_persistent_worker_unlocked()
 
@@ -1531,6 +1538,9 @@ def _generate_bounded_batch(generate, items, torch, device, *, retry_single_oom=
 def warm_runtime(language_id: str = "vi", *, device: str | None = None) -> None:
     global _PERSISTENT_MODEL_KEY
     """Load OmniVoice in its isolated worker without synthesizing user audio."""
+    vieneu = sys.modules.get("haizflow.pipeline.vieneu_tts")
+    if vieneu is not None:
+        vieneu.clear_runtime()
     _prepare_isolated_runtime()
     model_root = verify_omnivoice_model(Path(MODELS_DIR) / "omnivoice")
     runtime_tmp = Path(TMP_DIR)

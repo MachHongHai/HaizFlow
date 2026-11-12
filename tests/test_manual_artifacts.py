@@ -16,6 +16,20 @@ from haizflow.services import manual_artifacts
 
 
 class ManualArtifactTests(unittest.TestCase):
+    def test_bulk_sentence_resolution_reads_one_manifest_and_rejects_corrupt_clips(self):
+        for key in ("one", "two", "three"):
+            staging = manual_artifacts.create_staging_directory(self.video.video_id, "tts_clip")
+            (staging / "audio.mp3").write_bytes(b"ID3" + key.encode() * 512)
+            manual_artifacts.publish(self.video.video_id, "tts_clip", key, staging, {"audio": "audio.mp3"},
+                                     activate_artifact=False)
+        damaged = manual_artifacts.resolve(self.video.video_id, "tts_clip", "two")
+        Path(damaged["resolved_outputs"]["audio"]).write_bytes(b"corrupt")
+        with patch.object(manual_artifacts, "load_manifest", wraps=manual_artifacts.load_manifest) as load:
+            found = manual_artifacts.resolve_many(self.video.video_id, "tts_clip", ["one", "two", "three", "one", ""])
+            self.assertEqual(load.call_count, 1)
+        self.assertEqual(set(found), {"one", "three"})
+        self.assertIsNone(manual_artifacts.resolve(self.video.video_id, "tts_clip", "two"))
+
     def test_voice_finalization_label_does_not_imply_multi_speaker_processing(self):
         source = inspect.getsource(manual_tools._run_voice)
         self.assertIn("stage == 'leveling_voice'", source)
@@ -1235,6 +1249,8 @@ assert not (blocked & set(sys.modules)), blocked & set(sys.modules)
                 patch.object(manual_tools, "_current_subtitle_path", return_value="subtitles.json"),
                 patch.object(manual_tools, "_voice_clip_signatures", return_value=["clip-one", "clip-two"]),
                 patch.object(manual_tools.manual_artifacts, "resolve", side_effect=resolve),
+                patch.object(manual_tools.manual_artifacts, "resolve_many", side_effect=lambda vid, kind, keys: {
+                    key: resolve(vid, kind, key) for key in keys}),
                 patch.object(manual_tools.manual_artifacts, "create_staging_directory", return_value=stage),
                 patch.object(manual_tools.manual_artifacts, "publish", side_effect=publish),
                 patch.object(manual_tools.manual_artifacts, "register_existing"),
@@ -1284,6 +1300,8 @@ assert not (blocked & set(sys.modules)), blocked & set(sys.modules)
                 patch.object(manual_tools, "ensure_narrator_anchor", return_value="voice identity anchor"),
                 patch.object(manual_tools.video_store, "get_video", return_value=None),
                 patch.object(manual_tools.manual_artifacts, "resolve", side_effect=resolve),
+                patch.object(manual_tools.manual_artifacts, "resolve_many", return_value={
+                    "clip-one": {"resolved_outputs": {"audio": str(cached_part)}}}),
                 patch.object(manual_tools.manual_artifacts, "create_staging_directory", return_value=stage),
                 patch.object(manual_tools.manual_artifacts, "publish", side_effect=publish),
                 patch.object(manual_tools.manual_artifacts, "register_existing"),

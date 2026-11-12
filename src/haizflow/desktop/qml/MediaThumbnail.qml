@@ -5,6 +5,27 @@ Rectangle {
     id: root
     property url source: ""
     property string fallbackIcon: "video"
+    readonly property real pixelRatio: Screen.devicePixelRatio
+    property int decodeWidth: 64
+    property int decodeHeight: 64
+    function scheduleDecodeSize() {
+        if (visible && !decodeTimer.running)
+            decodeTimer.start();
+    }
+    onWidthChanged: scheduleDecodeSize()
+    onHeightChanged: scheduleDecodeSize()
+    onPixelRatioChanged: scheduleDecodeSize()
+    onVisibleChanged: if (visible) scheduleDecodeSize()
+    Component.onCompleted: scheduleDecodeSize()
+
+    Timer {
+        id: decodeTimer
+        interval: 120
+        onTriggered: {
+            root.decodeWidth = Math.max(64, Math.ceil(root.width * root.pixelRatio / 64) * 64);
+            root.decodeHeight = Math.max(64, Math.ceil(root.height * root.pixelRatio / 64) * 64);
+        }
+    }
 
     radius: Theme.radiusTiny
     color: Theme.video
@@ -16,8 +37,8 @@ Rectangle {
         id: thumbnailImage
         anchors.fill: parent
         source: root.source
-        sourceSize.width: Math.max(1, Math.round(width * 2))
-        sourceSize.height: Math.max(1, Math.round(height * 2))
+        sourceSize.width: root.decodeWidth
+        sourceSize.height: root.decodeHeight
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         cache: true

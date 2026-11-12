@@ -186,6 +186,21 @@ def test_alert_has_three_actions_and_hides_traceback(scene):
     assert not window.findChild(QObject, "alert").property("visible")
 
 
+def test_notice_new_occurrence_with_identical_error_is_not_swallowed(scene):
+    create, _, _ = scene
+    window = create('property int notificationCount: 0; '
+                    'UserErrorNotice { objectName: "notice"; details: "Same failure"; occurrenceKey: "one:1"; '
+                    'notificationHandler: function(title, detail, log) { notificationCount += 1; }}')
+    notice = window.findChild(QQuickItem, "notice")
+    assert window.property("notificationCount") == 1
+    notice.setProperty("occurrenceKey", "one:2")
+    QTest.qWait(40)
+    assert window.property("notificationCount") == 2
+    notice.setProperty("occurrenceKey", "one:2")
+    QTest.qWait(40)
+    assert window.property("notificationCount") == 2
+
+
 def test_backend_diagnostics_capture_origin_without_selected_project_lookup():
     host = Host()
     captured = []

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 import hashlib
 import json
@@ -9,14 +8,25 @@ import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
+from pydantic_core import SchemaSerializer, core_schema
 
 from haizflow.schemas.editor import EditorDocument
 from haizflow.services import desktop_videos, editor_documents
 
 
+_PAYLOAD_COPY = SchemaSerializer(core_schema.any_schema())
+
+
+def _copy_payload(value):
+    # These are model_dump/JSON-shaped payloads. Native Pydantic copying keeps
+    # nested containers detached without Python deepcopy's per-field walk.
+    return _PAYLOAD_COPY.to_python(value, mode="python")
+
+
 class ManualEditorDocumentModel(QObject):
     changed = Signal()
     clipsChanged = Signal()
+    waveformsChanged = Signal()
     ocrLayersChanged = Signal()
     selectionChanged = Signal()
     _waveformReady = Signal(str, str, object)
@@ -28,6 +38,11 @@ class ManualEditorDocumentModel(QObject):
         self._selected_clip_ids: list[str] = []
         self._selected_track_id = ""
         self._waveforms: dict[str, list[float]] = {}
+        self._waveform_revision = 0
+        self._clip_payloads = None
+        self._subtitle_payloads = None
+        self._revision = 0
+        self._asset_waveform_keys = {}
         self._waveform_pending: set[str] = set()
         self._waveform_futures: dict[str, object] = {}
         self._waveform_executor = ThreadPoolExecutor(
@@ -37,7 +52,8 @@ class ManualEditorDocumentModel(QObject):
         self._waveform_notifications = QTimer(self)
         self._waveform_notifications.setSingleShot(True)
         self._waveform_notifications.setInterval(250)
-        self._waveform_notifications.timeout.connect(self.clipsChanged)
+        self._waveform_notifications.timeout.connect(self._notify_waveforms)
+        self.changed.connect(self._invalidate_clip_payloads)
         self.changed.connect(self.clipsChanged)
         self.changed.connect(self.ocrLayersChanged)
         self._waveformReady.connect(self._accept_waveform)
@@ -58,6 +74,7 @@ class ManualEditorDocumentModel(QObject):
             self._cancel_waveforms()
         self._video_id = video_id
         self._document = document
+        self._clip_payloads = self._subtitle_payloads = None
         if selection_changed:
             self._selected_clip_ids = []
             self._selected_track_id = ""
@@ -70,6 +87,7 @@ class ManualEditorDocumentModel(QObject):
             return
         self._video_id = ""
         self._document = None
+        self._clip_payloads = self._subtitle_payloads = None
         self._selected_clip_ids = []
         self._selected_track_id = ""
         self._cancel_waveforms()
@@ -78,6 +96,9 @@ class ManualEditorDocumentModel(QObject):
 
     def set_document(self, document: EditorDocument | None) -> None:
         self._document = document
+        # Selection notifications can synchronously re-enter QML getters.
+        # Invalidate before the first signal, not only on the final changed.
+        self._clip_payloads = self._subtitle_payloads = None
         selection_payload_changed = bool(self._selected_clip_ids)
         if document is not None:
             self._video_id = document.video_id
@@ -87,6 +108,10 @@ class ManualEditorDocumentModel(QObject):
                 self._selected_clip_ids = selected
                 self.selectionChanged.emit()
                 selection_payload_changed = False
+        else:
+            self._video_id = ""
+            self._selected_clip_ids = []
+            self._selected_track_id = ""
         if selection_payload_changed:
             self.selectionChanged.emit()
         self._schedule_waveforms()
@@ -99,6 +124,10 @@ class ManualEditorDocumentModel(QObject):
     @Property("QVariantMap", notify=changed)
     def document(self) -> dict:
         return self._document.model_dump() if self._document else {}
+
+    @Property("QVariantList", notify=changed)
+    def sourceEditDecisions(self) -> list[dict]:
+        return [item.model_dump() for item in self._document.sequence.edit_decisions] if self._document else []
 
     @Property("QVariantList", notify=changed)
     def tracks(self) -> list[dict]:
@@ -123,12 +152,16 @@ class ManualEditorDocumentModel(QObject):
     def clips(self) -> list[dict]:
         if not self._document:
             return []
+        if self._clip_payloads is not None:
+            return [{**_copy_payload(payload), **({"waveform": list(self._waveforms[key])} if key in self._waveforms else {})}
+                    for payload, key in self._clip_payloads]
         order = {item.track_id: item.order for item in self._document.tracks}
         values = sorted(
             self._document.clips,
             key=lambda item: (order.get(item.track_id, 999), item.start_ms, item.clip_id),
         )
         result: list[dict] = []
+        cached = []
         assets_by_id = {asset.asset_id: asset for asset in self._document.assets}
         from haizflow.services.ocr_layers import EXTRA_LAYERS_ENABLED
 
@@ -137,13 +170,33 @@ class ManualEditorDocumentModel(QObject):
                 continue
             payload = item.model_dump()
             asset = assets_by_id.get(item.asset_id)
+            key = ""
             if asset is not None:
                 payload["asset_duration_ms"] = asset.duration_ms
                 key = self._waveform_key(asset)
-                if key in self._waveforms:
-                    payload["waveform"] = list(self._waveforms[key])
-            result.append(payload)
+            cached.append((payload, key))
+            result.append({**_copy_payload(payload), **({"waveform": list(self._waveforms[key])} if key in self._waveforms else {})})
+        self._clip_payloads = cached
         return result
+
+    def _invalidate_clip_payloads(self):
+        self._revision += 1
+        self._clip_payloads = None
+        self._subtitle_payloads = None
+        self._asset_waveform_keys = {asset.asset_id: self._waveform_key(asset)
+                                    for asset in self._document.assets} if self._document else {}
+
+    def _notify_waveforms(self):
+        self._waveform_revision += 1
+        self.waveformsChanged.emit()
+
+    @Property(int, notify=waveformsChanged)
+    def waveformRevision(self):
+        return self._waveform_revision
+
+    @Slot(str, result="QVariantList")
+    def waveformPeaks(self, asset_id):
+        return list(self._waveforms.get(self._asset_waveform_keys.get(asset_id, ""), []))
 
     @staticmethod
     def _waveform_key(asset) -> str:
@@ -267,6 +320,8 @@ class ManualEditorDocumentModel(QObject):
     def subtitleSegments(self) -> list[dict]:
         if not self._document:
             return []
+        if self._subtitle_payloads is not None:
+            return _copy_payload(self._subtitle_payloads)
         clips = sorted(
             (
                 clip for clip in self._document.clips
@@ -277,7 +332,7 @@ class ManualEditorDocumentModel(QObject):
         result: list[dict] = []
         for clip in clips:
             stored = clip.metadata.get("segment_payload")
-            segment = deepcopy(stored) if isinstance(stored, dict) else {}
+            segment = _copy_payload(stored) if isinstance(stored, dict) else {}
             segment.update(
                 segment_id=clip.segment_id,
                 text=clip.name,
@@ -287,7 +342,8 @@ class ManualEditorDocumentModel(QObject):
                 _uses_style_override=bool(clip.style_override),
             )
             result.append(segment)
-        return result
+        self._subtitle_payloads = result
+        return _copy_payload(result)
 
     @Property("QVariantList", notify=changed)
     def markers(self) -> list[dict]:

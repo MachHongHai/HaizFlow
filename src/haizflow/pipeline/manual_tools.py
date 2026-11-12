@@ -419,20 +419,24 @@ def _voice_clip_signatures(video, segments: list[dict[str, Any]]) -> list[str]:
     speaker_mode = str(getattr(video, "speaker_mode", "single") or "single")
     files = dict(getattr(video, "files", {}) or {})
     overrides = dict(files.get("manual_voice_overrides") or {})
-    reference = manual_artifacts.file_state(files.get("voice_reference")) if speaker_mode != "multiple" else None
-    reference_text = str(files.get("voice_reference_transcript") or "") if speaker_mode != "multiple" else ""
-    recognition = recognition_signature(video) if speaker_mode == "multiple" else ""
+    reference = manual_artifacts.file_state(files.get("voice_reference"))
+    reference_text = str(files.get("voice_reference_transcript") or "")
+    recognition = recognition_signature(video) if speaker_mode == "multiple" or any(
+        value.get("speaker_mode") == "multiple" for value in overrides.values() if isinstance(value, dict)) else ""
     signatures = []
     for index, segment in enumerate(segments):
         segment_id = str(segment.get("segment_id") or "")
         override = overrides.get(segment_id) if segment_id else None
         override = override if isinstance(override, dict) else {}
+        from haizflow.services.manual_voice_scope import effective_mode
+
+        effective_speaker_mode = effective_mode(video, override)
         provider = str(
             override.get("provider")
             or getattr(video, "tts_provider", "omnivoice")
             or "omnivoice"
         )
-        voice = str(override.get("voice") or voice_selection_identity(getattr(video, "tts_voice", ""), speaker_mode))
+        voice = voice_selection_identity(str(override.get("voice") or getattr(video, "tts_voice", "")), effective_speaker_mode)
         from haizflow.pipeline.edge_tts_backend import EDGE_CACHE_VERSION
         from haizflow.pipeline.tts_quality import voice_text_policy_versions
         from haizflow.core.vieneu_assets import CACHE_VERSION as VIENEU_CACHE_VERSION
@@ -443,13 +447,14 @@ def _voice_clip_signatures(video, segments: list[dict[str, Any]]) -> list[str]:
                 resolve_tts_provider(provider, language),
                 language,
                 voice,
-                speaker_mode,
-                reference,
-                reference_text,
-                recognition,
-                index if speaker_mode == "multiple" else 0,
-                *((segment.get('start'), segment.get('end')) if speaker_mode == 'multiple' and provider != 'edge' else ()),
+                effective_speaker_mode,
+                reference if effective_speaker_mode != "multiple" else None,
+                reference_text if effective_speaker_mode != "multiple" else "",
+                recognition if effective_speaker_mode == "multiple" else "",
+                index if effective_speaker_mode == "multiple" else 0,
+                *((segment.get('start'), segment.get('end')) if effective_speaker_mode == 'multiple' and provider != 'edge' else ()),
                 *_generation_token(video, "voice"),
+                *((override["generation"],) if override.get("generation") else ()),
                 _voice_cache_version(video),
                 *((EDGE_CACHE_VERSION,) if provider == "edge" else ()),
                 *(voice_text_policy_versions(str(segment.get("text") or ""), language)
@@ -475,9 +480,10 @@ def _voice_generation_groups(video, segments: list[dict[str, Any]]) -> dict[tupl
             or getattr(video, "tts_provider", "omnivoice")
             or "omnivoice"
         )
-        voice = str(override.get("voice") or voice_selection_identity(
-            getattr(video, "tts_voice", ""), str(getattr(video, "speaker_mode", "single") or "single"),
-        ))
+        from haizflow.services.manual_voice_scope import effective_mode
+
+        voice = voice_selection_identity(str(override.get("voice") or getattr(video, "tts_voice", "")),
+                                         effective_mode(video, override))
         groups.setdefault((provider, voice), []).append(index)
     return groups
 
@@ -1227,7 +1233,10 @@ def tool_states(video, *, language: str = "vi") -> list[dict[str, Any]]:
     busy = bool(current) and video.status in {"pending", "processing"}
     published_voice = published_voice_record(video, validate=False)
     voice_notice = ""
-    if published_voice and not voice_ok:
+    if published_voice and _voice_manifest_payload(published_voice).get("partial"):
+        voice_notice = ("Mới tạo giọng cho một số câu. Các câu còn lại chưa có giọng."
+                        if vi else "Voice has been generated for some sentences; the remaining sentences have no voice yet.")
+    elif published_voice and not voice_ok:
         if active_voice_record(video, validate=False) is None:
             voice_notice = (
                 "Phụ đề đã đổi sau lần tạo giọng gần nhất. Giọng cũ vẫn được lưu; "
@@ -1555,6 +1564,7 @@ def _replace_subtitles_from_translation(video_id: str, translated_segments: str)
     # OCR geometry, music and the last exported user file remain untouched.
     files.pop("voice_output", None)
     files.pop("voice_parts_dir", None)
+    files.pop("manual_voice_selection", None)
     language = str(getattr(video, "target_language", "vi") or "vi")
     changes = {"files": files, "subtitle_language": language}
     from haizflow.core.vieneu_voices import unsupported_language_notice
@@ -1874,13 +1884,38 @@ def _run_voice(video, reporter) -> None:
     subtitle = _current_subtitle_record(video)
     if not segments or not subtitle:
         raise RuntimeError("Hãy chuẩn bị phụ đề trước khi tạo giọng đọc.")
+    if ((getattr(video, "files", {}) or {}).get("manual_voice_selection")
+            and any(not item.get("segment_id") for item in segments)):
+        # Older subtitle artifacts predate stable IDs; the Manual model already
+        # exposes these deterministic IDs. Migrate metadata, never the words.
+        from haizflow.services.subtitle_identity import legacy_segment_id
+
+        segments = [{**item, "segment_id": str(item.get("segment_id") or
+                    legacy_segment_id(video.video_id, index, item))} for index, item in enumerate(segments)]
+        subtitle = publish_edited_subtitles(video.video_id, segments)
+        video = video_store.get_video(video.video_id) or video
+        editor_documents.sync_subtitle_clips(video, segments)
+        from haizflow.core.hardware import processing_device_preference
+        from haizflow.services.processing_resume import configuration_snapshot
+
+        video_store.update_video(video.video_id,
+            processing_configuration=configuration_snapshot(video, processing_device_preference()))
     from haizflow.services.subtitle_import import voice_notice
+    from haizflow.services.manual_voice_scope import selected_ids
+
+    selection = selected_ids(getattr(video, "files", {}) or {}, segments)
+    requested_segments = [item for item in segments if selection is None or item.get("segment_id") in selection]
 
     providers = {str(getattr(video, "tts_provider", "omnivoice"))}
     providers.update(str(value.get("provider") or video.tts_provider)
                      for value in dict((getattr(video, "files", {}) or {}).get("manual_voice_overrides") or {}).values() if isinstance(value, dict))
     for provider in providers:
-        notice = voice_notice(video, provider, segments)
+        relevant = [item for item in requested_segments
+                    if str(dict((getattr(video, "files", {}) or {}).get("manual_voice_overrides") or {}).get(
+                        str(item.get("segment_id") or ""), {}).get("provider") or video.tts_provider) == provider]
+        if not relevant:
+            continue
+        notice = voice_notice(video, provider, relevant)
         if notice:
             raise ValueError(notice[1])
     narrator_anchor = ensure_narrator_anchor(video.video_id)
@@ -1895,12 +1930,14 @@ def _run_voice(video, reporter) -> None:
         video.target_language = language
     clip_signatures = _voice_clip_signatures(video, segments)
     expected = manual_artifacts.signature(clip_signatures, _voice_cache_version(video, manifest=True))
+    requested_signature = expected
     cached = manual_artifacts.resolve(video.video_id, "tts_manifest", expected)
     if not cached:
         staging = manual_artifacts.create_staging_directory(video.video_id, "tts_manifest")
         parts_dir = staging / "parts"
         parts_dir.mkdir(parents=True, exist_ok=True)
         local_voice_used = False
+        clips_published = False
         try:
             missing_clip_indices = []
             published = published_voice_record(video, validate=False)
@@ -1908,9 +1945,24 @@ def _run_voice(video, reporter) -> None:
             source_signatures = _voice_clip_signatures(video, source_segments)
             published_signatures = _voice_manifest_payload(published).get("clips", [])
             source_indices = voice_source_indices(video.video_id, segments, source_segments)
+            available_clips = manual_artifacts.resolve_many(video.video_id, "tts_clip",
+                clip_signatures + (source_signatures if selection is None else []))
             for index, clip_signature in enumerate(clip_signatures, 1):
-                clip = manual_artifacts.resolve(video.video_id, "tts_clip", clip_signature)
-                if not clip:
+                requested = selection is None or segments[index - 1].get("segment_id") in selection
+                clip = available_clips.get(clip_signature)
+                if selection is not None and not requested and not clip:
+                    source_index = source_indices.get(index - 1)
+                    if (source_index is not None and source_index < len(published_signatures)
+                            and preprocess_text_for_tts(str(source_segments[source_index].get("text") or ""))
+                            == preprocess_text_for_tts(str(segments[index - 1].get("text") or ""))):
+                        old_path = str((published or {}).get("resolved_outputs", {}).get(f"clip_{source_index + 1}") or "")
+                        if old_path and _is_valid_mp3(old_path):
+                            clip = {"resolved_outputs": {"audio": old_path}}
+                            clip_signatures[index - 1] = published_signatures[source_index]
+                    if not clip:
+                        clip_signatures[index - 1] = ""
+                        continue
+                if not clip and (selection is None or not requested):
                     # Reordering subtitles must not regenerate all multi-
                     # speaker speech. Reuse only a clip whose original inputs
                     # still match the currently requested configuration.
@@ -1919,10 +1971,14 @@ def _run_voice(video, reporter) -> None:
                             and source_signatures[source_index] == published_signatures[source_index]
                             and preprocess_text_for_tts(str(source_segments[source_index].get("text") or ""))
                             == preprocess_text_for_tts(str(segments[index - 1].get("text") or ""))):
-                        clip = manual_artifacts.resolve(video.video_id, "tts_clip", source_signatures[source_index])
+                        clip = available_clips.get(source_signatures[source_index])
                 if clip:
-                    shutil.copy2(clip["resolved_outputs"]["audio"], parts_dir / f"voice_{index:04d}.mp3")
-                else:
+                    destination = parts_dir / f"voice_{index:04d}.mp3"
+                    try:
+                        os.link(clip["resolved_outputs"]["audio"], destination)
+                    except OSError:
+                        shutil.copy2(clip["resolved_outputs"]["audio"], destination)
+                elif requested:
                     missing_clip_indices.append(index)
             if missing_clip_indices:
                 missing_clip_count = len(missing_clip_indices)
@@ -1933,8 +1989,9 @@ def _run_voice(video, reporter) -> None:
                 )
                 reporter.update(5, "manual_voice", detail, 0, missing_clip_count)
                 generation_groups = _voice_generation_groups(video, segments)
+                missing_indices = set(missing_clip_indices)
                 requested_groups = [
-                    (provider, voice, [index for index in indices if index in missing_clip_indices])
+                    (provider, voice, [index for index in indices if index in missing_indices])
                     for (provider, voice), indices in generation_groups.items()
                 ]
                 requested_groups = [item for item in requested_groups if item[2]]
@@ -2015,11 +2072,15 @@ def _run_voice(video, reporter) -> None:
                         level_peer_indices=generation_groups[(provider,voice)],
                         narrator_anchor_text=narrator_anchor,
                         status_callback=report_voice_status if effective in {"omnivoice", "vieneu"} else None,
+                        speaker_mode_override="multiple" if voice == "per-speaker" else "single",
                     )
                     completed_before += len(group_indices)
             else:
                 reporter.update(95, "manual_voice", "Đang khôi phục giọng đọc từ cache")
-            _publish_completed_voice_clips(video, subtitle, parts_dir, clip_signatures)
+            _publish_completed_voice_clips(video, subtitle, parts_dir, clip_signatures,
+                                           indices=missing_clip_indices)
+            clips_published = True
+            expected = manual_artifacts.signature(clip_signatures, _voice_cache_version(video, manifest=True))
             voice_configs = [
                 {"provider": provider, "voice": voice, "segments": indices}
                 for (provider, voice), indices in _voice_generation_groups(video, segments).items()
@@ -2030,6 +2091,7 @@ def _run_voice(video, reporter) -> None:
                         "clips": clip_signatures,
                         "voice_configs": voice_configs,
                         "speaker_mode": video.speaker_mode,
+                        "partial": any(not key for key in clip_signatures),
                     },
                     ensure_ascii=False,
                     indent=2,
@@ -2037,7 +2099,8 @@ def _run_voice(video, reporter) -> None:
                 encoding="utf-8",
             )
             outputs = {"manifest": "manifest.json"}
-            outputs.update({f"clip_{index}": f"parts/voice_{index:04d}.mp3" for index in range(1, len(segments) + 1)})
+            outputs.update({f"clip_{index}": f"parts/voice_{index:04d}.mp3"
+                            for index, key in enumerate(clip_signatures, 1) if key})
             cached = manual_artifacts.publish(
                 video.video_id,
                 "tts_manifest",
@@ -2046,7 +2109,7 @@ def _run_voice(video, reporter) -> None:
                 outputs,
                 inputs=[
                     subtitle["artifact_id"],
-                    *[manual_artifacts.artifact_id("tts_clip", value) for value in clip_signatures],
+                    *[manual_artifacts.artifact_id("tts_clip", value) for value in clip_signatures if value],
                 ],
                 config_fingerprint=manual_artifacts.signature(voice_configs, video.speaker_mode),
                 activate_artifact=False,
@@ -2057,7 +2120,9 @@ def _run_voice(video, reporter) -> None:
             # transient manifest staging directory so Resume only synthesizes
             # the genuinely missing sentences.
             try:
-                _publish_completed_voice_clips(video, subtitle, parts_dir, clip_signatures)
+                if not clips_published:
+                    _publish_completed_voice_clips(video, subtitle, parts_dir, clip_signatures,
+                                                   indices=missing_clip_indices)
             finally:
                 manual_artifacts.discard_staging_directory(staging)
                 if local_voice_used:
@@ -2067,7 +2132,7 @@ def _run_voice(video, reporter) -> None:
                     if cpu_memory_constrained():
                         release_model_memory()
     current = video_store.get_video(video.video_id)
-    if current and voice_signature(current) != expected:
+    if current and voice_signature(current) != requested_signature:
         return
     manual_artifacts.activate(video.video_id, "tts_manifest", expected)
     manifest_path = cached["resolved_outputs"]["manifest"]
@@ -2081,13 +2146,20 @@ def _run_voice(video, reporter) -> None:
             )
             for index, segment in enumerate(segments, 1)
         }
-        editor_documents.mark_voice_clips_ready(current, segments, clip_paths)
+        ready_segments = [item for index, item in enumerate(segments, 1)
+                          if str(resolved_outputs.get(f"clip_{index}") or "")]
+        editor_documents.mark_voice_clips_ready(current, ready_segments, clip_paths)
+    if selection is not None:
+        files = dict(current.files or {})
+        files.pop("manual_voice_selection", None)
+        video_store.update_video(video.video_id, files=files)
 
 
-def _publish_completed_voice_clips(video, subtitle, parts_dir: Path, clip_signatures: list[str]) -> None:
-    for index, clip_signature in enumerate(clip_signatures, 1):
+def _publish_completed_voice_clips(video, subtitle, parts_dir: Path, clip_signatures: list[str], *, indices=None) -> None:
+    for index in (range(1, len(clip_signatures) + 1) if indices is None else indices):
+        clip_signature = clip_signatures[index - 1]
         part_path = parts_dir / f"voice_{index:04d}.mp3"
-        if not _is_valid_mp3(str(part_path)):
+        if not clip_signature or not _is_valid_mp3(str(part_path)):
             continue
         manual_artifacts.register_existing(
             video.video_id,
@@ -2156,7 +2228,6 @@ def _compose_manual_audio(video, output_path: Path, work_dir: Path, reporter=Non
                           document=None, range_ms=None, bounded_video=None,
                           bounded_background=None, process_id=None) -> list[str]:
     """Materialize the current optional audio layers without invoking AI."""
-    from haizflow.pipeline.sequence_compiler import materialize_source_sequence
 
     document = document or editor_documents.ensure(video)
     tracks = {track.track_id: track for track in document.tracks}
@@ -2253,9 +2324,9 @@ def _compose_manual_audio(video, output_path: Path, work_dir: Path, reporter=Non
     if range_ms is not None:
         mix_video, mix_background = bounded_video, bounded_background
     else:
-        mix_video, mix_background = materialize_source_sequence(
-            _video_input(video), background, document, work_dir, video.video_id,
-        )
+        from haizflow.pipeline.sequence_compiler import materialize_source_audio
+        mix_video = _video_input(video)
+        mix_background = materialize_source_audio(background, document, work_dir, video.video_id)
     if reporter:
         reporter.update(5, "manual_audio", "Đang cập nhật các lớp âm thanh")
     build_audio_timeline(
@@ -2286,7 +2357,8 @@ def _compose_manual_audio(video, output_path: Path, work_dir: Path, reporter=Non
         ducking_reduction_db=document.audio_ducking_reduction_db,
         ducking_attack_ms=document.audio_ducking_attack_ms,
         ducking_release_ms=document.audio_ducking_release_ms,
-        **({"range_ms": range_ms, "timeline_duration_ms": document.sequence.duration_ms,
+        timeline_duration_ms=document.sequence.duration_ms,
+        **({"range_ms": range_ms,
             "process_registry_id": process_id} if range_ms is not None else {}),
     )
     return [value for value in input_ids if value]
@@ -2340,10 +2412,7 @@ def _ocr_region(video) -> dict[str, Any] | None:
 
 def _run_export(video, reporter) -> None:
     from haizflow.pipeline.sequence_compiler import (
-        apply_overlays,
-        _active_overlays,
         map_source_intervals,
-        materialize_source_video,
         resolved_subtitle_style,
         subtitle_style_overrides,
         write_subtitles,
@@ -2355,7 +2424,6 @@ def _run_export(video, reporter) -> None:
     subtitle = _current_subtitle_record(video)
     export_preset = str(getattr(video, "export_preset", "source") or "source")
     encoding_quality = int(preset_settings(export_preset)["crf"])
-    has_overlays = bool(_active_overlays(editor_document))
     audio = manual_artifacts.resolve(video.video_id, "audio_mix", audio_signature(video))
     expected = export_signature(video)
     cached = manual_artifacts.resolve(video.video_id, "export", expected)
@@ -2392,14 +2460,7 @@ def _run_export(video, reporter) -> None:
                 reporter.update(3, "manual_export_preparing", "Đang chuẩn bị âm thanh")
                 export_inputs.extend(_compose_manual_audio(video, Path(audio_path), staging))
             reporter.update(5, "manual_export_preparing", "Đang chuẩn bị video nguồn")
-            render_input = materialize_source_video(
-                _video_input(video),
-                editor_document,
-                staging,
-                video.video_id,
-                progress_callback=lambda fraction: reporter.update(
-                    5 + round(14 * fraction), "manual_export", "Đang chuẩn bị video nguồn"),
-            )
+            render_input = _video_input(video)
             render_audio = audio_path
             source_segments = manual_artifacts.active(video, "recognition")
             intervals: list[tuple[float, float]] = []
@@ -2450,22 +2511,12 @@ def _run_export(video, reporter) -> None:
                                     if getattr(video, "watermark_position", None) else None),
                 subtitle_style_overrides=subtitle_style_overrides(editor_document),
                 encoding_quality=encoding_quality,
-                export_preset="source" if has_overlays else export_preset,
-                output_speed=1.0 if has_overlays else getattr(video, "output_speed", 1.0),
-            )
-            reporter.update(91, "manual_export", "Đang ghép các lớp hình ảnh")
-            finished = apply_overlays(
-                str(staging / "video-base.mp4"),
-                str(staging / "video-overlays.mp4"),
-                editor_document,
-                video.video_id,
-                encoding_quality=encoding_quality,
-                passthrough=True,
                 export_preset=export_preset,
                 output_speed=getattr(video, "output_speed", 1.0),
-                progress_callback=lambda fraction: reporter.update(
-                    91 + round(3 * fraction), "manual_export", "Đang ghép các lớp hình ảnh"),
-            ) if has_overlays else str(staging / "video-base.mp4")
+                editor_document=editor_document,
+            )
+            reporter.update(91, "manual_export", "Đang ghép các lớp hình ảnh")
+            finished = str(staging / "video-base.mp4")
             reporter.update(94, "manual_export", "Đang hoàn thiện video theo chất lượng đã chọn")
             # Both paths are fresh outputs owned by this staging producer;
             # rename instead of copying the entire MP4 for no-op passes.
@@ -2562,6 +2613,25 @@ def prepare_manual_rerun(video_id: str, tool_id: str, *, force: bool = False) ->
     if not video or video.project_type != "manual":
         return False
     try:
+        if tool_id == "voice" and (video.files or {}).get("manual_voice_selection"):
+            # A new dialog request already owns fresh per-cue tokens. Only an
+            # explicit Restart of the same paused snapshot should advance them
+            # again; Resume leaves completed target clips reusable.
+            original = dict(getattr(video, "processing_configuration", {}) or {}).get("inputs", {})
+            files = dict(video.files)
+            overrides = dict(files.get("manual_voice_overrides") or {})
+            if (force and original.get("voice_selection") == files["manual_voice_selection"]
+                    and original.get("voice_overrides") == overrides):
+                from uuid import uuid4
+
+                token = uuid4().hex
+                for key in files["manual_voice_selection"]:
+                    overrides[key] = {**overrides[key], "generation": token}
+                files["manual_voice_overrides"] = overrides
+                video_store.update_video(video_id, files=files)
+                video_store.log_to_video(video_id, "Restarting only the selected voice sentences.", component="MANUAL")
+                return True
+            return False
         if tool_id == "voice" and not force and incremental_voice_refresh(video):
             # An edited document can itself have a historical manifest hit.
             # Do not let that hit advance the global generation and invalidate

@@ -27,6 +27,11 @@ def test_bundled_catalogue_is_filtered_and_has_pricing_without_any_request(monke
     assert cache.reasoning_for("deepseek/deepseek-r1-0528")["mandatory"] is True
     free = [row for row in rows if row["pricing_kind"] == "free"]
     assert len(free) >= 7 and all(row.get("output_format") for row in free)
+    assert {row["value"] for row in free} == {
+        "dots-studio/dots-3-note-preview:free", "google/gemma-4-31b-it:free",
+        "liquid/lfm-2.5-2.6b:free", "liquid/lfm-3-1.7b:free",
+        "nvidia/nemotron-3.5-super-vl:free", "recursive/flint-v1.0:free", "stealth/crouton-alpha",
+    }
     assert cache.format_for("google/gemma-4-31b-it:free") == "json_object"
     assert cache.format_for("liquid/lfm-2.5-2.6b:free") == "json_schema"
     assert not any(row["value"] == "deepseek/deepseek-r1:free" for row in rows)
@@ -76,6 +81,14 @@ def test_retired_free_models_are_removed_from_existing_cache_and_partial_refresh
     assert [row["value"] for row in cache.load()] == ["vendor/active"]
     cache.store(retired, "partial")
     assert [row["value"] for row in cache.load()] == ["vendor/active"]
+
+
+def test_unstable_free_routes_are_removed_from_disk_cache_and_refresh(isolated):
+    unstable = [{"value": model, "pricing_kind": "free"} for model in catalog._UNAVAILABLE_OPENROUTER_MODELS]
+    cache._PATH.write_text(json.dumps({"version": 2, "options": [
+        {"value": "vendor/active", "pricing_kind": "paid"}, *unstable]}), "utf-8")
+    assert [row["value"] for row in cache.load()] == ["vendor/active"]
+    assert [row["value"] for row in cache.store(unstable, "partial")] == ["vendor/active"]
 
 
 def test_manual_model_can_use_shipped_format_when_missing_from_last_refresh(isolated):

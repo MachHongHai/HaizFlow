@@ -19,6 +19,31 @@ from haizflow.desktop.smart_warmup_controller import SmartWarmupController
 from haizflow.schemas.video import VideoConfig
 
 
+def test_new_config_defaults_to_vieneu_gpu_without_changing_explicit_provider():
+    config = VideoConfig()
+    assert (config.tts_provider, config.tts_voice) == ("vieneu-gpu", "vieneu:Hải Đăng")
+    for provider in ("omnivoice", "omnivoice-gpu", "vieneu", "vieneu-gpu"):
+        explicit = VideoConfig(tts_provider=provider)
+        assert explicit.tts_provider == provider
+        assert explicit.tts_voice == ("vieneu:Hải Đăng" if provider.startswith("vieneu") else "omnivoice:female")
+    saved = VideoConfig(tts_provider="omnivoice-gpu", tts_voice="omnivoice:male")
+    assert VideoConfig.model_validate(saved.model_dump()).tts_voice == "omnivoice:male"
+
+
+@pytest.mark.parametrize("language", ["en", "zh", "ja", "ko", "es"])
+def test_new_config_does_not_default_unsupported_language_to_vieneu(language):
+    config = VideoConfig(target_language=language)
+    assert (config.tts_provider, config.tts_voice) == ("omnivoice", "omnivoice:female")
+
+
+def test_empty_batch_and_legacy_video_defaults_are_separate():
+    from haizflow.schemas.video import VideoInfo
+    from haizflow.services.batch_settings import config_for
+    assert config_for({}).tts_provider == "vieneu-gpu"
+    assert config_for({"targetLanguage": "ja"}).tts_provider == "omnivoice"
+    assert VideoInfo.model_fields["tts_provider"].default == "omnivoice"
+
+
 @pytest.mark.parametrize("device", ["cpu", "gpu"])
 def test_new_project_defaults_match_app_device(device):
     host = SimpleNamespace(_settings_processing_device=device)
@@ -448,6 +473,7 @@ def test_api_guide_navigates_to_single_owner_before_opening():
 def test_vieneu_language_guard_blocks_manual_before_saving_or_running(provider, language):
     video = SimpleNamespace(video_id="video", project_type="manual", target_language="vi", subtitle_language=language)
     host = SimpleNamespace(_project_type="manual", _selected_video=lambda: video,
+        _manual_subtitles=SimpleNamespace(segments=[], _states={}),
         _processing_queue=SimpleNamespace(contains=lambda _: False),
         _normalized_tts_provider=lambda _language, value: value, appAlertRequested=Mock(),
         runManualTool=Mock(), _settings_language="vi")

@@ -42,10 +42,13 @@ Module {
         Property { name: "tracks"; type: "QVariantList"; isReadonly: true }
         Property { name: "ocrLayers"; type: "QVariantList"; isReadonly: true; notify: "ocrLayersChanged" }
         Property { name: "clips"; type: "QVariantList"; isReadonly: true }
+        Property { name: "waveformRevision"; type: "int"; isReadonly: true }
+        Method { name: "waveformPeaks"; type: "QVariantList"; Parameter { name: "asset_id"; type: "QString" } }
         Property { name: "assets"; type: "QVariantList"; isReadonly: true }
         Property { name: "styles"; type: "QVariantList"; isReadonly: true }
         Property { name: "defaultSubtitleStyle"; type: "QVariantMap"; isReadonly: true }
         Property { name: "subtitleSegments"; type: "QVariantList"; isReadonly: true }
+        Property { name: "sourceEditDecisions"; type: "QVariantList"; isReadonly: true }
         Property { name: "markers"; type: "QVariantList"; isReadonly: true }
         Property { name: "durationMs"; type: "int"; isReadonly: true }
         Property { name: "selectedClipIds"; type: "QVariantList"; isReadonly: true }
@@ -68,13 +71,17 @@ Module {
         name: "ManualSubtitleModel"
         prototype: "QObject"
         accessSemantics: "reference"
+        Property { name: "videoId"; type: "string"; isReadonly: true }
         Property { name: "segments"; type: "QVariantList"; isReadonly: true }
+        Property { name: "displaySegments"; type: "QVariantList"; isReadonly: true }
         Property { name: "revision"; type: "int"; isReadonly: true }
     }
     Component {
         name: "SubtitleOverlayRenderer"
         prototype: "QObject"
         accessSemantics: "reference"
+        Property { name: "videoId"; type: "string"; isReadonly: true }
+        Method { name: "configureForVideo"; Parameter { name: "videoId"; type: "QString" } Parameter { name: "payload"; type: "QString" } Parameter { name: "layout"; type: "QString" } Parameter { name: "fixed"; type: "bool" } Parameter { name: "preserveFrame"; type: "bool" } }
         Property { name: "frame"; type: "QVariantMap"; isReadonly: true }
         Method { name: "configure"; Parameter { name: "payload"; type: "string" } Parameter { name: "layout"; type: "string" } Parameter { name: "fixed"; type: "bool" } }
         Method { name: "configure"; Parameter { name: "payload"; type: "string" } Parameter { name: "layout"; type: "string" } Parameter { name: "fixed"; type: "bool" } Parameter { name: "preserveFrame"; type: "bool" } }
@@ -98,6 +105,14 @@ Module {
     }
     Component {
         name: "HaizFlowController"
+        Property { name: "videoExportScope"; type: "QVariantList"; isReadonly: true }
+        Property { name: "videoExportDialogModel"; type: "QObject"; isPointer: true; isReadonly: true }
+        Method { name: "setVideoExportDialogScope"; Parameter { name: "videoIds"; type: "QVariantList" } }
+        Method { name: "cancelVideoExportsFor"; Parameter { name: "videoIds"; type: "QVariantList" } }
+        Method { name: "retryVideoExportsFor"; type: "bool"; Parameter { name: "videoIds"; type: "QVariantList" } }
+        Method { name: "exportFolderPath"; type: "QString"; Parameter { name: "url"; type: "QUrl" } }
+        Method { name: "removeBatchVideo"; type: "bool"; Parameter { name: "projectKey"; type: "QString" } Parameter { name: "videoId"; type: "QString" } }
+        Method { name: "batchVideoRemovalPending"; type: "bool"; Parameter { name: "videoId"; type: "QString" } }
         Property { name: "mcpBridge"; type: "QObject"; isPointer: true; isReadonly: true }
         Method { name: "showAlertDetails"
             Parameter { name: "title"; type: "QString" }
@@ -1873,11 +1888,17 @@ Module {
         Signal { name: "videoDeleted" }
         Signal { name: "batchDeleted" }
         Signal { name: "batchChanged" }
+        Signal { name: "batchResultsChanged" }
         Signal { name: "settingsChanged" }
         Signal { name: "hardwareChanged" }
         Signal { name: "languageOptionsChanged" }
         Signal { name: "projectSetupChanged" }
         Signal { name: "projectPrepared" }
+        Signal { name: "projectCatalogChanged" }
+        Property { name: "selectedProjectFailureRevision"; type: "string"; isReadonly: true; notify: "selectedVideoChanged" }
+        Method { name: "presentSelectedProjectFailure"; Parameter { name: "title"; type: "QString" }
+            Parameter { name: "detail"; type: "QString" } Parameter { name: "log_text"; type: "QString" } }
+        Property { name: "projectCatalogState"; type: "string"; isReadonly: true; notify: "projectCatalogChanged" }
         Signal { name: "urlImportFinished" }
         Signal { name: "channelImportChanged" }
         Signal { name: "mediaImportChanged" }
@@ -1922,6 +1943,13 @@ Module {
             type: "bool"
             Parameter { name: "a1"; type: "QString" }
             Parameter { name: "a2"; type: "QString" }
+        }
+        Method {
+            name: "validateTtsProviderForLanguage"
+            type: "bool"
+            Parameter { name: "language_code"; type: "QString" }
+            Parameter { name: "provider"; type: "QString" }
+            Parameter { name: "segment_ids"; type: "QVariantList" }
         }
         Method { name: "enableInAppAlerts" }
         Method { name: "showErrorDetails"; Parameter { name: "title"; type: "QString" } Parameter { name: "detail"; type: "QString" } Parameter { name: "log_text"; type: "QString" } }
@@ -2194,6 +2222,16 @@ Module {
             Parameter { name: "speaker_mode"; type: "QString" }
         }
         Method {
+            name: "configureAndRunManualVoice"
+            type: "bool"
+            Parameter { name: "provider"; type: "QString" }
+            Parameter { name: "voice"; type: "QString" }
+            Parameter { name: "scope"; type: "QString" }
+            Parameter { name: "segment_id"; type: "QString" }
+            Parameter { name: "speaker_mode"; type: "QString" }
+            Parameter { name: "segment_ids"; type: "QVariantList" }
+        }
+        Method {
             name: "cancelManualTool"
             type: "bool"
             Parameter { name: "tool_id"; type: "QString" }
@@ -2451,6 +2489,8 @@ Module {
         Property { name: "projectKey"; type: "QString"; read: "projectKey"; notify: "projectSetupChanged"; isReadonly: true }
         Property { name: "videoExportBusy"; type: "bool"; read: "videoExportBusy"; notify: "exportStateChanged"; isReadonly: true }
         Property { name: "videoExportJobs"; type: "QVariantList"; read: "videoExportJobs"; notify: "exportStateChanged"; isReadonly: true }
+        Property { name: "videoExportJobModel"; type: "QObject"; read: "videoExportJobModel"; isReadonly: true }
+        Property { name: "videoExportSummary"; type: "QVariantMap"; read: "videoExportSummary"; notify: "exportStateChanged"; isReadonly: true }
         Signal { name: "exportStateChanged" }
         Signal { name: "videoExportRequested" }
         Signal { name: "videoExportProgressRequested" }

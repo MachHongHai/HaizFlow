@@ -21,6 +21,7 @@ from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtMultimedia import QAudioFormat, QAudioOutput, QAudioSink, QMediaDevices, QMediaPlayer
 
 from haizflow.config import TMP_DIR
+from haizflow.core.interval_index import IntervalIndex
 from haizflow.services.subtitle_identity import voice_source_indices
 from haizflow.utils.ffmpeg import _binary
 
@@ -42,10 +43,35 @@ def voice_segment_is_compatible(current_segment, source_segment, multiple_speake
     return not (current_id and source_id and current_id != source_id)
 
 
+class IndexedAudioTracks(list):
+    def __init__(self, tracks):
+        super().__init__(dict(track) for track in tracks)
+        intervals = []
+        for track in self:
+            length = len(track["samples"])
+            duration = int(track.get("duration_frames") or 0)
+            end = duration or (float("inf") if track.get("loop") else length)
+            if not track.get("loop"):
+                end = min(end, length)
+            if length:
+                intervals.append((track["start"], track["start"] + end, track))
+            if track.get("duck_ranges"):
+                attack = max(1, int(track.get("duck_attack_frames") or 1))
+                release = max(1, int(track.get("duck_release_frames") or 1))
+                track["_duck_index"] = IntervalIndex(
+                    (start - attack, finish + release, (start, finish))
+                    for start, finish in track["duck_ranges"])
+        self._index = IntervalIndex(intervals)
+
+    def intersect(self, start, end):
+        return self._index.intersect(start, end)
+
+
 def mix_frames(tracks, cursor, count, volumes, muted_ids=frozenset()):
     """Mix a bounded interleaved stereo buffer without changing track clocks."""
     result = np.zeros((count, 2), dtype=np.float32)
-    for track in tracks:
+    active = tracks.intersect(cursor, cursor + count) if isinstance(tracks, IndexedAudioTracks) else tracks
+    for track in active:
         if track["id"] in muted_ids:
             continue
         samples = track["samples"]
@@ -82,7 +108,9 @@ def mix_frames(tracks, cursor, count, volumes, muted_ids=frozenset()):
             attack = max(1, int(track.get("duck_attack_frames") or 1))
             release = max(1, int(track.get("duck_release_frames") or 1))
             duck_envelope = np.ones((end - begin,), dtype=np.float32)
-            for voice_start, voice_end in track["duck_ranges"]:
+            ranges = (track["_duck_index"].intersect(cursor + begin, cursor + end)
+                      if "_duck_index" in track else track["duck_ranges"])
+            for voice_start, voice_end in ranges:
                 if cursor + end <= voice_start - attack or cursor + begin >= voice_end + release:
                     continue
                 attack_gain = 1.0 - (1.0 - reduction) * np.clip(
@@ -159,6 +187,7 @@ class ManualPreviewAudioController(QObject):
         self._embedded_audio = False
         self._device = None
         self._tracks = []
+        self._mix_tracks = None
         self._muted_ids = set()
         self._deferred_ids = set()
         self._generation = 0
@@ -267,73 +296,80 @@ class ManualPreviewAudioController(QObject):
         weakref.finalize(samples, _dispose_pcm, samples._mmap, path)
         return samples
 
-    def _decode_to_pcm(self, command, generation, cache_path=None):
-        path = self._pcm_path()
+    def _run_decode_process(self, command, generation, output):
         process = None
         try:
-            with path.open("wb") as output:
-                if self._closed or generation != self._generation:
-                    raise CancelledError()
-                process = subprocess.Popen(
-                    command, stdout=output, stderr=subprocess.PIPE,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                )
-                with self._decode_lock:
-                    if self._closed or generation != self._generation:
-                        process.kill()
-                        raise CancelledError()
-                    self._decode_process = process
-                elapsed = 0
-                while True:
-                    if self._closed or generation != self._generation:
-                        process.kill()
-                        raise CancelledError()
-                    try:
-                        _, error = process.communicate(timeout=.2)
-                        break
-                    except subprocess.TimeoutExpired:
-                        elapsed += .2
-                        if elapsed >= 300:
-                            process.kill()
-                            raise subprocess.TimeoutExpired(command, 300)
-                if process.returncode:
-                    raise subprocess.CalledProcessError(process.returncode, command, stderr=error)
-            if path.stat().st_size == 0:
-                path.unlink()
-                return np.empty((0, 2), dtype="<i2")
-            if path.stat().st_size % 4:
-                raise RuntimeError("Âm thanh xem trước chưa được giải mã đầy đủ.")
             if self._closed or generation != self._generation:
                 raise CancelledError()
-            if cache_path is not None:
-                # Atomic publication: interrupted decodes are never reusable.
-                # Copy across runtime/project drives when required.
-                import shutil
-                staged = cache_path.with_suffix(".partial")
+            process = subprocess.Popen(
+                command, stdout=output, stderr=subprocess.PIPE,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            with self._decode_lock:
+                if self._closed or generation != self._generation:
+                    process.kill()
+                    raise CancelledError()
+                self._decode_process = process
+            elapsed = 0
+            while True:
+                if self._closed or generation != self._generation:
+                    process.kill()
+                    raise CancelledError()
                 try:
-                    try:
-                        os.replace(path, staged)
-                    except OSError:
-                        shutil.copyfile(path, staged)
-                    if self._closed or generation != self._generation:
-                        raise CancelledError()
-                    os.replace(staged, cache_path)
-                finally:
-                    staged.unlink(missing_ok=True)
-                path.unlink(missing_ok=True)
-                return self._map_pcm(cache_path, persistent=True)
-            return self._map_pcm(path)
+                    _, error = process.communicate(timeout=.2)
+                    break
+                except subprocess.TimeoutExpired:
+                    elapsed += .2
+                    if elapsed >= 300:
+                        process.kill()
+                        raise subprocess.TimeoutExpired(command, 300)
+            if process.returncode:
+                raise subprocess.CalledProcessError(process.returncode, command, stderr=error)
         except BaseException:
             if process is not None:
                 if process.poll() is None:
                     process.kill()
                 process.communicate()
-            path.unlink(missing_ok=True)
             raise
         finally:
             with self._decode_lock:
                 if self._decode_process is process:
                     self._decode_process = None
+
+    def _publish_pcm(self, path, generation, cache_path=None):
+        if self._closed or generation != self._generation:
+            raise CancelledError()
+        if cache_path is not None:
+            import shutil
+            staged = cache_path.with_suffix(".partial")
+            try:
+                try:
+                    os.replace(path, staged)
+                except OSError:
+                    shutil.copyfile(path, staged)
+                if self._closed or generation != self._generation:
+                    raise CancelledError()
+                os.replace(staged, cache_path)
+            finally:
+                staged.unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
+            return self._map_pcm(cache_path, persistent=True)
+        return self._map_pcm(path)
+
+    def _decode_to_pcm(self, command, generation, cache_path=None):
+        path = self._pcm_path()
+        try:
+            with path.open("wb") as output:
+                self._run_decode_process(command, generation, output)
+            if path.stat().st_size == 0:
+                path.unlink()
+                return np.empty((0, 2), dtype="<i2")
+            if path.stat().st_size % 4:
+                raise RuntimeError("Âm thanh xem trước chưa được giải mã đầy đủ.")
+            return self._publish_pcm(path, generation, cache_path)
+        except BaseException:
+            path.unlink(missing_ok=True)
+            raise
 
     @Property(float, notify=positionChanged)
     def positionSeconds(self):
@@ -365,24 +401,34 @@ class ManualPreviewAudioController(QObject):
         self._position_seconds = value
         self.positionChanged.emit()
 
-    def _decode(self, path, duration=None, fit=False, generation=None):
-        generation = self._generation if generation is None else generation
-        if self._closed or generation != self._generation:
-            raise CancelledError()
+    def _pcm_key(self, path, duration, fit, content_signature):
         path = Path(path)
         stat = path.stat()
-        key = (str(path), stat.st_size, stat.st_mtime_ns, duration, fit)
+        # A new mixed manifest gives unchanged sentences a different path.
+        # Their immutable clip identity survives that move; size/mtime still
+        # invalidate externally changed files. Source/music remain path-bound.
+        identity = ("tts-clip", str(content_signature)) if content_signature else str(path)
+        return identity, stat.st_size, stat.st_mtime_ns, duration, fit
+
+    def _pcm_cache_path(self, key):
+        if self._pcm_cache_directory is None:
+            return None
+        digest = hashlib.sha256(json.dumps((key, "pcm-stereo-48k-fit-v1"), default=str).encode()).hexdigest()
+        return self._pcm_cache_directory / f"{digest}.pcm"
+
+    def _cached_pcm(self, key, generation, legacy_key=None):
         with self._cache_lock:
             if self._closed or generation != self._generation:
                 raise CancelledError()
             if key in self._cache:
                 self._cache.move_to_end(key)
                 return self._cache[key]
-        cache_path = None
-        if self._pcm_cache_directory is not None:
-            digest = hashlib.sha256(json.dumps((key, "pcm-stereo-48k-fit-v1"), default=str).encode()).hexdigest()
-            cache_path = self._pcm_cache_directory / f"{digest}.pcm"
-            if cache_path.is_file() and cache_path.stat().st_size > 0 and cache_path.stat().st_size % 4 == 0:
+            if legacy_key is not None and legacy_key in self._cache:
+                self._cache[key] = self._cache.pop(legacy_key)
+                return self._cache[key]
+        for candidate in (key, legacy_key) if legacy_key is not None else (key,):
+            cache_path = self._pcm_cache_path(candidate)
+            if cache_path is not None and cache_path.is_file() and cache_path.stat().st_size > 0 and cache_path.stat().st_size % 4 == 0:
                 samples = self._map_pcm(cache_path, persistent=True)
                 try:
                     cache_path.touch()
@@ -390,6 +436,19 @@ class ManualPreviewAudioController(QObject):
                     pass
                 self._remember_pcm(key, samples, generation=generation)
                 return samples
+        return None
+
+    def _decode(self, path, duration=None, fit=False, generation=None, *, content_signature=""):
+        generation = self._generation if generation is None else generation
+        if self._closed or generation != self._generation:
+            raise CancelledError()
+        path = Path(path)
+        key = self._pcm_key(path, duration, fit, content_signature)
+        legacy_key = (str(path), *key[1:]) if content_signature else None
+        cached = self._cached_pcm(key, generation, legacy_key)
+        if cached is not None:
+            return cached
+        cache_path = self._pcm_cache_path(key)
         command = [_binary("ffmpeg"), "-v", "error", "-threads", "2", "-i", str(path), "-vn"]
         if duration is not None:
             from haizflow.pipeline.audio_timeline import _atempo_filters, trim_silence
@@ -414,6 +473,94 @@ class ManualPreviewAudioController(QObject):
             samples = self._decode_to_pcm(command, generation, cache_path)
         self._remember_pcm(key, samples, generation=generation)
         return samples
+
+    def _prefetch_voice_pcm(self, requests, generation):
+        """Decode up to eight fitted sentences per FFmpeg process, off Qt."""
+        pending = []
+        seen = set()
+        ready = {}
+        keyed_requests = []
+        for path, duration, fit, signature in requests:
+            key = self._pcm_key(path, duration, fit, signature)
+            keyed_requests.append(((path, duration, fit, signature), key))
+            if key in seen:
+                continue
+            seen.add(key)
+            legacy = (str(Path(path)), *key[1:]) if signature else None
+            cached = self._cached_pcm(key, generation, legacy)
+            if cached is None:
+                pending.append((path, duration, fit, signature, key))
+            else:
+                ready[key] = cached
+        for start in range(0, len(pending), 8):
+            batch = pending[start:start + 8]
+            if len(batch) < 2:
+                continue  # The ordinary loop handles a single miss.
+            try:
+                decoded = self._decode_voice_batch(batch, generation)
+                if isinstance(decoded, dict):
+                    ready.update(decoded)
+            except CancelledError:
+                raise
+            except (OSError, RuntimeError, ValueError, subprocess.SubprocessError):
+                # Preserve the established per-file decoder and error path
+                # for unusual media/FFmpeg builds; never accept partial PCM.
+                _LOG.debug("Voice PCM batch unavailable; retaining per-clip decoding", exc_info=True)
+        if self._closed or generation != self._generation:
+            raise CancelledError()
+        return {request: ready[key] for request, key in keyed_requests if key in ready}
+
+    def _decode_voice_batch(self, batch, generation):
+        from haizflow.pipeline.audio_timeline import _atempo_filters, trim_silence
+        from haizflow.pipeline.speech_timing import fitted_speech_duration_ms
+        from haizflow.utils.audio import AudioSegment
+
+        with tempfile.TemporaryDirectory(prefix="voice-batch-", dir=self._pcm_directory.name) as work:
+            command = [_binary("ffmpeg"), "-v", "error", "-y",
+                       "-filter_threads", "1", "-filter_complex_threads", "1"]
+            outputs = []
+            for index, (path, duration, _fit, _signature, key) in enumerate(batch):
+                if self._closed or generation != self._generation:
+                    raise CancelledError()
+                audio = trim_silence(AudioSegment.from_file(path))
+                target = max(1, fitted_speech_duration_ms(len(audio), duration))
+                source = Path(work) / f"{index}.wav"
+                audio.export(source, format="wav").close()
+                command += ["-threads", "2", "-i", str(source)]
+                outputs.append((Path(work) / f"{index}.pcm", key, target,
+                                _atempo_filters(len(audio) / target) if len(audio) > duration else ""))
+            for index, (output, _key, target, filters) in enumerate(outputs):
+                command += ["-map", f"{index}:a:0"]
+                if filters:
+                    command += ["-af", filters]
+                command += ["-t", str(target / 1000), "-ac", "2", "-ar", str(RATE),
+                            "-f", "s16le", str(output)]
+            self._run_decode_process(command, generation, subprocess.DEVNULL)
+            if any(not output.is_file() or output.stat().st_size == 0 or output.stat().st_size % 4
+                   for output, *_ in outputs):
+                raise RuntimeError("Incomplete preview PCM batch")
+            decoded = {}
+            for output, key, *_ in outputs:
+                destination = self._pcm_path()
+                samples = None
+                try:
+                    os.replace(output, destination)
+                    samples = self._publish_pcm(destination, generation, self._pcm_cache_path(key))
+                    self._remember_pcm(key, samples, generation=generation)
+                    decoded[key] = samples
+                except BaseException:
+                    # Release a temporary Windows mapping before removing its
+                    # file; cleanup must not replace CancelledError with a
+                    # sharing violation when the user switches projects.
+                    if isinstance(samples, np.memmap):
+                        samples._mmap.close()
+                    samples = None
+                    try:
+                        destination.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                    raise
+            return decoded
 
     def _remember_pcm(self, key, samples, *, generation=None):
         with self._cache_lock:
@@ -717,6 +864,7 @@ class ManualPreviewAudioController(QObject):
                 voice_starts = sorted({clip.start_ms for clip in voice_by_segment.values() if clip.enabled})
                 video_end = (document.sequence.duration_ms if document
                              else int(max((s["end"] for s in segments), default=0) * 1000))
+                voice_plans = []
                 for index, segment in enumerate(segments):
                     if generation != self._generation:
                         return generation, [], ""
@@ -745,16 +893,26 @@ class ManualPreviewAudioController(QObject):
                     if duration <= 0:
                         continue
                     baseline = max(1, int(video.tts_volume or 100))
-                    tracks.append({"id": str(segment.get("segment_id", index)), "kind": "voice",
+                    track = {"id": str(segment.get("segment_id", index)), "kind": "voice",
                         "text": str(segment.get("text", "")), "signature": signature,
                         "start": start * RATE // 1000,
                         "gain": (voice_clip.volume_percent / baseline) if voice_clip else 1.0,
                         "duration_frames": duration * RATE // 1000,
                         "fade_in_frames": int((voice_clip.fade_in_ms if voice_clip else 0) * RATE / 1000),
-                        "fade_out_frames": int((voice_clip.fade_out_ms if voice_clip else 0) * RATE / 1000),
-                        "samples": self._decode(clip_path, duration,
-                                                bool(segment.get("fit_voice_to_timing")), generation=generation)})
-                    self._progress_ready.emit((generation, .15 + .8 * (index + 1) / max(1, len(segments))))
+                        "fade_out_frames": int((voice_clip.fade_out_ms if voice_clip else 0) * RATE / 1000)}
+                    voice_plans.append((index, track, (clip_path, duration,
+                                                      bool(segment.get("fit_voice_to_timing")), signature)))
+                for batch_start in range(0, len(voice_plans), 8):
+                    batch = voice_plans[batch_start:batch_start + 8]
+                    prepared = self._prefetch_voice_pcm([request for _index, _track, request in batch], generation)
+                    for index, track, (clip_path, duration, fit, signature) in batch:
+                        if self._closed or generation != self._generation:
+                            raise CancelledError()
+                        samples = prepared.get((clip_path, duration, fit, signature))
+                        track["samples"] = samples if samples is not None else self._decode(
+                            clip_path, duration, fit, generation=generation, content_signature=signature)
+                        tracks.append(track)
+                        self._progress_ready.emit((generation, .15 + .8 * (index + 1) / max(1, len(segments))))
                 if document and document.audio_ducking_enabled:
                     voice_ranges = [
                         (track["start"], track["start"] + int(track.get("duration_frames") or len(track["samples"])))
@@ -768,7 +926,7 @@ class ManualPreviewAudioController(QObject):
                         track["duck_attack_frames"] = document.audio_ducking_attack_ms * RATE // 1000
                         track["duck_release_frames"] = document.audio_ducking_release_ms * RATE // 1000
                 self._prune_disk_pcm(generation)
-                return generation, tracks, ""
+                return generation, IndexedAudioTracks(tracks), ""
             except Exception as exc:
                 return generation, [], str(exc)
         self._future = self._executor.submit(prepare)
@@ -811,6 +969,7 @@ class ManualPreviewAudioController(QObject):
                 self._future = None
             self.synchronize(self._position_seconds, False, self._muted)
             self._tracks = []
+            self._mix_tracks = None
             self._key = ""
             if self._native_player is None:
                 self._native_output = QAudioOutput(QMediaDevices.defaultAudioOutput(), self)
@@ -890,6 +1049,7 @@ class ManualPreviewAudioController(QObject):
                 and previous.get(t["id"]) != t.get("signature")
                 and t["start"] < self._cursor < t["start"] + len(t["samples"]))
         self._tracks = tracks
+        self._mix_tracks = tracks if isinstance(tracks, IndexedAudioTracks) else IndexedAudioTracks(tracks)
         self._muted_ids.clear()
         self.voiceTimingsChanged.emit()
         self._finish_preparing()
@@ -1074,13 +1234,14 @@ class ManualPreviewAudioController(QObject):
         if count <= 0:
             return
         if self._playback_rate == 1.0:
-            data = mix_frames(self._tracks, round(self._cursor), count, self._volumes,
+            data = mix_frames(self._mix_tracks if self._mix_tracks is not None else self._tracks,
+                              round(self._cursor), count, self._volumes,
                               self._muted_ids | self._deferred_ids)
         else:
             if self._tempo_stream is None:
                 from haizflow.desktop.preview_tempo import PreviewTempoStream
 
-                tracks = tuple(dict(track) for track in self._tracks)
+                tracks = self._mix_tracks if self._mix_tracks is not None else IndexedAudioTracks(self._tracks)
                 volumes = dict(self._volumes)
                 muted_ids = frozenset(self._muted_ids | self._deferred_ids)
                 try:
@@ -1132,6 +1293,7 @@ class ManualPreviewAudioController(QObject):
         self._device = None
         self._publish_position(0.0)
         self._tracks = []
+        self._mix_tracks = None
         with self._cache_lock:
             # Keep persistent .pcm files, not open Windows mapping handles.
             # Reopening maps the completed disk cache without decoding again.

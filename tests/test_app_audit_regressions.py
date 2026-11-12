@@ -55,10 +55,10 @@ def test_selected_source_key_uses_cached_selection_without_disk_lookup(monkeypat
 
 def test_manual_loading_placeholder_references_its_own_loader():
     source_text = (Path(__file__).parents[1] / "src/haizflow/desktop/qml/RouteHost.qml").read_text(encoding="utf-8")
-    manual_loader = source_text.split("id: manualWorkspaceLoader", 1)[1].split("\n    ProjectsPage {", 1)[0]
+    manual_loader = source_text.split("id: manualWorkspaceLoader", 1)[1].split("\n    Loader {", 1)[0]
     assert 'active: root.currentRoute === "manual-workspace"' in manual_loader
     assert "visible: manualWorkspaceLoader.active" in manual_loader
     assert "manualWorkspaceLoader.status !== Loader.Ready" in manual_loader
-    single_loader = source_text.split("id: singleWorkspaceLoader", 1)[1].split("\n    ProjectsPage {", 1)[0]
+    single_loader = source_text.split("id: singleWorkspaceLoader", 1)[1].split("\n    Loader {", 1)[0]
     assert 'active: root.currentRoute === "single-workspace"' in single_loader
     assert "manualWorkspaceLoader" not in single_loader

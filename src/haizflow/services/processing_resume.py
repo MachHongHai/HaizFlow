@@ -24,6 +24,9 @@ _MANUAL_FIELDS = {
 def configuration_snapshot(video, device: str, config=None) -> dict:
     tool = str(getattr(video, "manual_target_tool", "") or "")
     defaults = VideoConfig().model_dump(mode="json")
+    # Missing fields in legacy paused records predate the new-project default.
+    # Never reinterpret an existing checkpoint as a new VieNeu configuration.
+    defaults.update(tts_provider="omnivoice", tts_voice="omnivoice:female")
     fields = set(defaults) - _IDENTITY
     if getattr(video, "project_type", "single") == "manual":
         fields = _MANUAL_FIELDS.get(tool, fields)
@@ -65,6 +68,8 @@ def configuration_snapshot(video, device: str, config=None) -> dict:
     if tool in {"voice", "audio", "export"}:
         inputs["subtitle_document"] = str((getattr(video, "active_artifacts", {}) or {}).get("subtitle_document") or "")
         inputs["voice_overrides"] = files.get("manual_voice_overrides", {})
+        if tool == "voice" and "manual_voice_selection" in files:
+            inputs["voice_selection"] = files["manual_voice_selection"]
         inputs["voice_reference_transcript"] = files.get("voice_reference_transcript", "")
     return {"schema": 1, "device": str(device or "cpu"), "tool": tool,
             "settings": settings, "inputs": inputs}

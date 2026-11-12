@@ -79,6 +79,13 @@ class ManualEditorSessionTests(unittest.TestCase):
             manualSubtitleDocumentChanged=SimpleNamespace(emit=lambda: events.append("subtitle")),
             previewMediaChanged=SimpleNamespace(emit=lambda: events.append("preview")),
         )
+        # The real document's changed signal refreshes composition. Model that
+        # connection in this lightweight host; a duplicate explicit refresh
+        # would now be caught by the unchanged event-order assertion below.
+        def publish_document(_document):
+            events.append("document")
+            host._manual_preview_composition.refresh()
+        host._manual_editor_document.set_document = publish_document
         with (
             patch("haizflow.desktop.qml_controller.video_store.get_video", return_value=object()),
             patch("haizflow.desktop.qml_controller.editor_documents.sync_subtitle_clips",
@@ -89,6 +96,26 @@ class ManualEditorSessionTests(unittest.TestCase):
         events.clear()
         HaizFlowController._manual_subtitles_published(host, "other-video", 2, True)
         self.assertEqual(events, [])
+
+    def test_real_document_change_refreshes_composition_once_without_explicit_call(self):
+        from haizflow.desktop.manual_editor_document_model import ManualEditorDocumentModel
+        from haizflow.desktop.manual_preview_composition_controller import ManualPreviewCompositionController
+
+        calls = []
+        class Composition(ManualPreviewCompositionController):
+            def refresh(self):
+                calls.append("refresh")
+                super().refresh()
+
+        document = ManualEditorDocumentModel()
+        composition = Composition(document)
+        try:
+            calls.clear()
+            document.set_document(None)
+            self.assertEqual(calls, ["refresh"])
+        finally:
+            composition.close()
+            document.close()
 
     def test_edit_history_is_per_video_and_separate_from_navigation(self):
         history = ManualEditHistory()
@@ -670,6 +697,8 @@ class ManualEditorSessionTests(unittest.TestCase):
         host._manual_cache_events.put(
             {"video_id": "manual-a", "changed": True, "restored": ["voice", "music"], "error": ""}
         )
+        host._manual_editor_document.set_document.side_effect = (
+            lambda _document: host._manual_preview_composition.refresh())
 
         with (
             patch("haizflow.desktop.qml_controller.video_store.get_video", return_value=selected),

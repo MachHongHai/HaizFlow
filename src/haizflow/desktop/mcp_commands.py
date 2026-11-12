@@ -1227,12 +1227,19 @@ class McpCommands:
         self, video_id: str,
         provider: Literal["edge", "omnivoice", "omnivoice-gpu", "vieneu", "vieneu-gpu"],
         voice: str, speaker_mode: Literal["single", "multiple"] = "single", segment_id: str = "",
+        segment_ids: list[str] | None = None,
     ) -> dict:
         self._selected(video_id, manual=True)
         if provider == "edge":
             self.bridge.require("online")
         if not voice.strip() or len(voice) > 200:
             raise ValueError("Choose a voice ID returned by options or voice_configuration.")
+        if segment_ids is not None:
+            if segment_id or not segment_ids or len(segment_ids) > 10000 or len(set(segment_ids)) != len(segment_ids):
+                raise ValueError("Supply distinct segment_ids, or one segment_id, not both.")
+            return self._accepted(self.host.configureAndRunManualVoice(
+                provider, voice, "selection", "", speaker_mode, segment_ids,
+            ))
         return self._accepted(self.host.configureAndRunManualVoice(
             provider, voice, "segment" if segment_id else "all", segment_id, speaker_mode,
         ))

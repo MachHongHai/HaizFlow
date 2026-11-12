@@ -13,8 +13,10 @@ Control {
     required property string thumbnailSource
     required property string videoSize
     property bool customSettings: false
+    property bool removalEnabled: false
 
     signal activated
+    signal removalRequested
 
     readonly property string statusLabel: status === "pending" ? qsTr("Đang chờ") : status === "processing" ? qsTr("Đang xử lý") : status === "done" ? qsTr("Hoàn tất") : status === "failed" ? qsTr("Lỗi") : status === "cancelled" ? qsTr("Đã hủy") : status === "paused" ? qsTr("Đã tạm dừng") : status === "awaiting_review" ? qsTr("Cần duyệt") : I18n.taskStateLabel(status)
     readonly property color statusColor: status === "done" ? Theme.success : status === "failed" || status === "cancelled" ? Theme.danger : status === "processing" ? Theme.warning : Theme.textMuted
@@ -194,12 +196,20 @@ Control {
                 }
 
                 AppIcon {
+                    visible: !root.removalEnabled
                     Layout.preferredWidth: Theme.icon
                     Layout.preferredHeight: Theme.icon
                     glyph: "\uE76C"
                     iconColor: hoverHandler.hovered ? Theme.text : Theme.textSubtle
                     iconSize: Theme.iconSmall
                     Accessible.ignored: true
+                }
+                IconButton {
+                    visible: root.removalEnabled
+                    glyph: IconCatalog.glyph("delete")
+                    toolTipText: qsTr("Xóa video")
+                    controlSize: 24
+                    onClicked: root.removalRequested()
                 }
             }
         }

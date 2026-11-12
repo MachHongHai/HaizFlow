@@ -258,6 +258,7 @@ class SubtitleOverlayRenderer(QObject):
         self._key = ""
         self._time = 0.0
         self._generation = 0
+        self._video_id = ""
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="subtitle-libass")
         self._cache = {}
         self._pending = set()
@@ -311,6 +312,23 @@ class SubtitleOverlayRenderer(QObject):
             except Exception as exc:
                 return ("error", generation, str(exc))
         self._submit(build)
+
+    @Property(str, notify=changed)
+    def videoId(self):
+        return self._video_id
+
+    @Slot(str, str, str, bool, bool)
+    def configureForVideo(self, video_id, payload, layout_json, fixed, preserve_frame=False):
+        # A timer from a disappearing workspace may fire after navigation.
+        # Content-addressed raster reuse is safe, but publishing for that old
+        # workspace into the shared visible surface is not.
+        if str(getattr(self.parent(), "_selected_video_id", video_id) or "") != video_id:
+            return
+        if self._video_id != video_id:
+            self.release()
+            self._video_id = video_id
+            self.changed.emit()
+        self.configure(payload, layout_json, fixed, preserve_frame)
 
     def _submit(self, operation):
         future = self._executor.submit(operation)
@@ -459,6 +477,8 @@ class SubtitleOverlayRenderer(QObject):
     def release(self):
         """Detach editor state while retaining reusable raster cache entries."""
         self._generation += 1
+        had_owner = bool(self._video_id)
+        self._video_id = ""
         self._reconfiguring = False
         self._retain_frame = False
         self._frame_window = None
@@ -474,7 +494,7 @@ class SubtitleOverlayRenderer(QObject):
         self._frame_futures.clear()
         for future in tuple(self._futures):
             future.cancel()
-        if self._frame:
+        if self._frame or had_owner:
             self._frame = {}
             self.changed.emit()
 

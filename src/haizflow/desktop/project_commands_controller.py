@@ -77,6 +77,13 @@ class ProjectCommandsController:
         video_ids = {video.video_id for video in videos}
         if not video_ids:
             return True
+        exports = getattr(self._host, "_video_exports", None)
+        if (video_ids.intersection(getattr(self, "_video_deletions", set()))
+                or exports and any(job["videoId"] in video_ids and job["status"] == "preparing"
+                                   for job in exports.jobs)):
+            self._host.appAlertRequested.emit(
+                "Chưa thể xóa dự án", "Chờ chuẩn bị hoặc xóa video hoàn tất rồi thử lại.", "info")
+            return False
         active_id, _waiting = queue.detach_pending(video_ids)
         if active_id:
             cancel_video(active_id)
@@ -129,12 +136,19 @@ class ProjectCommandsController:
             if callable(release):
                 release()
 
+        model = getattr(host, "_manual_editor_document", None)
+        if model is not None and getattr(model, "video_id", "") in owned_ids:
+            model.clear()
+            host._manual_editor_warm_identity = None
+
     def __init__(self, host, *, create_video=None):
         self._host = host
         self._create_video = create_video or create_desktop_video
         self._deletion_events = Queue()
         self._deletions: dict[str, threading.Thread] = {}
         self._detached_deletions: set[str] = set()
+        self._video_deletions: set[str] = set()
+        self._video_deletion_events = Queue()
 
     def is_deleting(self, project_key: str) -> bool:
         return project_key in self._deletions
@@ -217,6 +231,27 @@ class ProjectCommandsController:
             host.videoDeleted.emit()
 
     def drain_deletion_events(self) -> None:
+        while not self._video_deletion_events.empty():
+            project_key, video_id, error = self._video_deletion_events.get_nowait()
+            self._video_deletions.discard(video_id)
+            host = self._host
+            if error:
+                host._deleted_video_ids.discard(video_id)
+                host.appAlertRequested.emit("Không thể xóa video", error, "error")
+            else:
+                exports = getattr(host, "_video_exports", None)
+                if exports is not None:
+                    exports.forget_video(video_id)
+                if str(getattr(host, "_selected_video_id", "") or "") == video_id:
+                    host._selected_video_id = None
+                    host._settings_owner_video_id = None
+                    host.selectedVideoChanged.emit()
+            if str(getattr(host, "_selected_project_key", "") or "") == project_key:
+                if not error and video_id in host._batch_video_ids:
+                    host._batch_video_ids.remove(video_id)
+                host._refresh_batch_model()
+                host.batchChanged.emit()
+            host.refreshVideos()
         while True:
             try:
                 kind, project, videos, error = self._deletion_events.get_nowait()
@@ -240,6 +275,35 @@ class ProjectCommandsController:
                            "app sẽ dọn tiếp khi mở lại.\n" + error) if committed else error
                 self._host.appAlertRequested.emit("Xóa dự án chưa hoàn tất", message,
                                                   "warning" if committed else "error")
+
+    def remove_batch_video(self, project_key: str, video_id: str) -> bool:
+        host = self._host
+        video = video_store.get_video(video_id)
+        if (project_key != str(host._selected_project_key or "")
+                or video_id not in host._batch_video_ids or video_id in self._video_deletions
+                or not video or video.project_type != "batch" or video.project_key != project_key
+                or video.status == "processing" or host._processing_queue.contains(video_id)):
+            return False
+        exports = getattr(host, "_video_exports", None)
+        if exports and any(job["videoId"] == video_id and job["status"] in {
+                "preparing", "rendering", "exporting", "pending"} for job in exports.jobs):
+            return False
+        self._video_deletions.add(video_id)
+        host._deleted_video_ids.add(video_id)
+
+        def remove():
+            try:
+                from haizflow.services import processing_runs
+
+                video_store.validate_video_restart(video_id)
+                processing_runs.forget_restarted(video_id)
+                video_store.delete_video(video_id)
+                self._video_deletion_events.put((project_key, video_id, ""))
+            except Exception as exc:
+                self._video_deletion_events.put((project_key, video_id, str(exc)))
+
+        threading.Thread(target=remove, name="batch-video-delete", daemon=False).start()
+        return True
 
     def _queue_project_delete(self, project: dict, videos: list) -> bool:
         host = self._host
@@ -719,7 +783,9 @@ class ProjectCommandsController:
                 config_values = config.model_dump(mode="json")
                 initial.update({key: config_values[field] for key, field in batch_settings.FIELDS.items()})
                 initial.update({key: "" for key in batch_settings.ASSETS})
-        values = batch_settings.stable_values(str(getattr(host, "_selected_project_key", "") or ""), initial, videos)
+        values = batch_settings.stable_values(str(getattr(host, "_selected_project_key", "") or ""), initial, videos,
+            normalize=lambda item: _batch_values_for_device(item, str(getattr(host, "_settings_processing_device", "cpu")),
+                total_vram_bytes=getattr(getattr(host, "_hardware_capabilities", None), "total_vram_bytes", None)))
         return _batch_values_for_device(values, str(getattr(host, "_settings_processing_device", "cpu")),
                                         total_vram_bytes=getattr(getattr(host, "_hardware_capabilities", None), "total_vram_bytes", None))
 
@@ -878,7 +944,10 @@ class ProjectCommandsController:
         identifiers = set(host._batch_video_ids)
         exporter = getattr(host, "_video_exports", None)
         jobs = [job for job in getattr(exporter, "jobs", []) if job["videoId"] in identifiers]
-        return results([video_store.get_video(key) for key in host._batch_video_ids], jobs)
+        catalog = (getattr(host, "_catalog_videos", {})
+                   if getattr(host, "_last_video_metadata_revision", None) == video_store.metadata_revision() else {})
+        return results([catalog[key] if key in catalog else video_store.get_video(key)
+                        for key in host._batch_video_ids], jobs)
 
     def batch_preview_sources(self) -> list[dict]:
         from haizflow.desktop.media import thumbnail_source
@@ -977,6 +1046,11 @@ class ProjectCommandsController:
         videos = [video for key in host._batch_video_ids if (video := video_store.get_video(key))]
         if any(host._processing_queue.contains(video.video_id) for video in videos):
             return False
+        exports = getattr(host, "_video_exports", None)
+        if (self._video_deletions.intersection(video.video_id for video in videos)
+                or exports and any(job["status"] == "preparing" and job["videoId"] in host._batch_video_ids
+                                   for job in exports.jobs)):
+            return False
         ensure_hardware = getattr(host, "_ensure_hardware_ready_for_action", None)
         if callable(ensure_hardware) and not ensure_hardware():
             return False
@@ -1059,6 +1133,16 @@ class ProjectCommandsController:
         if before or old_values != normalized:
             host._record_batch_asset_change(project_key, before, after,
                                             before_defaults=old_values, after_defaults=normalized)
+        # The per-video editor facade may still hold pre-apply values. Detach
+        # its autosave owner before reloading, otherwise leaving the batch can
+        # write that stale draft back over the freshly applied shared settings.
+        selected_id = str(getattr(host, "_selected_video_id", "") or "")
+        if selected_id in changed_ids:
+            selected = video_store.get_video(selected_id)
+            workspace = getattr(host, "_project_workspace", None)
+            if selected and workspace is not None:
+                host._settings_owner_video_id = None
+                workspace.select_video(selected)
         host.refreshVideos()
         host.batchChanged.emit()
         return True

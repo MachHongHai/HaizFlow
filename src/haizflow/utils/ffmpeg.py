@@ -1,12 +1,45 @@
 import json
 import shutil
 import subprocess
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
-from threading import Lock
+from threading import Lock, local
 from time import monotonic
 
 from haizflow.config import BIN_DIR
+
+
+_PROBE_BATCH = local()
+
+
+@contextmanager
+def media_probe_batch():
+    """Share successful probes only inside one worker's render transaction."""
+    previous = getattr(_PROBE_BATCH, "values", None)
+    _PROBE_BATCH.values = {} if previous is None else previous
+    try:
+        yield
+    finally:
+        _PROBE_BATCH.values = previous
+
+
+def _probe_key(kind, path, timeout):
+    values = getattr(_PROBE_BATCH, "values", None)
+    if values is None:
+        return None, None
+    try:
+        candidate = Path(path).resolve()
+        info = candidate.stat()
+        # Atomic publication renames the very file just validated by render.
+        # Keep that successful probe across the rename, not across a content
+        # change. Filesystems without file IDs remain strictly path-bound.
+        identity = (info.st_dev, info.st_ino) if info.st_ino else str(candidate)
+        key = (kind, identity, info.st_size,
+               info.st_mtime_ns, info.st_ctime_ns, timeout)
+        return values, key
+    except OSError:
+        return None, None
 
 
 def _binary(name: str) -> str:
@@ -151,6 +184,9 @@ def get_ffmpeg_version(*, timeout_seconds: float = 15.0) -> str:
 
 def get_video_duration(video_path: str, *, timeout_seconds: float = 15.0) -> float:
     """Calculates the duration of a video file using ffprobe."""
+    observations, key = _probe_key("duration", video_path, timeout_seconds)
+    if observations is not None and key in observations:
+        return observations[key]
     try:
         cmd = [
             _binary("ffprobe"), "-v", "error",
@@ -168,13 +204,19 @@ def get_video_duration(video_path: str, *, timeout_seconds: float = 15.0) -> flo
             check=True,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
-        return float(result.stdout.strip())
+        duration = float(result.stdout.strip())
+        if observations is not None and duration > 0:
+            observations[key] = duration
+        return duration
     except (OSError, subprocess.SubprocessError, TypeError, ValueError):
         return 0.0
 
 
 def get_video_dimensions(video_path: str, *, timeout_seconds: float = 15.0) -> tuple[int, int]:
     """Return the first video stream dimensions for subtitle positioning and crop math."""
+    observations, key = _probe_key("dimensions", video_path, timeout_seconds)
+    if observations is not None and key in observations:
+        return observations[key]
     try:
         result = subprocess.run(
             [
@@ -190,7 +232,10 @@ def get_video_dimensions(video_path: str, *, timeout_seconds: float = 15.0) -> t
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         width, height = result.stdout.strip().split(",")
-        return int(width), int(height)
+        dimensions = int(width), int(height)
+        if observations is not None and min(dimensions) > 0:
+            observations[key] = dimensions
+        return dimensions
     except Exception as exc:
         raise RuntimeError(f"Cannot read video dimensions: {exc}") from exc
 

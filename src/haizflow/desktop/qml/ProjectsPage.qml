@@ -98,8 +98,10 @@ Item {
             EmptyState {
                 anchors.centerIn: parent
                 visible: projectGrid.count === 0
-                title: qsTr("Chưa có dự án")
-                message: qsTr("Tạo dự án để bắt đầu.")
+                title: AppController.projectCatalogState === "loading" ? qsTr("Đang tải dự án…")
+                    : AppController.projectCatalogState === "error" ? qsTr("Không tải được dự án")
+                    : qsTr("Chưa có dự án")
+                message: AppController.projectCatalogState === "ready" ? qsTr("Tạo dự án để bắt đầu.") : ""
 
             }
         }

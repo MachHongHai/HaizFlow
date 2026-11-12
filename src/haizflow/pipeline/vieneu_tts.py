@@ -21,6 +21,25 @@ from haizflow.core.vieneu_assets import CACHE_VERSION, MANIFEST
 from haizflow.core.vieneu_voices import native_voice
 
 _PREPARE_LOCK = threading.Lock()
+_RESIDENT_WORKER = None
+_RESIDENT_LOCK = threading.Lock()
+
+
+def clear_runtime(*, only_idle=False):
+    if _RESIDENT_WORKER is not None:
+        _RESIDENT_WORKER.close(only_idle=only_idle)
+
+
+def server_command(device):
+    from haizflow.services.resource_packs import installed_engine_command
+
+    command = installed_engine_command("voice", "vieneu_server",
+        {"provider": "vieneu-gpu" if device == "gpu" else "vieneu"})
+    if command or getattr(sys, "frozen", False):
+        return command
+    development_python = Path(__file__).resolve().parents[3] / ".venv" / "Scripts" / "python.exe"
+    return [str(development_python) if development_python.is_file() else sys.executable,
+            "-m", "haizflow.pipeline.vieneu_tts", "--server"]
 
 
 def verify_assets(root: Path, device: str = "") -> Path:
@@ -99,7 +118,8 @@ def worker_command(request_path: Path, device: str) -> list[str]:
 
 
 def synthesize_batch_to_mp3(items, video_id, *, device="cpu", language_id="vi",
-                            process_registry_id=None, progress_callback=None, **_unused):
+                            process_registry_id=None, progress_callback=None, keep_worker_warm=False, **_unused):
+    global _RESIDENT_WORKER
     from haizflow.config import MODELS_DIR, TMP_DIR
     from haizflow.core.model_integrity import observe_verification
     from haizflow.pipeline.omnivoice_tts import _encode_mp3, _synthesis_stall_timeout
@@ -129,6 +149,9 @@ def synthesize_batch_to_mp3(items, video_id, *, device="cpu", language_id="vi",
         return
     cancellation_id = process_registry_id or video_id
     check_cancellation(cancellation_id)
+    from haizflow.pipeline.omnivoice_tts import clear_runtime as clear_omnivoice
+
+    clear_omnivoice(include_vieneu=False)
     if progress_callback:
         progress_callback(0, len(items), "verifying_runtime")
     with observe_verification(lambda *_: check_cancellation(cancellation_id)):
@@ -167,6 +190,41 @@ def synthesize_batch_to_mp3(items, video_id, *, device="cpu", language_id="vi",
                            PYTHONUNBUFFERED="1", TOKENIZERS_PARALLELISM="false")
         source_root = str(Path(__file__).resolve().parents[2])
         environment["PYTHONPATH"] = source_root + os.pathsep + environment.get("PYTHONPATH", "")
+        warm_command = server_command(device) if keep_worker_warm else []
+        if warm_command:
+            from haizflow.services.resident_voice_worker import ResidentVoiceWorker
+
+            with _RESIDENT_LOCK:
+                if _RESIDENT_WORKER is None:
+                    _RESIDENT_WORKER = ResidentVoiceWorker("vieneu-warm-runtime")
+            published = []
+
+            def accept_status(status):
+                if status.get("policy") != CACHE_VERSION or status.get("device") != device:
+                    raise RuntimeError("Bộ xử lý VieNeu không tương thích với yêu cầu hiện tại.")
+                completed = int(status.get("completed", 0))
+                if not 0 <= completed <= len(entries):
+                    raise RuntimeError("VieNeu báo số câu hoàn tất không hợp lệ.")
+                while len(published) < completed:
+                    item = entries[len(published)]
+                    _encode_mp3(Path(item["wav"]), Path(item["output_path"]), cancellation_id)
+                    published.append(item)
+                if progress_callback:
+                    progress_callback(len(published), len(entries), str(status.get("stage") or "synthesizing"))
+
+            return_code, error = _RESIDENT_WORKER.run(warm_command, environment,
+                (tuple(warm_command), str(root), str(site), device, CACHE_VERSION), request_path, request,
+                cancellation_id, accept_status,
+                _synthesis_stall_timeout({"device": "cuda:0" if device == "gpu" else "cpu"}))
+            check_cancellation(cancellation_id)
+            if return_code:
+                raise RuntimeError("VieNeu không tạo được giọng: " + error[-1800:])
+            status = json.loads(status_path.read_text(encoding="utf-8"))
+            if status.get("completed") != len(entries) or status.get("stage") != "completed":
+                clear_runtime()
+                raise RuntimeError("VieNeu chưa hoàn tất toàn bộ câu; không dùng audio thiếu.")
+            log_to_video(video_id, f"[TTS][VIENEU] device={device} " + json.dumps(status, ensure_ascii=False))
+            return
         process = subprocess.Popen(worker_command(request_path, device), env=environment,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    text=True, encoding="utf-8", errors="replace",
@@ -281,7 +339,7 @@ def _load_model(root: Path, device: str):
                          moss_tokenizer=str(root / "codec-gpu"))
 
 
-def _worker(request):
+def _worker(request, resident=None):
     from haizflow.core.vieneu_voices import unsupported_text_notice, unsupported_language_notice
 
     notice = unsupported_text_notice(request["items"]) or unsupported_language_notice("vieneu", request.get("language", "vi"))
@@ -298,13 +356,22 @@ def _worker(request):
     # Only use our newly extracted version, not abandoned site-packages from
     # older SDKs. Extraction happens in parent/manager before inference starts.
     site = prepare_runtime(root)
-    sys.path.insert(0, str(site))
+    if str(site) not in sys.path:
+        sys.path.insert(0, str(site))
     _dll_directory = os.add_dll_directory(str(site)) if hasattr(os, "add_dll_directory") else None
-    status = dict(completed=0, total=len(request["items"]), stage="loading_model", device=device,
+    model_key = (str(root.resolve()), str(site.resolve()), device, CACHE_VERSION)
+    reused = resident is not None and resident.get("key") == model_key
+    status = dict(completed=0, total=len(request["items"]), stage="reusing_model" if reused else "loading_model", device=device,
                   policy=CACHE_VERSION, batch_size=1)
     path = Path(request["status"])
     _write_atomic(path, status)
-    model = _load_model(root, device)
+    load_start = time.monotonic()
+    model = resident["model"] if reused else _load_model(root, device)
+    if resident is not None and not reused:
+        resident.clear()
+        resident.update(key=model_key, model=model, dll_directory=_dll_directory)
+    status.update(model_reused=reused, model_load_seconds=round(time.monotonic() - load_start, 3))
+    synthesis_start = time.monotonic()
     for item in request["items"]:
         status["stage"] = "synthesizing"
         _write_atomic(path, status)
@@ -347,6 +414,7 @@ def _worker(request):
         status["stage"] = "synthesizing"
         _write_atomic(path, status)
     status["stage"] = "completed"
+    status["synthesis_seconds"] = round(time.monotonic() - synthesis_start, 3)
     status["torch_loaded"] = "torch" in sys.modules
     if device == "gpu":
         import torch
@@ -358,6 +426,23 @@ def _worker(request):
 
 def main(argv=None):
     args = sys.argv[1:] if argv is None else argv
+    if args and args[0] == "--server":
+        from haizflow.engine.main import _write_atomic
+
+        resident = {}
+        for line in sys.stdin:
+            request = None
+            try:
+                request = json.loads(Path(line.strip()).read_text(encoding="utf-8"))
+                _worker(request, resident)
+                _write_atomic(Path(request["response_path"]), {"return_code": 0})
+            except Exception:
+                resident.clear()
+                if request is None or not request.get("response_path"):
+                    return 1
+                _write_atomic(Path(request["response_path"]), {"return_code": 1, "error": traceback.format_exc()})
+                return 1
+        return 0
     try:
         _worker(json.loads(Path(args[0]).read_text(encoding="utf-8")))
         return 0

@@ -170,7 +170,8 @@ def test_old_pause_auto_default_remains_resumable_but_region_change_requires_res
 
 @pytest.mark.parametrize("replace", [False, True])
 def test_batch_keeps_individual_region_unless_explicitly_replaced(video, replace):
-    config = VideoConfig(project_type="batch", project_key="batch", translation_model="q4", speech_recognition_model="small-cpu")
+    config = VideoConfig(project_type="batch", project_key="batch", translation_model="q4",
+                         speech_recognition_model="small-cpu", tts_provider="vieneu")
     def item(name, region):
         return SimpleNamespace(**{**config.model_dump(), "subtitle_style": config.subtitle_style,
             "original_subtitle_region_override": region}, video_id=name, files={}, status="pending",

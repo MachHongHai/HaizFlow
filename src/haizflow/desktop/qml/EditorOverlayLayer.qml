@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtMultimedia
 import "."
+import "TimelineViewport.js" as TimelineViewport
 
 Item {
     id: root
@@ -18,8 +19,22 @@ Item {
     // using visibility alone would leave duplicate MediaPlayer instances
     // alive underneath a popup.
     property bool mediaActive: true
+    readonly property bool liveMediaActive: mediaActive && visible
 
     signal clipSelected(string clipId)
+
+    function syncOverlays() {
+        const entries = [];
+        for (let index = 0; index < overlays.length; ++index) {
+            const clipId = String(overlays[index].clip_id || "");
+            if (clipId !== "watermark-1")
+                entries.push({entryKey: clipId, entryIndex: index});
+        }
+        TimelineViewport.sync(visibleOverlays, entries);
+    }
+    onOverlaysChanged: syncOverlays()
+    Component.onCompleted: syncOverlays()
+    ListModel { id: visibleOverlays }
 
     Item {
         id: canvas
@@ -29,14 +44,14 @@ Item {
         height: root.videoRect.height
 
         Repeater {
-            model: root.overlays.filter(function(clip) {
-                return String(clip.clip_id || "") !== "watermark-1";
-            })
+            model: visibleOverlays
 
             delegate: Item {
                 id: overlay
-                required property var modelData
+                required property int entryIndex
+                readonly property var modelData: root.overlays[entryIndex] || ({})
                 readonly property string clipId: String(modelData.clip_id || "")
+                objectName: "editorOverlay-" + clipId
                 readonly property var transformData: modelData.transform || ({})
                 readonly property bool selected: root.selectedClipIds.indexOf(clipId) >= 0
                 readonly property Item loadedItem: contentLoader.item as Item
@@ -238,7 +253,7 @@ Item {
                         }
 
                         function synchronize(force) {
-                            if (!root.mediaActive || !overlayVideoPlayer.seekable)
+                            if (!root.liveMediaActive || !overlayVideoPlayer.seekable)
                                 return;
                             const desired = desiredPositionMs();
                             if (force || Math.abs(overlayVideoPlayer.position - desired) > 140)
@@ -257,7 +272,7 @@ Item {
                         }
                         MediaPlayer {
                             id: overlayVideoPlayer
-                            source: root.mediaActive && overlay.modelData.asset
+                            source: root.liveMediaActive && overlay.modelData.asset
                                 ? overlay.modelData.asset.sourceUrl : ""
                             videoOutput: overlayVideoOutput
                             audioOutput: null
@@ -266,7 +281,7 @@ Item {
                                 if (mediaStatus === MediaPlayer.LoadedMedia
                                         || mediaStatus === MediaPlayer.BufferedMedia) {
                                     videoOverlay.synchronize(true);
-                                    if (root.playing)
+                                    if (root.liveMediaActive && root.playing)
                                         play();
                                 }
                             }
@@ -274,7 +289,7 @@ Item {
                         Connections {
                             target: root
                             function onPlayingChanged() {
-                                if (!root.mediaActive) {
+                                if (!root.liveMediaActive) {
                                     overlayVideoPlayer.stop();
                                 } else if (root.playing) {
                                     videoOverlay.synchronize(true);
@@ -287,8 +302,8 @@ Item {
                             function onTimeSecondsChanged() {
                                 videoOverlay.synchronize(!root.playing);
                             }
-                            function onMediaActiveChanged() {
-                                if (!root.mediaActive)
+                            function onLiveMediaActiveChanged() {
+                                if (!root.liveMediaActive)
                                     overlayVideoPlayer.stop();
                                 else
                                     videoOverlay.synchronize(true);

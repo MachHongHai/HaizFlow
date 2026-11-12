@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
+import "TimelineViewport.js" as TimelineViewport
 
 Item {
     id: root
@@ -86,10 +87,16 @@ Item {
         comparing = false;
         layoutSaveTimer.restart();
     }
-    readonly property var segments: AppController.manualSubtitleModel.segments
+    readonly property bool subtitleOwnerMatches: AppController.manualSubtitleModel.videoId === AppController.selectedVideoId
+    readonly property var segments: subtitleOwnerMatches ? AppController.manualSubtitleModel.displaySegments : []
+    readonly property var subtitleSearchIndex: TimelineViewport.buildIndex(segments, false)
     readonly property var editorModel: AppController.manualEditorDocumentModel
-    readonly property var captionSegments: editorModel.subtitleSegments.length > 0
-        ? editorModel.subtitleSegments : segments
+    readonly property var captionSegments: {
+        if (editorModel.videoId !== AppController.selectedVideoId)
+            return segments;
+        const captions = editorModel.subtitleSegments;
+        return captions.length > 0 ? captions : segments;
+    }
     readonly property var narrationTimings: AppController.manualPreviewAudio.voiceTimings || ({})
     readonly property var rendererSegments: captionSegments.filter(function(segment) {
         return !root.subtitleTransformDraft || (Number(segment.start || 0) <= comparePreview.positionSeconds
@@ -266,14 +273,7 @@ Item {
     }
 
     function subtitleIndexAt(seconds) {
-        const time = Math.max(0, Number(seconds || 0));
-        for (let index = 0; index < segments.length; ++index) {
-            const start = Number(segments[index].start || 0);
-            const end = Number(segments[index].end || 0);
-            if (time >= start && (time < end || (index === segments.length - 1 && time <= end)))
-                return index;
-        }
-        return -1;
+        return TimelineViewport.subtitleAt(root.subtitleSearchIndex, seconds);
     }
 
     function reloadSegments() {
@@ -433,6 +433,8 @@ Item {
         )
     })
     function requestSubtitleOverlay() {
+        if (!visible || previewVideoId !== AppController.selectedVideoId)
+            return;
         if (!subtitleTransformDraft) overlayTimer.restart();
         else if (!overlayTimer.running) overlayTimer.start();
     }
@@ -442,8 +444,10 @@ Item {
         id: overlayTimer
         interval: root.subtitleTransformDraft ? 90 : root.initialMediaLoad ? 300 : 160
         onTriggered: {
-            AppController.subtitleOverlayRenderer.configure(
-                JSON.stringify(root.rendererSegments), root.overlayLayoutJson, true,
+            if (!root.visible || root.previewVideoId !== AppController.selectedVideoId || !root.subtitleOwnerMatches)
+                return;
+            AppController.subtitleOverlayRenderer.configureForVideo(
+                root.previewVideoId, JSON.stringify(root.rendererSegments), root.overlayLayoutJson, true,
                 Boolean(root.subtitleTransformDraft));
             AppController.subtitleOverlayRenderer.seek(comparePreview.positionSeconds);
         }
@@ -546,6 +550,8 @@ Item {
         function onSelectedVideoChanged() {
             // qmllint disable missing-property
             if (root.previewVideoId !== AppController.selectedVideoId) {
+                previewTimer.stop();
+                overlayTimer.stop();
                 root.sourceReplacementPending = false;
                 root.saveEditorView();
                 comparePreview.resetPlayback();
@@ -801,7 +807,9 @@ Item {
                     subtitleReferenceHeight: root.subtitleOutputHeight
                     suppressResultAudio: root.subtitleAudioRefreshPending
                     subtitleLivePreviewEnabled: true
-                    subtitleSprite: AppController.subtitleOverlayRenderer.frame
+                    subtitleSprite: root.subtitleOwnerMatches && root.captionSegments.length > 0
+                        && AppController.subtitleOverlayRenderer.videoId === AppController.selectedVideoId
+                        ? AppController.subtitleOverlayRenderer.frame : ({})
                     watermarkText: AppController.watermarkText
                     watermarkKind: AppController.watermarkKind
                     watermarkImageSource: AppController.watermarkImageSource
@@ -821,10 +829,10 @@ Item {
                             ? AppController.watermarkVideoPath.length > 0
                             : AppController.watermarkText.length > 0
                     watermarkEditEnabled: root.watermarkTransformActive
-                    editorOverlays: AppController.manualPreviewComposition.overlays
+                    editorOverlays: root.editorModel.videoId === AppController.selectedVideoId
+                        ? AppController.manualPreviewComposition.overlays : []
                     selectedEditorClipIds: root.selectedEditorClipIds
-                    sourceEditDecisions: root.editorModel.document.sequence
-                        ? (root.editorModel.document.sequence.edit_decisions || []) : []
+                    sourceEditDecisions: root.editorModel.sourceEditDecisions
                     sequenceDurationSeconds: root.editorModel.durationMs / 1000
                     resultUsesSequenceTimeline: String(AppController.editorPreviewBaseSource || "").length > 0
                     onPositionSecondsChanged: {
@@ -903,6 +911,7 @@ Item {
                     ? root.timelineEditorTracks : root.emptyEditorTracks
                 editorClips: AppController.hasSelectedVideo
                     ? root.timelineEditorClips : []
+                waveformModel: root.editorModel
                 selectedClipIds: root.editorModel.selectedClipIds
                 selectedIndex: root.selectedSubtitleIndex
                 duration: Math.max(0.1, comparePreview.durationSeconds)
@@ -1079,6 +1088,7 @@ Item {
         toolModel: root.toolModel
         subtitleSegments: root.segments
         selectedSubtitleIndex: root.selectedSubtitleIndex
+        currentSubtitleIndex: root.previewSubtitleIndex
         playheadSeconds: comparePreview.positionSeconds
         selectedEditorClip: root.selectedEditorClip
         onSubtitleSelected: function(index) { root.selectSubtitle(index, true); }

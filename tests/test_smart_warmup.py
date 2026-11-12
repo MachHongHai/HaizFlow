@@ -113,6 +113,27 @@ class SmartWarmupTests(unittest.TestCase):
         controller._release_now.assert_called_once_with("foreground", {"recognition", "translation"})
         self.assertTrue(controller._suspended)
 
+    def test_required_inflight_load_is_handed_off_not_treated_as_unload_failure(self):
+        for capability in ("recognition", "translation", "voice", "ocr", "separation"):
+            controller = SmartWarmupController(_Host(), _Resources())
+            controller._active_capability = capability
+            controller._resident.update({capability})
+            controller._preempt_active_warm = Mock()
+            controller._release_now = Mock()
+            controller.quiesce_for_foreground(timeout_seconds=.01, required_capabilities={capability})
+            controller._preempt_active_warm.assert_not_called()
+            controller._release_now.assert_called_once_with("foreground", set())
+            self.assertTrue(controller._suspended)
+            self.assertEqual(controller._active_capability, capability)
+
+    def test_unrelated_active_load_still_requires_safe_release(self):
+        controller = SmartWarmupController(_Host(), _Resources())
+        controller._active_capability = "recognition"
+        controller._preempt_active_warm = Mock(return_value=False)
+        with self.assertRaisesRegex(RuntimeError, "Không thể giải phóng"):
+            controller.quiesce_for_foreground(timeout_seconds=.01, required_capabilities={"voice"})
+        controller._preempt_active_warm.assert_called_once_with("recognition")
+
     def test_startup_prediction_only_queues_first_model(self):
         controller = SmartWarmupController(_Host(), _Resources())
         profile = type("Profile", (), {

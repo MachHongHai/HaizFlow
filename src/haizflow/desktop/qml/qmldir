@@ -1,4 +1,5 @@
 module HaizFlow
+ManualVoiceScope 1.0 ManualVoiceScope.qml
 SettingsPageLoader 1.0 SettingsPageLoader.qml
 UserErrorNotice 1.0 UserErrorNotice.qml
 singleton ErrorPresentation 1.0 ErrorPresentation.qml
@@ -16,6 +17,7 @@ DeferredActionButton 1.0 DeferredActionButton.qml
 SrtExportDialog 1.0 SrtExportDialog.qml
 SrtImportDialog 1.0 SrtImportDialog.qml
 typeinfo haizflow.qmltypes
+BatchVideoScope 1.0 BatchVideoScope.qml
 singleton Theme 1.0 Theme.qml
 singleton I18n 1.0 I18n.qml
 singleton TypeScale 1.0 TypeScale.qml

@@ -127,7 +127,7 @@ def stage_asset(project_key: str, key: str, path: str) -> str:
     return str(target)
 
 
-def stable_values(project_key: str, initial: dict, videos: list) -> dict:
+def stable_values(project_key: str, initial: dict, videos: list, *, normalize=None) -> dict:
     record = project_store.get_project(project_key)
     if not record or record.get("project_type") != "batch":
         return initial
@@ -145,6 +145,8 @@ def stable_values(project_key: str, initial: dict, videos: list) -> dict:
         common = Counter(signatures).most_common(1)[0][0]
         initial = maps[signatures.index(common)]
     # Do not discard missing legacy paths: readiness will explain the problem.
+    if normalize is not None:
+        initial = normalize(initial)
     staged = {key: stage_asset(project_key, key, value) if key in ASSETS and value and Path(value).is_file() else value
               for key, value in initial.items()}
     project_store.save_batch_settings(project_key, staged)

@@ -79,7 +79,7 @@ without requiring a separate host-visible tool for each UI action.
 | Processing | Configure video, run or force-rerun individual Manual tools, pause/resume/cancel, Auto restart, Batch import/settings/start/pause/resume/results |
 | Subtitles | Import or explicitly replace SRT, remove imported SRT, read source/result SRT, export either/both, revise text/timing, find/replace, split/merge/delete, review drafts/approve, undo/redo |
 | Editor | Inspect tracks/clips, move/trim/remove supported clips, split result ranges, style selected subtitles, track visibility/mute, ratio/speed, OCR region, music, watermark assets, clone reference |
-| Voice | Discover model/voice IDs with `options`, inspect effective per-segment configuration, run all voices or one segment, clear clone reference |
+| Voice | Discover model/voice IDs with `options`, inspect effective per-segment configuration, run all voices, one `segment_id` or selected `segment_ids`, clear clone reference |
 | Exports | Export whole videos, Manual result ranges or a Batch; explicit overwrite, one-job Auto processing/export, retry failed jobs, progress/cancel |
 | Downloads | Inspect/download video/audio URLs, cancel inspection, clear waiting queue, scan channels, paginate candidates by stable ID, select/retry/download candidates, cancel |
 | Social publishing | Import videos, inspect queue/accounts/errors/verified post URLs, edit captions/hashtags/defaults, remove queue rows without deleting files/posts, choose connected account/settings, refresh/cancel/publish exact items |

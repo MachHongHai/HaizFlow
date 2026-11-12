@@ -129,6 +129,16 @@ def test_confirmed_incompatible_model_stops_before_any_billable_request(store, m
     send.assert_not_called()
 
 
+@pytest.mark.parametrize("model", ["google/gemma-4-26b-a4b-it:free", "xingchen-agi/xing4.0-29b-a4b:free"])
+def test_saved_unstable_free_model_stops_without_consuming_requests(store, monkeypatch, model):
+    choice = "api:" + connections.add("openrouter", "Unavailable free", "private", model)
+    send = Mock()
+    monkeypatch.setattr(api, "_json_request", send)
+    with pytest.raises(RuntimeError, match="app chưa gửi yêu cầu API"):
+        api.translate_texts(["Hello."], model=choice, source_language="English", target_language="Vietnamese", video_id="")
+    send.assert_not_called()
+
+
 def test_dots_two_batches_disable_optional_reasoning_and_resume_only_missing_sentences(store, monkeypatch):
     choice = "api:" + connections.add("openrouter", "Dots", "private", "dots-studio/dots-3-note-preview:free")
     received = []
@@ -182,10 +192,11 @@ def test_router_400_safe_diagnostics_distinguish_request_problems(store, monkeyp
 
 
 @pytest.mark.parametrize("model,expected", [
-    ("google/gemma-4-26b-a4b-it:free", "json_object"),
     ("google/gemma-4-31b-it:free", "json_object"),
     ("recursive/flint-v1.0:free", "json_object"),
     ("liquid/lfm-2.5-2.6b:free", "json_schema"),
+    ("liquid/lfm-3-1.7b:free", "json_schema"),
+    ("stealth/crouton-alpha", "json_schema"),
     ("unknown/unlisted:free", "json_schema"),
 ])
 def test_free_model_uses_advertised_json_protocol_without_model_fallback(store, monkeypatch, model, expected):
