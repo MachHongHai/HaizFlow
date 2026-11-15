@@ -58,41 +58,16 @@ try {
     throw "Python correctness lint failed."
   }
 
-  # pytest also collects the unittest suites, plus function/fixture tests that
-  # unittest discovery silently omitted from previous release gates.
-  # QML singletons created by earlier component tests can keep background
-  # catalog readers alive for the lifetime of the Qt process. They must not
-  # read a storage fixture while that fixture restores patched global paths,
-  # or share the clone subprocess's runtime. The async API-controller fixture
-  # also pumps Qt events and must not drain deferred callbacks owned by earlier
-  # synthetic QML engines. Run these complete modules in fresh processes;
-  # in a fresh process after the main suite; no test or assertion is omitted.
-  $StorageTests = Join-Path $Root "tests\test_render_export_storage.py"
-  $CloneTests = Join-Path $Root "tests\test_vieneu_clone_ui.py"
-  $ApiTests = @(
-    (Join-Path $Root "tests\test_translation_api.py"),
-    (Join-Path $Root "tests\test_translation_catalog_cache.py"),
-    (Join-Path $Root "tests\test_translation_model_catalog.py")
-  )
-  $ApiIgnoreArguments = @()
-  foreach ($ApiTest in $ApiTests) { $ApiIgnoreArguments += @("--ignore", $ApiTest) }
-  Write-Output "Running main application test suite."
-  & $Python -m pytest (Join-Path $Root "tests") -q -p no:cacheprovider `
-    --ignore $StorageTests --ignore $CloneTests @ApiIgnoreArguments --basetemp (Join-Path $TestTemp "pytest-main")
+  # Collect the complete pytest/unittest inventory once, then run each whole
+  # module in a fresh process. Qt registries, synthetic QML controllers and
+  # deferred callbacks cannot leak between unrelated fixtures. The runner
+  # rejects any difference in collected node IDs: no test is deselected.
+  $TestReports = Join-Path $Root ("build\test-reports\" + (Split-Path -Leaf $TestTemp))
+  Write-Output "Running every complete application test module in isolated processes."
+  & $Python (Join-Path $PSScriptRoot "run-release-tests.py") --tests (Join-Path $Root "tests") `
+    --temporary (Join-Path $TestTemp "p") --reports $TestReports --workers 2
   if ($LASTEXITCODE -ne 0) {
-    throw "Test suite failed (exit $LASTEXITCODE)."
-  }
-  Write-Output "Running complete storage and clone UI modules in an isolated Qt process."
-  & $Python -m pytest $StorageTests $CloneTests -q -p no:cacheprovider `
-    --basetemp (Join-Path $TestTemp "pytest-qt-storage")
-  if ($LASTEXITCODE -ne 0) {
-    throw "Isolated storage and clone UI test suite failed."
-  }
-  Write-Output "Running complete API adapter/controller/catalogue modules in an isolated Qt process."
-  & $Python -m pytest @ApiTests -q -p no:cacheprovider `
-    --basetemp (Join-Path $TestTemp "pytest-api")
-  if ($LASTEXITCODE -ne 0) {
-    throw "Isolated API adapter/controller test suite failed."
+    throw "Complete isolated test suite failed (exit $LASTEXITCODE). Reports: $TestReports"
   }
 
   $QmlFiles = Get-ChildItem -LiteralPath $QmlDirectory -Filter "*.qml" -File |
