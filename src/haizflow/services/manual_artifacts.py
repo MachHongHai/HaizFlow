@@ -441,9 +441,16 @@ def publish(
                         # Reuse only the verification of this exact unchanged
                         # file moved on the same filesystem, never a copy or
                         # an existing destination with similar timestamps.
-                        if (_VALIDATED_DIGESTS.pop(_digest_key(staging / relative, before, digest), False)
-                                and _file_identity(target.stat()) == _file_identity(before)):
-                            _remember_digest(target, before, digest)
+                        if _VALIDATED_DIGESTS.pop(_digest_key(staging / relative, before, digest), False):
+                            try:
+                                unchanged = _file_identity(target.stat()) == _file_identity(before)
+                            except OSError:
+                                # Digest reuse is optional. Let the full verifier
+                                # report a sharing/permission failure with its real
+                                # path and OS code instead of escaping this fast path.
+                                unchanged = False
+                            if unchanged:
+                                _remember_digest(target, before, digest)
                 except Exception:
                     if retired is not None and not final.exists():
                         _replace_cache_directory(retired, final)

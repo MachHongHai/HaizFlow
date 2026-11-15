@@ -17,6 +17,7 @@ from concurrent.futures import CancelledError, ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
+from pydub.exceptions import CouldntDecodeError
 from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtMultimedia import QAudioFormat, QAudioOutput, QAudioSink, QMediaDevices, QMediaPlayer
 
@@ -502,7 +503,7 @@ class ManualPreviewAudioController(QObject):
                     ready.update(decoded)
             except CancelledError:
                 raise
-            except (OSError, RuntimeError, ValueError, subprocess.SubprocessError):
+            except (OSError, RuntimeError, ValueError, subprocess.SubprocessError, CouldntDecodeError):
                 # Preserve the established per-file decoder and error path
                 # for unusual media/FFmpeg builds; never accept partial PCM.
                 _LOG.debug("Voice PCM batch unavailable; retaining per-clip decoding", exc_info=True)

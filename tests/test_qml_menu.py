@@ -181,6 +181,7 @@ class QmlMenuTests(unittest.TestCase):
         state = QQmlPropertyMap()
         for key, value in {
             "videoExportBusy": False, "videoExportJobs": [], "isSelectedVideoProcessing": False,
+            "videoExportScopeSummary": export_job_summary([]),
             "videoExportSummary": export_job_summary([]),
             "selectedStepId": "", "selectedProgress": 0, "selectedStageLabel": "",
             "selectedFailureMessage": "", "selectedProgressDetail": "",
@@ -190,6 +191,7 @@ class QmlMenuTests(unittest.TestCase):
         component = QQmlComponent(engine)
         component.setData(('import QtQuick\nimport QtQuick.Layouts\nimport "."\nItem { id: root; width: 1000; height: 40;'
             'readonly property var activeExportJob:' + exports
+            + 'property bool projectWorkspaceVisible: true;'
             + 'property bool selectedTaskFailed: false; property bool videoProcessing: false;'
             'property bool selectedTaskPaused: false; property bool selectedTaskQueued: false;'
             'property bool selectedProgressMeasured: true;'
@@ -212,6 +214,7 @@ class QmlMenuTests(unittest.TestCase):
                          "progress": progress, "rangeMs": [0, 240000]}]
                 state.insert("videoExportJobs", jobs)
                 state.insert("videoExportSummary", export_job_summary(jobs))
+                state.insert("videoExportScopeSummary", export_job_summary(jobs))
                 self.app.processEvents()
                 self.assertEqual(tray.property("activityState"), "exporting")
                 self.assertEqual(tray.property("message"), "Đang chuẩn bị xuất" if status == "pending" else "Đang hoàn thiện và lưu video")
@@ -225,6 +228,7 @@ class QmlMenuTests(unittest.TestCase):
                 jobs = [{"videoId": "long-video", "status": status, "progress": 100}]
                 state.insert("videoExportJobs", jobs)
                 state.insert("videoExportSummary", export_job_summary(jobs))
+                state.insert("videoExportScopeSummary", export_job_summary(jobs))
                 state.insert("videoExportBusy", False)
                 self.app.processEvents()
                 self.assertEqual(tray.property("activityState"), "ready")
@@ -244,6 +248,7 @@ class QmlMenuTests(unittest.TestCase):
             "hasSelectedOutput": False, "hasOpenProject": True,
             "isSelectedVideoProcessing": False, "isSelectedVideoQueued": False,
             "hasSelectedVideo": False, "videoExportBusy": False,
+            "selectedVideoExportActive": False,
             "selectedStatus": "pending", "selectedFailureTitle": "Failed",
             "selectedStageLabel": "Processing", "selectedElapsed": "",
         }.items():
@@ -275,9 +280,11 @@ class QmlMenuTests(unittest.TestCase):
             self.app.processEvents()
             self.assertTrue(process.property("enabled"))
             state.insert("videoExportJobs", [{"videoId": "video-b", "status": "rendering"}])
+            state.insert("selectedVideoExportActive", True)
             self.app.processEvents()
             self.assertFalse(process.property("enabled"))
             state.insert("videoExportJobs", [])
+            state.insert("selectedVideoExportActive", False)
             state.insert("videoExportBusy", False)
             for status in ("paused", "done", "failed", "cancelled"):
                 state.insert("selectedStatus", status)

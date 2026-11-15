@@ -76,7 +76,7 @@ def test_scaled_render_never_replaces_original_editor_or_review_clock(tmp_path, 
     monkeypatch.setattr('haizflow.services.video_export.render_path', lambda _: str(rendered))
     monkeypatch.setattr('haizflow.services.video_store.get_video_dir', lambda _: str(tmp_path))
     monkeypatch.setattr('haizflow.services.ocr_regions.effective_region', lambda *_: {})
-    monkeypatch.setattr('haizflow.pipeline.render.resolve_subtitle_preview_layout', lambda *_: {})
+    monkeypatch.setattr('haizflow.pipeline.render.resolve_subtitle_preview_layout', lambda *_, **_kwargs: {})
     video = SimpleNamespace(**VideoConfig(project_type=kind, output_speed=speed).model_dump(),
                             video_id='preview-clock', files={'voice_output': str(voice)})
     media = HaizFlowController._review_preview_media_for(SimpleNamespace(), video)

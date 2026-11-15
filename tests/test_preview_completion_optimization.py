@@ -6,6 +6,7 @@ import wave
 
 import numpy as np
 import pytest
+from pydub.exceptions import CouldntDecodeError
 from PySide6.QtGui import QGuiApplication
 
 from haizflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
@@ -96,10 +97,11 @@ def test_cancelled_batch_cannot_publish_partial_pcm(audio, tmp_path):
     assert not list(Path(audio._pcm_directory.name).iterdir())
 
 
-def test_failed_batch_keeps_single_decoder_fallback(audio, tmp_path):
+@pytest.mark.parametrize("failure", [RuntimeError("unsupported"), CouldntDecodeError("unsupported")])
+def test_failed_batch_keeps_single_decoder_fallback(audio, tmp_path, failure):
     source = tmp_path / "voice.wav"
     speech_wav(source, 24000, 1, .4)
-    with patch.object(audio, "_decode_voice_batch", side_effect=RuntimeError("unsupported")):
+    with patch.object(audio, "_decode_voice_batch", side_effect=failure):
         audio._prefetch_voice_pcm([(str(source), 1000, False, "a"),
                                    (str(source), 500, False, "b")], audio._generation)
     assert not audio._cache

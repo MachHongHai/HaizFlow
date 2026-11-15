@@ -3,7 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from PySide6.QtCore import QObject, QUrl, Slot
+from PySide6.QtCore import QObject, Property, QUrl, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlExpression
 
@@ -65,11 +65,17 @@ def test_production_model_combo_routes_all_gemini_choices_to_shared_session_noti
     value = host()
 
     class Controller(QObject):
+        @Property(QObject, constant=True)
+        def translationApi(self):
+            return self.api
+
         @Slot(str, str, str, str, result=bool)
         def showProjectSessionAlertOnce(self, key, title, message, severity):
             return HaizFlowController.showProjectSessionAlertOnce(value, key, title, message, severity)
 
     controller = Controller()
+    from haizflow.desktop.translation_api_controller import TranslationApiController
+    controller.api = TranslationApiController(controller)
     engine = QQmlEngine()
     engine.rootContext().setContextProperty("TestController", controller)
     qml = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml/TranslationModelCombo.qml"

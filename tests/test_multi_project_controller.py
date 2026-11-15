@@ -835,7 +835,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertGreater(batch_page.index("id: batchProgressPanel"), batch_page.index("id: queueList"))
         self.assertIn('qsTr("Adding %1 / %2…")', batch_page)
         self.assertIn("readonly property real cardWidth: Math.min(220", batch_page)
-        self.assertIn("readonly property real cardHeight: Math.round(cardWidth * 0.56 + 64)", batch_page)
+        self.assertIn("readonly property real cardHeight: Math.round(cardWidth * 0.56 + 78)", batch_page)
         self.assertIn("AppController.chooseBatchBackgroundMusic()", settings)
         self.assertIn('batchBackgroundMusicLinkDialogLoader.invoke("open", [])', settings)
         self.assertIn("ProcessingSettingsForm", settings)
