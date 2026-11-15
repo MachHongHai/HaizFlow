@@ -362,7 +362,11 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn("$CanonicalTorchPackages", audit_script)
         self.assertIn("Canonical PyTorch vulnerability audit found an unreviewed advisory.", audit_script)
         self.assertIn("Dependency vulnerability audit found an unreviewed advisory in", audit_script)
-        self.assertIn('"PYSEC-2026-3740"', audit_script)
+        self.assertNotIn('"PYSEC-2026-3740"', audit_script)
+        for profile in ("cpu", "cuda128"):
+            locked = (ROOT / f"requirements-lock-engine-{profile}-py313-win64.txt").read_text(encoding="utf-8")
+            self.assertIn("nltk==3.10.4", locked)
+            self.assertIn("opentelemetry-api==1.45.2", locked)
         self.assertIn('"CVE-2026-9856"', audit_script)
         self.assertNotIn("--ignore-vuln *", audit_script)
 

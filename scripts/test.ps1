@@ -20,7 +20,7 @@ if (!(Test-Path -LiteralPath $QmlLint -PathType Leaf)) {
 $PreviousTemp = $env:TEMP
 $PreviousTmp = $env:TMP
 $PreviousAppEnvironment = @{}
-foreach ($Name in @("HAIZFLOW_HOME", "RUNTIME_DATA_DIR", "HAIZFLOW_RESOURCE_ROOT", "HAIZFLOW_SMOKE_TEST", "PYTHONPATH")) {
+foreach ($Name in @("HAIZFLOW_HOME", "RUNTIME_DATA_DIR", "HAIZFLOW_RESOURCE_ROOT", "HAIZFLOW_SMOKE_TEST", "PYTHONPATH", "PYTHONUTF8", "PYTHONIOENCODING")) {
   $PreviousAppEnvironment[$Name] = [Environment]::GetEnvironmentVariable($Name, "Process")
 }
 try {
@@ -31,6 +31,8 @@ try {
   $env:TEMP = $TestTemp
   $env:TMP = $TestTemp
   $env:PYTHONPATH = Join-Path $Root "src"
+  $env:PYTHONUTF8 = "1"
+  $env:PYTHONIOENCODING = "utf-8"
   # Qt singleton startup and maintenance must never see a developer's projects.
   $env:HAIZFLOW_SMOKE_TEST = "1"
   $env:HAIZFLOW_HOME = Join-Path $TestTemp "app"
