@@ -69,10 +69,16 @@ try {
   # in a fresh process after the main suite; no test or assertion is omitted.
   $StorageTests = Join-Path $Root "tests\test_render_export_storage.py"
   $CloneTests = Join-Path $Root "tests\test_vieneu_clone_ui.py"
-  $ApiTests = Join-Path $Root "tests\test_translation_api.py"
+  $ApiTests = @(
+    (Join-Path $Root "tests\test_translation_api.py"),
+    (Join-Path $Root "tests\test_translation_catalog_cache.py"),
+    (Join-Path $Root "tests\test_translation_model_catalog.py")
+  )
+  $ApiIgnoreArguments = @()
+  foreach ($ApiTest in $ApiTests) { $ApiIgnoreArguments += @("--ignore", $ApiTest) }
   Write-Output "Running main application test suite."
   & $Python -m pytest (Join-Path $Root "tests") -q -p no:cacheprovider `
-    --ignore $StorageTests --ignore $CloneTests --ignore $ApiTests --basetemp (Join-Path $TestTemp "pytest-main")
+    --ignore $StorageTests --ignore $CloneTests @ApiIgnoreArguments --basetemp (Join-Path $TestTemp "pytest-main")
   if ($LASTEXITCODE -ne 0) {
     throw "Test suite failed (exit $LASTEXITCODE)."
   }
@@ -82,8 +88,8 @@ try {
   if ($LASTEXITCODE -ne 0) {
     throw "Isolated storage and clone UI test suite failed."
   }
-  Write-Output "Running complete API adapter/controller module in an isolated Qt process."
-  & $Python -m pytest $ApiTests -q -p no:cacheprovider `
+  Write-Output "Running complete API adapter/controller/catalogue modules in an isolated Qt process."
+  & $Python -m pytest @ApiTests -q -p no:cacheprovider `
     --basetemp (Join-Path $TestTemp "pytest-api")
   if ($LASTEXITCODE -ne 0) {
     throw "Isolated API adapter/controller test suite failed."
