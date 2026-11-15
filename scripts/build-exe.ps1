@@ -499,6 +499,12 @@ Invoke-PythonChecked -Arguments @(
   "--verify"
 ) -Label "Release manifest verification"
 
+if (!$SkipFrozenSmokeTest) {
+  Invoke-PythonChecked -Arguments @(
+    (Join-Path $PSScriptRoot "test-frozen-mcp.py"), "--artifact", $ArtifactPath
+  ) -Label "Frozen MCP stdio acceptance"
+}
+
 $CoreBytes = (Get-ChildItem -LiteralPath $ArtifactPath -Recurse -File | Measure-Object -Property Length -Sum).Sum
 $CoreLimitBytes = [int64](1.25 * 1GB)
 if ($CoreBytes -gt $CoreLimitBytes) {
