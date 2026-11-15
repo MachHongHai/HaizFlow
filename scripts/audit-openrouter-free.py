@@ -27,7 +27,7 @@ def public_json(path):
     return json.loads(raw)
 
 
-def check(profile, key, option, *, allow_collection=False, extended=False, probe_unavailable=False):
+def check(profile, key, option, *, allow_collection=False, extended=False, probe_unavailable=False, preflight=False):
     profile = {**profile, "model": option["value"], "format": option["output_format"]}
     actual_json = api_translation._json_request
     result = {"model": option["value"], "format": option["output_format"],
@@ -37,6 +37,8 @@ def check(profile, key, option, *, allow_collection=False, extended=False, probe
                    **public_info} if public_info else None)
 
     def send(url, credential, payload=None, **kwargs):
+        if preflight and payload is None and not credential and url.startswith(BASE + "/model"):
+            return actual_json(url, "", timeout=min(12, kwargs.get("timeout", 12)))
         if url != BASE + "/chat/completions" or payload is None or payload.get("model") != option["value"]:
             raise RuntimeError("Audit refused a non-translation request")
         if result["requests"]:
@@ -76,6 +78,12 @@ def check(profile, key, option, *, allow_collection=False, extended=False, probe
             patch.object(translation_privacy, "allowed", lambda _profile: allow_collection), \
             patch.object(gemini_translation, "_retry_delay", lambda *_: None):
         try:
+            protocol = None
+            if preflight:
+                from haizflow.services.translation_model_guard import prepare
+
+                protocol = prepare(profile)
+                result["preflight"] = "passed"
             samples = ["Thank you, Mom.", "I don't know."]
             if extended:
                 samples += ["Please don't open the door.", "The red car costs 90,000 dollars.",
@@ -85,7 +93,8 @@ def check(profile, key, option, *, allow_collection=False, extended=False, probe
                 model="api:" + profile["id"] + ":" + option["value"],
                 # Match services.translation: it passes language names, not
                 # two-letter metadata codes, to the cloud prompt.
-                source_language="English", target_language="Vietnamese", translation_style="natural")
+                source_language="English", target_language="Vietnamese", translation_style="natural",
+                _protocol=protocol)
             result["translations"] = translated
             joined = json.dumps(translated, ensure_ascii=False).casefold()
             result["usable"] = ("thank you" not in joined and "don't know" not in joined
@@ -106,10 +115,12 @@ def main():
     parser.add_argument("--inference", action="store_true")
     parser.add_argument("--model", action="append", default=[])
     parser.add_argument("--extended", action="store_true")
+    parser.add_argument("--preflight", action="store_true",
+                        help="Use the production live model and serving-endpoint compatibility guard")
     parser.add_argument("--probe-unavailable", action="store_true",
                         help="Recheck temporarily hidden routes without changing the app catalogue")
     parser.add_argument("--allow-synthetic-data-collection", action="store_true")
-    parser.add_argument("--output", type=Path, default=Path("build/openrouter-free-audit-20261108.json"))
+    parser.add_argument("--output", type=Path, default=Path("build/openrouter-free-audit-20261115.json"))
     args = parser.parse_args()
     rows = public_json("/models").get("data", [])
     scope = (patch("haizflow.services.translation_model_catalog._UNAVAILABLE_OPENROUTER_MODELS", frozenset())
@@ -136,14 +147,15 @@ def main():
             parser.error("Insufficient remaining free requests for this audit; no inference was sent")
     for option in free:
         result = check(profile, key, option, extended=args.extended, probe_unavailable=args.probe_unavailable,
-                       allow_collection=translation_privacy.allowed({**profile, "model": option["value"]}))
+                       allow_collection=translation_privacy.allowed({**profile, "model": option["value"]}),
+                       preflight=args.preflight)
         report["models"].append(result)
         atomic_json(args.output, report, indent=2)
         print(json.dumps(result, ensure_ascii=False), flush=True)
         if (not result["usable"] and result.get("failure_kind") == "data_policy"
                 and args.allow_synthetic_data_collection):
             result["collection_check"] = check(profile, key, option, allow_collection=True, extended=args.extended,
-                                               probe_unavailable=args.probe_unavailable)
+                                               probe_unavailable=args.probe_unavailable, preflight=args.preflight)
             atomic_json(args.output, report, indent=2)
             print(json.dumps(result["collection_check"], ensure_ascii=False), flush=True)
         if result.get("http_status") == 429 and "trong ngày" in result.get("message", ""):

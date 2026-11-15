@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "retrieved_at": "2026-11-03",
+  "retrieved_at": "2026-11-15",
   "options": [
     {
       "value": "anthropic/claude-fable-5",
@@ -9,27 +9,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "low",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "anthropic/claude-fable-5:batch",
-      "label": "Anthropic: Claude Fable 5 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1000000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -49,7 +39,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -63,13 +63,23 @@
       }
     },
     {
-      "value": "anthropic/claude-fable-5.1:batch",
-      "label": "Anthropic: Claude Fable 5.1 (batch)",
+      "value": "anthropic/claude-fable-5.2",
+      "label": "Anthropic: Claude Fable 5.2",
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -89,7 +99,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -109,24 +129,17 @@
       "output_format": "json_schema",
       "context_length": 200000,
       "max_completion_tokens": 64000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "disabled",
-          "enabled"
-        ],
-        "default": "disabled",
-        "toggle": true
-      }
-    },
-    {
-      "value": "anthropic/claude-haiku-4.5:batch",
-      "label": "Anthropic: Claude Haiku 4.5 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 200000,
-      "max_completion_tokens": 64000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -143,27 +156,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "anthropic/claude-haiku-5.5:batch",
-      "label": "Anthropic: Claude Haiku 5.5 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1000000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -183,7 +186,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -197,47 +210,23 @@
       }
     },
     {
-      "value": "anthropic/claude-opus-4.1:batch",
-      "label": "Anthropic: Claude Opus 4.1 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 200000,
-      "max_completion_tokens": 32000,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "disabled",
-          "enabled"
-        ],
-        "default": "disabled",
-        "toggle": true
-      }
-    },
-    {
       "value": "anthropic/claude-opus-4.5",
       "label": "Anthropic: Claude Opus 4.5",
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 200000,
       "max_completion_tokens": 64000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "disabled",
-          "enabled"
-        ],
-        "default": "disabled",
-        "toggle": true
-      }
-    },
-    {
-      "value": "anthropic/claude-opus-4.5:batch",
-      "label": "Anthropic: Claude Opus 4.5 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 200000,
-      "max_completion_tokens": 64000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -254,26 +243,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "anthropic/claude-opus-4.6:batch",
-      "label": "Anthropic: Claude Opus 4.6 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1000000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -292,27 +272,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "anthropic/claude-opus-4.7:batch",
-      "label": "Anthropic: Claude Opus 4.7 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1000000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -332,27 +302,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "anthropic/claude-opus-4.8:batch",
-      "label": "Anthropic: Claude Opus 4.8 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1000000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -372,27 +332,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "anthropic/claude-opus-5:batch",
-      "label": "Anthropic: Claude Opus 5 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1000000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -412,27 +362,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "low",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "anthropic/claude-opus-5.5:batch",
-      "label": "Anthropic: Claude Opus 5.5 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1000000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -452,7 +392,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -472,24 +422,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 64000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "disabled",
-          "enabled"
-        ],
-        "default": "disabled",
-        "toggle": true
-      }
-    },
-    {
-      "value": "anthropic/claude-sonnet-4.5:batch",
-      "label": "Anthropic: Claude Sonnet 4.5 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1000000,
-      "max_completion_tokens": 64000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -506,26 +449,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "anthropic/claude-sonnet-4.6:batch",
-      "label": "Anthropic: Claude Sonnet 4.6 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1000000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -544,27 +478,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "anthropic/claude-sonnet-5:batch",
-      "label": "Anthropic: Claude Sonnet 5 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1000000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -584,27 +508,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "low",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "anthropic/claude-sonnet-5.5:batch",
-      "label": "Anthropic: Claude Sonnet 5.5 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1000000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -624,7 +538,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -638,37 +562,57 @@
       }
     },
     {
-      "value": "bytedance-seed/seed-1.6",
-      "label": "ByteDance Seed: Seed 1.6",
-      "pricing_kind": "paid",
+      "value": "baidu/ernie-5.5-flash-preview:free",
+      "label": "Baidu: ERNIE-5.5-Flash-Preview (free)",
+      "pricing_kind": "free",
       "output_format": "json_schema",
-      "context_length": 262144,
-      "max_completion_tokens": 32768,
+      "context_length": 1024000,
+      "max_completion_tokens": 921600,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
-          "disabled",
-          "enabled"
+          "high"
         ],
-        "default": "disabled",
-        "toggle": true
+        "default": "high",
+        "mandatory": true
       }
     },
     {
-      "value": "bytedance-seed/seed-1.6-flash",
-      "label": "ByteDance Seed: Seed 1.6 Flash",
+      "value": "baidu/ernie-light-dt-1.0-intl",
+      "label": "Baidu: ERNIE-Light-DT-1.0",
       "pricing_kind": "paid",
       "output_format": "json_schema",
-      "context_length": 262144,
-      "max_completion_tokens": 32768,
+      "context_length": 1024000,
+      "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
-          "disabled",
-          "enabled"
+          "none",
+          "low",
+          "high",
+          "max"
         ],
-        "default": "disabled",
-        "toggle": true
+        "default": "none"
       }
     },
     {
@@ -678,7 +622,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -689,31 +643,23 @@
       }
     },
     {
-      "value": "bytedance-seed/seed-2.0-code",
-      "label": "ByteDance Seed: Seed-2.0-Code",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 262144,
-      "max_completion_tokens": 131072,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "none"
-      }
-    },
-    {
       "value": "bytedance-seed/seed-2.0-lite",
       "label": "ByteDance Seed: Seed-2.0-Lite",
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -732,7 +678,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -750,7 +706,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 256000,
-      "max_completion_tokens": 8192
+      "max_completion_tokens": 8192,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "cohere/command-a-plus",
@@ -759,7 +725,17 @@
       "output_format": "json_schema",
       "context_length": 192000,
       "max_completion_tokens": 64000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -775,7 +751,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 128000,
-      "max_completion_tokens": 4000
+      "max_completion_tokens": 4000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "cohere/command-r-plus-08-2024",
@@ -783,7 +769,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 128000,
-      "max_completion_tokens": 4000
+      "max_completion_tokens": 4000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "cohere/command-r7b-12-2024",
@@ -791,28 +787,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 128000,
-      "max_completion_tokens": 4000
-    },
-    {
-      "value": "stealth/crouton-alpha",
-      "label": "Crouton Alpha",
-      "pricing_kind": "free",
-      "output_format": "json_schema",
-      "context_length": 1048576,
-      "max_completion_tokens": 943718,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "minimal",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "minimal",
-        "mandatory": true
-      }
+      "max_completion_tokens": 4000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "~deepseek/deepseek-flash-latest",
@@ -821,7 +806,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -839,7 +834,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 393216,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -856,7 +861,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 163840,
-      "max_completion_tokens": 16000
+      "max_completion_tokens": 16000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "deepseek/deepseek-chat-v3-0324",
@@ -864,7 +879,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 163840,
-      "max_completion_tokens": 115200
+      "max_completion_tokens": 115200,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "deepseek/deepseek-chat-v3.1",
@@ -873,7 +898,17 @@
       "output_format": "json_schema",
       "context_length": 163840,
       "max_completion_tokens": 147456,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -890,7 +925,17 @@
       "output_format": "json_schema",
       "context_length": 163840,
       "max_completion_tokens": 147456,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -907,7 +952,17 @@
       "output_format": "json_schema",
       "context_length": 163840,
       "max_completion_tokens": 147456,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -924,7 +979,17 @@
       "output_format": "json_schema",
       "context_length": 163840,
       "max_completion_tokens": 147456,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -940,8 +1005,18 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 1048576,
-      "max_completion_tokens": 943717,
+      "max_completion_tokens": 393216,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -957,8 +1032,18 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 1048576,
-      "max_completion_tokens": 943718,
+      "max_completion_tokens": 384000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -976,7 +1061,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -993,8 +1088,18 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 1048576,
-      "max_completion_tokens": 262144,
+      "max_completion_tokens": 943717,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1012,7 +1117,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 393216,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1029,7 +1144,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1046,26 +1171,18 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 1048576,
-      "max_completion_tokens": 943718,
+      "max_completion_tokens": 393216,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "high",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "deepseek/deepseek-v4.1-flash:batch",
-      "label": "DeepSeek: DeepSeek V4.1 Flash (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1048576,
-      "max_completion_tokens": 384000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1083,7 +1200,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 393216,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1100,8 +1227,18 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 163840,
-      "max_completion_tokens": 32768,
+      "max_completion_tokens": 32000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -1115,7 +1252,17 @@
       "output_format": "json_schema",
       "context_length": 512000,
       "max_completion_tokens": 460800,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -1132,7 +1279,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 256000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -1149,7 +1306,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1167,7 +1334,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 65535,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -1184,7 +1361,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 65535,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -1201,7 +1388,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -1215,7 +1412,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -1229,26 +1436,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "minimal",
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "google/gemini-3-flash-preview:batch",
-      "label": "Google: Gemini 3 Flash Preview (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1048576,
-      "max_completion_tokens": 65536,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1267,26 +1465,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "minimal",
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "google/gemini-3.1-flash-lite:batch",
-      "label": "Google: Gemini 3.1 Flash Lite (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1048576,
-      "max_completion_tokens": 65536,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1305,7 +1494,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -1324,25 +1523,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "low",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "google/gemini-3.1-pro-preview:batch",
-      "label": "Google: Gemini 3.1 Pro Preview (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1048576,
-      "max_completion_tokens": 65536,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1360,7 +1551,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1378,26 +1579,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "minimal",
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "minimal",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "google/gemini-3.5-flash:batch",
-      "label": "Google: Gemini 3.5 Flash (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1048576,
-      "max_completion_tokens": 65536,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -1416,26 +1608,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "minimal",
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "minimal",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "google/gemini-3.5-flash-lite:batch",
-      "label": "Google: Gemini 3.5 Flash Lite (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1048576,
-      "max_completion_tokens": 65536,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -1454,26 +1637,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "minimal",
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "minimal",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "google/gemini-3.6-flash:batch",
-      "label": "Google: Gemini 3.6 Flash (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1048576,
-      "max_completion_tokens": 65536,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -1492,25 +1666,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "low",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "google/gemini-3.7-flash:batch",
-      "label": "Google: Gemini 3.7 Flash (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1048576,
-      "max_completion_tokens": 65536,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1528,25 +1694,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "low",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "google/gemini-3.8-flash:batch",
-      "label": "Google: Gemini 3.8 Flash (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1048576,
-      "max_completion_tokens": 65536,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1564,7 +1722,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1576,18 +1744,57 @@
       }
     },
     {
-      "value": "google/gemini-4-argon:batch",
-      "label": "Google: Gemini 4 Argon (batch)",
+      "value": "google/gemini-4-carbon",
+      "label": "Google: Gemini 4 Carbon",
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
           "medium",
           "high"
+        ],
+        "default": "low",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "google/gemini-4-hydrogen",
+      "label": "Google: Gemini 4 Hydrogen",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
+      "reasoning_capabilities": {
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
         ],
         "default": "low",
         "mandatory": true
@@ -1599,13 +1806,24 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 1048576,
-      "max_completion_tokens": 65536,
+      "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
           "medium",
-          "high"
+          "high",
+          "xhigh"
         ],
         "default": "low",
         "mandatory": true
@@ -1618,7 +1836,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1636,7 +1864,16 @@
       "output_format": "json_schema",
       "context_length": 131072,
       "max_completion_tokens": 16384,
-      "prompt_format": "user_only"
+      "prompt_format": "user_only",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "google/gemma-3-27b-it",
@@ -1645,7 +1882,16 @@
       "output_format": "json_schema",
       "context_length": 131072,
       "max_completion_tokens": 117964,
-      "prompt_format": "user_only"
+      "prompt_format": "user_only",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "google/gemma-3-4b-it",
@@ -1654,7 +1900,16 @@
       "output_format": "json_schema",
       "context_length": 131072,
       "max_completion_tokens": 16384,
-      "prompt_format": "user_only"
+      "prompt_format": "user_only",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "google/gemma-4-26b-a4b-it",
@@ -1662,8 +1917,18 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 32768,
+      "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -1680,7 +1945,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -1697,7 +1972,16 @@
       "output_format": "json_object",
       "context_length": 262144,
       "max_completion_tokens": 32768,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -1714,65 +1998,21 @@
       "output_format": "json_schema",
       "context_length": 131072,
       "max_completion_tokens": 117964,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
           "low",
-          "high"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "inception/mercury-2",
-      "label": "Inception: Mercury 2",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 128000,
-      "max_completion_tokens": 50000,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "inception/mercury-2.5",
-      "label": "Inception: Mercury 2.5",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 260000,
-      "max_completion_tokens": 65536,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "inception/mercury-3",
-      "label": "Inception: Mercury 3",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1000000,
-      "max_completion_tokens": 131072,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
           "high"
         ],
         "default": "none"
@@ -1785,7 +2025,17 @@
       "output_format": "json_schema",
       "context_length": 131072,
       "max_completion_tokens": 32768,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -1796,13 +2046,23 @@
       }
     },
     {
-      "value": "inclusionai/ling-3.1-flash",
-      "label": "inclusionAI: Ling 3.1 Flash",
+      "value": "inclusionai/ling-3.0-tiny",
+      "label": "inclusionAI: Ling 3.0 Tiny",
       "pricing_kind": "paid",
       "output_format": "json_schema",
-      "context_length": 1000000,
-      "max_completion_tokens": 262144,
+      "context_length": 262144,
+      "max_completion_tokens": 250000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -1813,31 +2073,57 @@
       }
     },
     {
-      "value": "liquid/lfm-2.5-2.6b",
-      "label": "LiquidAI: LFM2.5-2.6B",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 128000,
-      "max_completion_tokens": 8192,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [],
-        "default": "",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "liquid/lfm-2.5-2.6b:free",
-      "label": "LiquidAI: LFM2.5-2.6B (free)",
+      "value": "inclusionai/ling-3.2-flash:free",
+      "label": "inclusionAI: Ling 3.2 Flash (free)",
       "pricing_kind": "free",
       "output_format": "json_schema",
-      "context_length": 65536,
-      "max_completion_tokens": 8192,
+      "context_length": 1048576,
+      "max_completion_tokens": 262144,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
-        "values": [],
-        "default": "",
-        "mandatory": true
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
+    },
+    {
+      "value": "kt/midm-k-3.0-pro",
+      "label": "KT: Mi:dm K 3.0 Pro",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "context_length": 261795,
+      "max_completion_tokens": 235615,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
       }
     },
     {
@@ -1847,7 +2133,41 @@
       "output_format": "json_schema",
       "context_length": 128000,
       "max_completion_tokens": 8192,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
+      "reasoning_capabilities": {
+        "values": [],
+        "default": "",
+        "mandatory": true
+      }
+    },
+    {
+      "value": "liquid/lfm-3-1.7b",
+      "label": "LiquidAI: LFM3-1.7B",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 8192,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -1861,7 +2181,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 8192,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -1874,7 +2204,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 32768,
-      "max_completion_tokens": 4096
+      "max_completion_tokens": 4096,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "meta-llama/llama-3.1-8b-instruct",
@@ -1882,7 +2222,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 131072,
-      "max_completion_tokens": 117964
+      "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "meta-llama/llama-3.2-3b-instruct",
@@ -1890,7 +2240,16 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 131072,
-      "max_completion_tokens": 72000
+      "max_completion_tokens": 72000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "meta-llama/llama-3.3-70b-instruct",
@@ -1898,7 +2257,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 131072,
-      "max_completion_tokens": 128000
+      "max_completion_tokens": 115200,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "meta-llama/llama-4-maverick",
@@ -1906,7 +2275,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 524288,
-      "max_completion_tokens": 16384
+      "max_completion_tokens": 32768,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "meta-llama/llama-4-scout",
@@ -1914,7 +2293,48 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 1310720,
-      "max_completion_tokens": 16384
+      "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
+    },
+    {
+      "value": "meta/muse-ember",
+      "label": "Meta: Muse Ember",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
     },
     {
       "value": "meta/muse-glimmer-30b",
@@ -1923,7 +2343,17 @@
       "output_format": "json_schema",
       "context_length": 131072,
       "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -1942,7 +2372,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -1962,7 +2402,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -1982,7 +2432,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -2002,7 +2462,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -2023,7 +2493,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -2044,7 +2524,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -2063,7 +2553,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -2083,16 +2583,36 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 16384,
-      "max_completion_tokens": 14745
+      "max_completion_tokens": 14745,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "minimax/minimax-m2.5",
       "label": "MiniMax: MiniMax M2.5",
       "pricing_kind": "paid",
       "output_format": "json_schema",
-      "context_length": 204800,
+      "context_length": 198000,
       "max_completion_tokens": 32768,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -2106,7 +2626,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 512000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -2123,7 +2653,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 524288,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -2142,7 +2682,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 128000,
-      "max_completion_tokens": 102400
+      "max_completion_tokens": 102400,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "mistralai/mistral-large-2407",
@@ -2150,7 +2700,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 131072,
-      "max_completion_tokens": 104857
+      "max_completion_tokens": 104857,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "mistralai/codestral-2508",
@@ -2158,7 +2718,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 256000,
-      "max_completion_tokens": 204800
+      "max_completion_tokens": 204800,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "mistralai/devstral-2512",
@@ -2166,7 +2736,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 209715
+      "max_completion_tokens": 209715,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "mistralai/ministral-14b-2512",
@@ -2174,7 +2754,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 209715
+      "max_completion_tokens": 209715,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "mistralai/ministral-3b-2512",
@@ -2182,7 +2772,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 131072,
-      "max_completion_tokens": 104857
+      "max_completion_tokens": 104857,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "mistralai/ministral-8b-2512",
@@ -2190,7 +2790,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 209715
+      "max_completion_tokens": 209715,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "mistralai/mistral-large-2512",
@@ -2198,7 +2808,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 209715
+      "max_completion_tokens": 209715,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "mistralai/mistral-large-4-0",
@@ -2207,7 +2827,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 262144,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2222,7 +2852,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 131072,
-      "max_completion_tokens": 104857
+      "max_completion_tokens": 104857,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "mistralai/mistral-medium-3.1",
@@ -2230,7 +2870,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 131072,
-      "max_completion_tokens": 104857
+      "max_completion_tokens": 104857,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "mistralai/mistral-medium-3-5",
@@ -2239,23 +2889,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 209715,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "high"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "mistralai/mistral-medium-3-5:batch",
-      "label": "Mistral: Mistral Medium 3.5 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 262144,
-      "max_completion_tokens": 209715,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2270,7 +2914,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 131072,
-      "max_completion_tokens": 16384
+      "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "mistralai/mistral-small-24b-instruct-2501",
@@ -2278,7 +2932,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 32768,
-      "max_completion_tokens": 16384
+      "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "mistralai/mistral-small-3.1-24b-instruct",
@@ -2286,7 +2950,16 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 128000,
-      "max_completion_tokens": 102400
+      "max_completion_tokens": 102400,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "mistralai/mistral-small-3.2-24b-instruct",
@@ -2294,7 +2967,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 256000,
-      "max_completion_tokens": 16384
+      "max_completion_tokens": 26214,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "mistralai/mistral-small-2603",
@@ -2303,7 +2986,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 209715,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2318,7 +3011,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 65536,
-      "max_completion_tokens": 52428
+      "max_completion_tokens": 52428,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "mistralai/mistral-saba",
@@ -2326,7 +3029,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 32768,
-      "max_completion_tokens": 26214
+      "max_completion_tokens": 26214,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "mistralai/voxtral-small-24b-2507",
@@ -2334,7 +3047,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 32768,
-      "max_completion_tokens": 26214
+      "max_completion_tokens": 26214,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "moonshotai/kimi-k2-0905",
@@ -2342,7 +3065,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 98304
+      "max_completion_tokens": 98304,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "moonshotai/kimi-k2-thinking",
@@ -2351,7 +3084,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 98304,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -2365,7 +3108,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -2382,7 +3135,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -2399,7 +3162,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -2413,25 +3186,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "high",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "moonshotai/kimi-k3:batch",
-      "label": "MoonshotAI: Kimi K3 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1048576,
-      "max_completion_tokens": 16384,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2449,7 +3214,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2467,7 +3242,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2484,7 +3269,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 131072
+      "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "morph/morph-v3-large",
@@ -2492,7 +3287,44 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 131072
+      "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
+    },
+    {
+      "value": "motif-technologies/motif-3",
+      "label": "Motif Technologies: Motif 3",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
+      "reasoning_capabilities": {
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "default": "disabled",
+        "toggle": true
+      }
     },
     {
       "value": "gryphe/mythomax-l2-13b",
@@ -2500,7 +3332,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 8192,
-      "max_completion_tokens": 3686
+      "max_completion_tokens": 3686,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "nex-agi/nex-n2.5-mini",
@@ -2509,7 +3351,16 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2526,7 +3377,16 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2537,13 +3397,50 @@
       }
     },
     {
+      "value": "nex-agi/nex-n2.6",
+      "label": "Nex AGI: Nex-N2.6",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "context_length": 262144,
+      "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
+      "reasoning_capabilities": {
+        "values": [
+          "medium",
+          "high"
+        ],
+        "default": "medium",
+        "mandatory": true
+      }
+    },
+    {
       "value": "nvidia/nemotron-3-nano-30b-a3b",
       "label": "NVIDIA: Nemotron 3 Nano 30B A3B",
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -2558,9 +3455,19 @@
       "label": "NVIDIA: Nemotron 3 Super",
       "pricing_kind": "paid",
       "output_format": "json_schema",
-      "context_length": 1048576,
-      "max_completion_tokens": 262144,
+      "context_length": 262144,
+      "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2577,7 +3484,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 182520,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2594,7 +3511,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -2610,8 +3537,18 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 1048576,
-      "max_completion_tokens": 235929,
+      "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -2628,7 +3565,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -2645,7 +3592,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -2664,7 +3621,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 400000,
-      "max_completion_tokens": 128000
+      "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "~openai/gpt-luna-latest",
@@ -2673,7 +3640,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2693,7 +3670,17 @@
       "output_format": "json_schema",
       "context_length": 400000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2712,7 +3699,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -2732,7 +3729,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -2746,44 +3753,22 @@
       }
     },
     {
-      "value": "openai/gpt-3.5-turbo-0613",
-      "label": "OpenAI: GPT-3.5 Turbo (older v0613)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 4095,
-      "max_completion_tokens": 3685
-    },
-    {
-      "value": "openai/gpt-3.5-turbo-16k",
-      "label": "OpenAI: GPT-3.5 Turbo 16k",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 16385,
-      "max_completion_tokens": 4096
-    },
-    {
-      "value": "openai/gpt-4-turbo:batch",
-      "label": "OpenAI: GPT-4 Turbo (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 128000,
-      "max_completion_tokens": 4096
-    },
-    {
       "value": "openai/gpt-4.1",
       "label": "OpenAI: GPT-4.1",
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 1047576,
-      "max_completion_tokens": 32768
-    },
-    {
-      "value": "openai/gpt-4.1:batch",
-      "label": "OpenAI: GPT-4.1 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1047576,
-      "max_completion_tokens": 32768
+      "max_completion_tokens": 32768,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "openai/gpt-4.1-mini",
@@ -2791,31 +3776,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 1047576,
-      "max_completion_tokens": 32768
-    },
-    {
-      "value": "openai/gpt-4.1-mini:batch",
-      "label": "OpenAI: GPT-4.1 Mini (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1047576,
-      "max_completion_tokens": 32768
-    },
-    {
-      "value": "openai/gpt-4.1-nano",
-      "label": "OpenAI: GPT-4.1 Nano",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1047576,
-      "max_completion_tokens": 942818
-    },
-    {
-      "value": "openai/gpt-4.1-nano:batch",
-      "label": "OpenAI: GPT-4.1 Nano (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1047576,
-      "max_completion_tokens": 32768
+      "max_completion_tokens": 32768,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "openai/gpt-4o",
@@ -2823,15 +3794,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 128000,
-      "max_completion_tokens": 16384
-    },
-    {
-      "value": "openai/gpt-4o-2024-05-13",
-      "label": "OpenAI: GPT-4o (2024-05-13)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 128000,
-      "max_completion_tokens": 4096
+      "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "openai/gpt-4o-2024-08-06",
@@ -2839,7 +3812,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 128000,
-      "max_completion_tokens": 16384
+      "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "openai/gpt-4o-2024-11-20",
@@ -2847,15 +3830,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 128000,
-      "max_completion_tokens": 16384
-    },
-    {
-      "value": "openai/gpt-4o:batch",
-      "label": "OpenAI: GPT-4o (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 128000,
-      "max_completion_tokens": 16384
+      "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "openai/gpt-4o-mini",
@@ -2863,7 +3848,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 128000,
-      "max_completion_tokens": 16384
+      "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "openai/gpt-4o-mini-2024-07-18",
@@ -2871,15 +3866,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 128000,
-      "max_completion_tokens": 16384
-    },
-    {
-      "value": "openai/gpt-4o-mini:batch",
-      "label": "OpenAI: GPT-4o-mini (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 128000,
-      "max_completion_tokens": 16384
+      "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "openai/gpt-5",
@@ -2888,26 +3885,17 @@
       "output_format": "json_schema",
       "context_length": 400000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "minimal",
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "minimal",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/gpt-5:batch",
-      "label": "OpenAI: GPT-5 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 400000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -2926,26 +3914,17 @@
       "output_format": "json_schema",
       "context_length": 400000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "minimal",
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "minimal",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/gpt-5-mini:batch",
-      "label": "OpenAI: GPT-5 Mini (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 400000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -2964,26 +3943,17 @@
       "output_format": "json_schema",
       "context_length": 400000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "minimal",
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "minimal",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/gpt-5-nano:batch",
-      "label": "OpenAI: GPT-5 Nano (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 400000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -3002,23 +3972,17 @@
       "output_format": "json_schema",
       "context_length": 400000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "high"
-        ],
-        "default": "high",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/gpt-5-pro:batch",
-      "label": "OpenAI: GPT-5 Pro (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 400000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "high"
@@ -3034,7 +3998,17 @@
       "output_format": "json_schema",
       "context_length": 400000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3043,79 +4017,6 @@
           "high"
         ],
         "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-5.1:batch",
-      "label": "OpenAI: GPT-5.1 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 400000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-5.1-codex",
-      "label": "OpenAI: GPT-5.1-Codex",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 400000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "low",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/gpt-5.1-codex-max",
-      "label": "OpenAI: GPT-5.1-Codex-Max",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 400000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "medium",
-          "high",
-          "xhigh"
-        ],
-        "default": "low",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/gpt-5.1-codex-mini",
-      "label": "OpenAI: GPT-5.1-Codex-Mini",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 400000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "low",
-        "mandatory": true
       }
     },
     {
@@ -3125,7 +4026,17 @@
       "output_format": "json_schema",
       "context_length": 400000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3136,33 +4047,6 @@
         ],
         "default": "none"
       }
-    },
-    {
-      "value": "openai/gpt-5.2:batch",
-      "label": "OpenAI: GPT-5.2 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 400000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-5.2-chat",
-      "label": "OpenAI: GPT-5.2 Chat",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 128000,
-      "max_completion_tokens": 32000
     },
     {
       "value": "openai/gpt-5.2-pro",
@@ -3171,7 +4055,17 @@
       "output_format": "json_schema",
       "context_length": 400000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "medium",
@@ -3179,43 +4073,6 @@
           "xhigh"
         ],
         "default": "medium",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/gpt-5.2-pro:batch",
-      "label": "OpenAI: GPT-5.2 Pro (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 400000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "medium",
-          "high",
-          "xhigh"
-        ],
-        "default": "medium",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/gpt-5.2-codex",
-      "label": "OpenAI: GPT-5.2-Codex",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 400000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "medium",
-          "high",
-          "xhigh"
-        ],
-        "default": "low",
         "mandatory": true
       }
     },
@@ -3226,7 +4083,17 @@
       "output_format": "json_schema",
       "context_length": 400000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3245,26 +4112,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-5.4:batch",
-      "label": "OpenAI: GPT-5.4 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3283,26 +4141,17 @@
       "output_format": "json_schema",
       "context_length": 400000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-5.4-mini:batch",
-      "label": "OpenAI: GPT-5.4 Mini (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 400000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3321,26 +4170,17 @@
       "output_format": "json_schema",
       "context_length": 400000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-5.4-nano:batch",
-      "label": "OpenAI: GPT-5.4 Nano (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 400000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3359,25 +4199,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "medium",
-          "high",
-          "xhigh"
-        ],
-        "default": "medium",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/gpt-5.4-pro:batch",
-      "label": "OpenAI: GPT-5.4 Pro (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "medium",
@@ -3395,26 +4227,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-5.5:batch",
-      "label": "OpenAI: GPT-5.5 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3433,25 +4256,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "medium",
-          "high",
-          "xhigh"
-        ],
-        "default": "medium",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/gpt-5.5-pro:batch",
-      "label": "OpenAI: GPT-5.5 Pro (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "medium",
@@ -3469,27 +4284,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-5.6-luna:batch",
-      "label": "OpenAI: GPT-5.6 Luna (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3509,27 +4314,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-5.6-luna-pro:batch",
-      "label": "OpenAI: GPT-5.6 Luna Pro (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3549,27 +4344,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-5.6-sol:batch",
-      "label": "OpenAI: GPT-5.6 Sol (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3589,27 +4374,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-5.6-sol-pro:batch",
-      "label": "OpenAI: GPT-5.6 Sol Pro (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3629,27 +4404,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-5.6-terra:batch",
-      "label": "OpenAI: GPT-5.6 Terra (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3669,27 +4434,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-5.6-terra-pro:batch",
-      "label": "OpenAI: GPT-5.6 Terra Pro (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3709,27 +4464,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "low",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/gpt-6-astra:batch",
-      "label": "OpenAI: GPT-6 Astra (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3749,27 +4494,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "low",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/gpt-6-astra-pro:batch",
-      "label": "OpenAI: GPT-6 Astra Pro (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3789,27 +4524,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-6-luna:batch",
-      "label": "OpenAI: GPT-6 Luna (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3829,27 +4554,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-6-luna-pro:batch",
-      "label": "OpenAI: GPT-6 Luna Pro (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3869,27 +4584,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-6-sol:batch",
-      "label": "OpenAI: GPT-6 Sol (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3909,27 +4614,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-6-sol-pro:batch",
-      "label": "OpenAI: GPT-6 Sol Pro (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -3949,27 +4644,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "low",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/gpt-6.1-sol:batch",
-      "label": "OpenAI: GPT-6.1 Sol (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -3989,27 +4674,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "low",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/gpt-6.1-sol-pro:batch",
-      "label": "OpenAI: GPT-6.1 Sol Pro (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -4029,27 +4704,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "openai/gpt-6.1-terra:batch",
-      "label": "OpenAI: GPT-6.1 Terra (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -4069,27 +4734,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "low",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/gpt-6.1-terra-pro:batch",
-      "label": "OpenAI: GPT-6.1 Terra Pro (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -4109,25 +4764,17 @@
       "output_format": "json_schema",
       "context_length": 131072,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "low",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/gpt-oss-120b:batch",
-      "label": "OpenAI: gpt-oss-120b (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 131072,
-      "max_completion_tokens": 117964,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -4145,25 +4792,17 @@
       "output_format": "json_schema",
       "context_length": 131072,
       "max_completion_tokens": 117964,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "low",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/gpt-oss-20b:batch",
-      "label": "OpenAI: gpt-oss-20b (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 131072,
-      "max_completion_tokens": 117964,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -4181,7 +4820,17 @@
       "output_format": "json_schema",
       "context_length": 131072,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -4195,35 +4844,17 @@
       "output_format": "json_schema",
       "context_length": 200000,
       "max_completion_tokens": 100000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [],
-        "default": "",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/o3:batch",
-      "label": "OpenAI: o3 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 200000,
-      "max_completion_tokens": 100000,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [],
-        "default": "",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/o3-mini:batch",
-      "label": "OpenAI: o3 Mini (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 200000,
-      "max_completion_tokens": 100000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -4237,21 +4868,17 @@
       "output_format": "json_schema",
       "context_length": 200000,
       "max_completion_tokens": 100000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [],
-        "default": "",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "openai/o4-mini:batch",
-      "label": "OpenAI: o4 Mini (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 200000,
-      "max_completion_tokens": 100000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -4265,7 +4892,48 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "particle-ai/particle-1:free",
+      "label": "Particle AI: Particle-1 (free)",
+      "pricing_kind": "free",
+      "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -4286,7 +4954,16 @@
       "output_format": "json_schema",
       "context_length": 32768,
       "max_completion_tokens": 8192,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4303,7 +4980,16 @@
       "output_format": "json_schema",
       "context_length": 36864,
       "max_completion_tokens": 8192,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -4322,7 +5008,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 32768,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -4339,7 +5035,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4355,7 +5061,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 32768,
-      "max_completion_tokens": 16384
+      "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "qwen/qwen-plus",
@@ -4363,15 +5079,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 1000000,
-      "max_completion_tokens": 32768
-    },
-    {
-      "value": "qwen/qwen-2.5-7b-instruct",
-      "label": "Qwen: Qwen2.5 7B Instruct",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 32768,
-      "max_completion_tokens": 29491
+      "max_completion_tokens": 32768,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "qwen/qwen2.5-vl-72b-instruct",
@@ -4379,7 +5097,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 128000,
-      "max_completion_tokens": 115200
+      "max_completion_tokens": 115200,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "qwen/qwen3-14b",
@@ -4388,7 +5116,17 @@
       "output_format": "json_schema",
       "context_length": 40960,
       "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4404,7 +5142,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 117964
+      "max_completion_tokens": 117964,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "qwen/qwen3-30b-a3b",
@@ -4413,7 +5161,17 @@
       "output_format": "json_schema",
       "context_length": 40960,
       "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4429,7 +5187,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 235929
+      "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "qwen/qwen3-32b",
@@ -4438,7 +5206,17 @@
       "output_format": "json_schema",
       "context_length": 131072,
       "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4454,7 +5232,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 235929
+      "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "qwen/qwen3-coder",
@@ -4462,7 +5250,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 65536
+      "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "qwen/qwen3-coder-next",
@@ -4470,7 +5268,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 235929
+      "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "qwen/qwen3-next-80b-a3b-instruct",
@@ -4478,7 +5286,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 235929
+      "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "qwen/qwen3-vl-235b-a22b-instruct",
@@ -4486,7 +5304,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 32768
+      "max_completion_tokens": 32768,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "qwen/qwen3-vl-30b-a3b-instruct",
@@ -4494,21 +5322,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 16384
-    },
-    {
-      "value": "qwen/qwen3-vl-30b-a3b-thinking",
-      "label": "Qwen: Qwen3 VL 30B A3B Thinking",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 262144,
-      "max_completion_tokens": 235929,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [],
-        "default": "",
-        "mandatory": true
-      }
+      "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "qwen/qwen3-vl-8b-instruct",
@@ -4516,7 +5340,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 235929
+      "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "qwen/qwen3.5-397b-a17b",
@@ -4524,8 +5358,18 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 235929,
+      "max_completion_tokens": 64000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4542,7 +5386,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4559,7 +5413,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4576,7 +5440,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4593,7 +5467,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 81920,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4610,7 +5494,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 81920,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4626,8 +5520,18 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 235929,
+      "max_completion_tokens": 40960,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4644,7 +5548,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4660,8 +5574,18 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 262144,
-      "max_completion_tokens": 65536,
+      "max_completion_tokens": 81920,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4678,7 +5602,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4695,7 +5629,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4712,7 +5656,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4729,7 +5683,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4746,24 +5710,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "disabled",
-          "enabled"
-        ],
-        "default": "disabled",
-        "toggle": true
-      }
-    },
-    {
-      "value": "qwen/qwen3.7-plus:batch",
-      "label": "Qwen: Qwen3.7 Plus (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 262144,
-      "max_completion_tokens": 131072,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4780,7 +5737,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -4798,7 +5765,17 @@
       "output_format": "json_schema",
       "context_length": 1024000,
       "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -4816,7 +5793,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4833,7 +5820,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -4853,7 +5850,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "minimal",
@@ -4873,7 +5880,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4890,7 +5907,16 @@
       "output_format": "json_object",
       "context_length": 262144,
       "max_completion_tokens": 235929,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -4903,8 +5929,18 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 1048576,
-      "max_completion_tokens": 131072,
+      "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -4924,6 +5960,15 @@
       "output_format": "json_schema",
       "context_length": 16384,
       "max_completion_tokens": 14745,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -4940,7 +5985,16 @@
       "output_format": "json_schema",
       "context_length": 65536,
       "max_completion_tokens": 58982,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -4953,76 +6007,43 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 6144,
-      "max_completion_tokens": 5529
+      "max_completion_tokens": 5529,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
-      "value": "sakana/fugu-max",
-      "label": "Sakana: Fugu Max",
+      "value": "ricursiveai/ripple-65b-preview",
+      "label": "Ricursive: Ripple 65B Preview",
       "pricing_kind": "paid",
       "output_format": "json_schema",
-      "context_length": 1000000,
-      "max_completion_tokens": 128000,
+      "context_length": 1048576,
+      "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
-          "high",
-          "xhigh",
-          "max"
+          "disabled",
+          "enabled"
         ],
-        "default": "high",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "sakana/fugu-ultra",
-      "label": "Sakana: Fugu Ultra",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1000000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "high",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "sakana/fugu-ultra-v2",
-      "label": "Sakana: Fugu Ultra v2",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1000000,
-      "max_completion_tokens": 128000,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "high",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "sakana/sakana-namazu",
-      "label": "Sakana: Sakana Namazu",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 262144,
-      "max_completion_tokens": 65536,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "high"
-        ],
-        "default": "none"
+        "default": "disabled",
+        "toggle": true
       }
     },
     {
@@ -5031,7 +6052,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 8192,
-      "max_completion_tokens": 7372
+      "max_completion_tokens": 7372,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "sao10k/l3.1-euryale-70b",
@@ -5039,7 +6070,16 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 131072,
-      "max_completion_tokens": 16384
+      "max_completion_tokens": 16384,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "x-ai/grok-4.20",
@@ -5048,7 +6088,17 @@
       "output_format": "json_schema",
       "context_length": 2000000,
       "max_completion_tokens": 1800000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -5065,7 +6115,17 @@
       "output_format": "json_schema",
       "context_length": 2000000,
       "max_completion_tokens": 1800000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -5084,25 +6144,17 @@
       "output_format": "json_schema",
       "context_length": 1000000,
       "max_completion_tokens": 900000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "none",
-          "low",
-          "medium",
-          "high"
-        ],
-        "default": "none"
-      }
-    },
-    {
-      "value": "x-ai/grok-4.3:batch",
-      "label": "SpaceXAI: Grok 4.3 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1000000,
-      "max_completion_tokens": 900000,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -5120,7 +6172,17 @@
       "output_format": "json_schema",
       "context_length": 500000,
       "max_completion_tokens": 450000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -5138,7 +6200,17 @@
       "output_format": "json_schema",
       "context_length": 500000,
       "max_completion_tokens": 450000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -5157,7 +6229,17 @@
       "output_format": "json_schema",
       "context_length": 500000,
       "max_completion_tokens": 450000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -5176,7 +6258,17 @@
       "output_format": "json_schema",
       "context_length": 256000,
       "max_completion_tokens": 230400,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [],
         "default": "",
@@ -5190,7 +6282,17 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 230400,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -5206,9 +6308,19 @@
       "label": "StepFun: Step 5 Preview",
       "pricing_kind": "paid",
       "output_format": "json_schema",
-      "context_length": 1048576,
+      "context_length": 1000000,
       "max_completion_tokens": 64000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -5220,29 +6332,22 @@
       }
     },
     {
-      "value": "tencent/hunyuan-a13b-instruct",
-      "label": "Tencent: Hunyuan A13B Instruct",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 131072,
-      "max_completion_tokens": 117964,
-      "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "disabled",
-          "enabled"
-        ],
-        "default": "disabled",
-        "toggle": true
-      }
-    },
-    {
       "value": "tencent/hy-mt2-30b-a3b",
       "label": "Tencent: Hy-MT2-30B-A3B",
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 8192,
-      "max_completion_tokens": 4096
+      "max_completion_tokens": 4096,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "tencent/hy-mt2-7b",
@@ -5250,7 +6355,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 8192,
-      "max_completion_tokens": 4096
+      "max_completion_tokens": 4096,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "tencent/hy3",
@@ -5259,7 +6374,44 @@
       "output_format": "json_schema",
       "context_length": 262144,
       "max_completion_tokens": 128000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
+      "reasoning_capabilities": {
+        "values": [
+          "none",
+          "low",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    {
+      "value": "tencent/hy4",
+      "label": "Tencent: Hy4",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -5276,7 +6428,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 64000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -5292,7 +6454,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 131072,
-      "max_completion_tokens": 117964
+      "max_completion_tokens": 117964,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "thedrummer/skyfall-36b-v2",
@@ -5300,7 +6472,17 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 32768,
-      "max_completion_tokens": 29491
+      "max_completion_tokens": 29491,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
     },
     {
       "value": "thedrummer/unslopnemo-12b",
@@ -5308,7 +6490,46 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 1024000,
-      "max_completion_tokens": 819200
+      "max_completion_tokens": 819200,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "structured_outputs"
+      ],
+      "reasoning_supported": false,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ]
+    },
+    {
+      "value": "thinkingmachines/inkling-2-small",
+      "label": "Thinking Machines: Inkling 2 Small",
+      "pricing_kind": "paid",
+      "output_format": "json_schema",
+      "context_length": 1048576,
+      "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
+      "reasoning_capabilities": {
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "max"
+        ],
+        "default": "minimal",
+        "mandatory": true
+      }
     },
     {
       "value": "upstage/solar-mini4",
@@ -5317,7 +6538,17 @@
       "output_format": "json_schema",
       "context_length": 524288,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -5338,7 +6569,17 @@
       "output_format": "json_schema",
       "context_length": 524288,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -5359,7 +6600,17 @@
       "output_format": "json_schema",
       "context_length": 500000,
       "max_completion_tokens": 450000,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -5376,9 +6627,19 @@
       "label": "Xiaomi: MiMo-V2.5",
       "pricing_kind": "paid",
       "output_format": "json_schema",
-      "context_length": 1050000,
+      "context_length": 1000000,
       "max_completion_tokens": 65536,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -5393,9 +6654,19 @@
       "label": "Xiaomi: MiMo-V2.5-Pro",
       "pricing_kind": "paid",
       "output_format": "json_schema",
-      "context_length": 1050000,
-      "max_completion_tokens": 235929,
+      "context_length": 1024000,
+      "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -5412,7 +6683,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -5429,7 +6710,17 @@
       "output_format": "json_schema",
       "context_length": 1050000,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -5446,7 +6737,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -5463,7 +6764,17 @@
       "output_format": "json_schema",
       "context_length": 204800,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -5480,7 +6791,17 @@
       "output_format": "json_schema",
       "context_length": 204800,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -5497,7 +6818,17 @@
       "output_format": "json_schema",
       "context_length": 200000,
       "max_completion_tokens": 117964,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -5514,7 +6845,17 @@
       "output_format": "json_schema",
       "context_length": 204800,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -5530,8 +6871,18 @@
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 204800,
-      "max_completion_tokens": 131072,
+      "max_completion_tokens": 182476,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "disabled",
@@ -5548,7 +6899,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "none",
@@ -5565,25 +6926,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
-      "reasoning_capabilities": {
-        "values": [
-          "low",
-          "high",
-          "max"
-        ],
-        "default": "low",
-        "mandatory": true
-      }
-    },
-    {
-      "value": "z-ai/glm-5.3:batch",
-      "label": "Z.ai: GLM 5.3 (batch)",
-      "pricing_kind": "paid",
-      "output_format": "json_schema",
-      "context_length": 1048576,
-      "max_completion_tokens": 131072,
-      "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -5601,7 +6954,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -5613,13 +6976,23 @@
       }
     },
     {
-      "value": "z-ai/glm-5.3-flash:batch",
-      "label": "Z.ai: GLM 5.3 Flash (batch)",
+      "value": "z-ai/glm-5.3-flashx",
+      "label": "Z.ai: GLM 5.3 FlashX",
       "pricing_kind": "paid",
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -5637,7 +7010,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -5655,7 +7038,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 131072,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -5673,7 +7066,17 @@
       "output_format": "json_schema",
       "context_length": 1048576,
       "max_completion_tokens": 943718,
+      "prompt_format": "system_user",
+      "parameters": [
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "reasoning"
+      ],
       "reasoning_supported": true,
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
       "reasoning_capabilities": {
         "values": [
           "low",
@@ -5684,6 +7087,5 @@
         "mandatory": true
       }
     }
-  ],
-  "free_models_checked_at": "2026-11-08"
+  ]
 }

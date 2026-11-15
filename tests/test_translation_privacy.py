@@ -39,6 +39,15 @@ def test_new_lfm3_requires_its_own_explicit_consent():
     assert privacy.allowed(current)
 
 
+def test_particle_live_audit_requirement_is_exposed_without_auto_granting():
+    current = profile("particle-ai/particle-1:free")
+    assert privacy.required(current) and not privacy.allowed(current)
+    privacy.grant(profile())  # Another model's existing permission must not carry over.
+    assert not privacy.allowed(current)
+    privacy.grant(current)
+    assert privacy.allowed(current)
+
+
 @pytest.mark.parametrize("body", ["broken", "[]", '{"version":2,"grants":[]}',
                                   '{"version":1,"grants":null}', "x" * (256 * 1024 + 1)],
                          ids=["broken", "array", "wrong-version", "null-grants", "oversized"])

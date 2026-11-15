@@ -109,7 +109,7 @@ def test_pipeline_passes_selected_reasoning_and_reuses_matching_completed_cues(c
         translation.translate_segments(str(source), str(output), "fixture", reasoning_effort=effort, **options)
         assert send.call_count == count
         assert send.call_args.args[2]["reasoning"] == {"effort": effort}
-    assert send.call_args.args[2]["max_output_tokens"] == 2048  # Low remains bounded, no forced upgrade.
+    assert send.call_args.args[2]["max_output_tokens"] == 10240  # Low effort, bounded reasoning + JSON headroom.
 
 
 def test_gemini_explicit_thinking_level_reaches_native_payload():

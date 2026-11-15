@@ -19,8 +19,10 @@ Rectangle {
         : tone === "success" ? Theme.success : Theme.interactive
 
     implicitHeight: dismissed ? 0 : Math.max(52, bannerContent.implicitHeight + 20)
+    Layout.preferredHeight: implicitHeight
+    Layout.maximumHeight: dismissed ? 0 : Number.POSITIVE_INFINITY
     visible: !dismissed
-    color: tone === "danger" ? Theme.dangerMuted
+    color: dismissed ? "transparent" : tone === "danger" ? Theme.dangerMuted
         : tone === "warning" ? Theme.warningMuted
         : tone === "success" ? Theme.successMuted : Theme.interactiveMuted
     border.width: dismissed ? 0 : 1

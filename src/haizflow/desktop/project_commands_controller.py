@@ -1205,9 +1205,9 @@ class ProjectCommandsController:
                               recognition=asr_model, translation=selected_translation_model, voice=provider):
             QMessageBox.warning(None, "Đang dùng chế độ CPU", "Chọn model CPU hoặc chuyển sang GPU trong Cài đặt → Chung.")
             return False
-        from haizflow.core.translation_models import is_api_model, translation_provider
+        from haizflow.core.translation_models import GEMINI_MODELS, LOCAL_MODELS, is_api_model, translation_provider
 
-        if selected_translation_model not in {"auto", "q4", "full", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"} and not is_api_model(selected_translation_model):
+        if selected_translation_model not in LOCAL_MODELS | GEMINI_MODELS and not is_api_model(selected_translation_model):
             return False
         capabilities = getattr(host, "_hardware_capabilities", None)
         from haizflow.core.model_choices import heavy_gpu_choice_blocked, project_translation_choice

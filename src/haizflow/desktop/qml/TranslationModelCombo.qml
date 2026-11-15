@@ -22,11 +22,7 @@ Item {
         {label: qsTr("HY-MT2 CPU · Q4"), value: "q4"},
         {label: qsTr("HY-MT2 GPU · đầy đủ"), value: "full"}
     ]
-    readonly property var geminiModels: [
-        {label: qsTr("Gemini 3.1 Flash-Lite · giá thấp"), value: "gemini-3.1-flash-lite"},
-        {label: qsTr("Gemini 3.5 Flash-Lite · tiết kiệm"), value: "gemini-3.5-flash-lite"},
-        {label: qsTr("Gemini 3.8 Flash · chất lượng cao"), value: "gemini-3.8-flash", available: false}
-    ]
+    readonly property var geminiModels: api && api.geminiModels ? api.geminiModels : []
     readonly property bool externalProvider: activeProvider.length > 0 && activeProvider !== "hymt2" && activeProvider !== "gemini"
     readonly property int rowHeight: externalProvider ? 56 : 44
     readonly property var connections: profiles.filter(function(row) { return row.provider === root.activeProvider; })
@@ -37,6 +33,10 @@ Item {
         : activeProvider === "gemini" ? geminiModels
         : !connectionExists || !api ? []
         : connectionOptions()
+    onActiveConnectionChanged: {
+        if (activeProvider === "openrouter" && activeConnection && api)
+            api.ensureConnectionModels(activeConnection);
+    }
     readonly property string searchQuery: modelSearch.text.trim().toLowerCase()
     readonly property var visibleOptions: activeProvider.length === 0 ? providers
         : activeProvider !== "openrouter" || searchQuery.length === 0 ? modelOptions
@@ -80,6 +80,7 @@ Item {
         return -1;
     }
     function connectionOptions() {
+        const revision = api ? api.reasoningRevision : 0;
         const options = (ownCatalog && (catalogState === "ready" || catalogState === "partial")
             ? api.catalogOptions : api.connectionModels(activeConnection)).slice();
         if (activeProvider !== "openrouter" && selectedModel.split(":")[1] === activeConnection && selectedApiModel
@@ -118,6 +119,8 @@ Item {
         const selectedId = selectedModel.indexOf("api:") === 0 ? selectedModel.split(":")[1] : "";
         activeConnection = matches.some(function(row) { return row.id === selectedId; })
             ? selectedId : matches.length ? matches[0].id : "";
+        if (provider === "openrouter" && activeConnection && api)
+            api.ensureConnectionModels(activeConnection);
         resetListPosition();
         Qt.callLater(root.resetListPosition);
         if (externalProvider && !connectionExists) setupApiButton.forceActiveFocus();
@@ -323,7 +326,9 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     visible: text.length > 0
-                    text: root.catalogState === "loading" ? qsTr("Đang tải…")
+                    text: root.activeProvider === "openrouter" && root.api && root.api.routerRefreshing
+                            ? qsTr("Đang cập nhật danh sách…")
+                        : root.catalogState === "loading" ? qsTr("Đang tải…")
                         : root.catalogState === "partial" ? qsTr("Đã tải một phần danh sách model.")
                         : ["auth", "error", "invalid", "unsupported"].indexOf(root.catalogState) !== -1
                             ? qsTr("Không tải được danh sách. Kiểm tra API key trong Cài đặt.")
@@ -358,6 +363,10 @@ Item {
                     enabled: modelData.available !== false
                     highlighted: list.currentIndex === index
                     Accessible.name: modelData.label
+                    Accessible.description: pricingHint
+                    readonly property string pricingHint: root.activeProvider === "gemini"
+                        && modelData.pricing_kind === "free"
+                        ? qsTr("Có hạn mức miễn phí. Có thể tính phí nếu key đã bật thanh toán.") : ""
                     readonly property bool chosen: root.activeProvider.length === 0 ? index === root.currentIndex
                         : root.externalProvider ? root.activeConnection === root.selectedModel.split(":")[1]
                             && modelData.value === root.selectedApiModel : modelData.value === root.selectedModel
@@ -387,14 +396,18 @@ Item {
                             }
                         }
                         Text {
-                            objectName: "openRouterModelPricingLabel"
-                            visible: root.activeProvider === "openrouter"
+                            objectName: root.activeProvider === "gemini" ? "geminiModelPricingLabel" : "openRouterModelPricingLabel"
+                            visible: root.activeProvider === "openrouter" || root.activeProvider === "gemini"
                             text: row.modelData.pricing_kind === "free" ? qsTr("Miễn phí")
                                 : row.modelData.pricing_kind === "paid" ? qsTr("Tính phí") : qsTr("Chưa rõ phí")
                             color: row.modelData.pricing_kind === "free" ? Theme.success : Theme.textMuted
                             font.family: Theme.fontFamily
                             font.pixelSize: TypeScale.metadata
                             textFormat: Text.PlainText
+                            HoverHandler { id: pricingHover }
+                            ToolTip.visible: pricingHover.hovered && row.pricingHint.length > 0
+                            ToolTip.text: row.pricingHint
+                            ToolTip.delay: 600
                         }
                         AppIcon {
                             Layout.preferredWidth: Theme.iconSmall

@@ -118,6 +118,9 @@ def add(provider: str, label: str, key: str, model: str = "", base_url: str = ""
     if output_format not in {"json_object", "json_schema", "prompt"}:
         raise ValueError("Định dạng kết quả không hợp lệ.")
     endpoint = normalized_url(base_url) if provider == "custom" else PROVIDERS[provider]["base_url"]
+    if provider == "custom" and endpoint.endswith(("/chat/completions", "/responses")):
+        raise ValueError("Base URL chỉ là đường dẫn gốc API (ví dụ https://example.com/v1), "
+                         "không kèm /chat/completions hoặc /responses.")
     identifier = uuid.uuid4().hex
     row = {"id": identifier, "provider": provider, "label": label, "model": model, "base_url": endpoint,
            "format": output_format if provider == "custom" else

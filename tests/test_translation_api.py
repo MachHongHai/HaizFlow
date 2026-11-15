@@ -15,6 +15,9 @@ from haizflow.services import translation_connections as connections
 @pytest.fixture
 def store(tmp_path, monkeypatch):
     from haizflow.services import translation_privacy
+    # Adapter/transport tests isolate discovery; production preflight has its
+    # own public-GET and capability-drift integration tests.
+    monkeypatch.setattr("haizflow.services.translation_model_guard.prepare", lambda *_args, **_kwargs: None)
 
     monkeypatch.setattr(translation_privacy, "_PATH", tmp_path / "consent.json")
     secrets = {}
@@ -248,15 +251,14 @@ def test_unavailable_r1_free_explains_endpoint_error_without_retry_or_paid_fallb
     if body_error:
         send = Mock(return_value={"error": {"code": 404, "message": "private secret"}})
     monkeypatch.setattr(api, "_json_request", send)
-    with pytest.raises(RuntimeError, match="không có endpoint khả dụng") as caught:
+    with pytest.raises(RuntimeError, match="không còn endpoint khả dụng") as caught:
         api.translate_texts(["Hello."], model=choice, source_language="en", target_language="vi", video_id="")
-    assert "404" in str(caught.value) and "secret" not in str(caught.value)
-    assert send.call_count == 1
-    payload = send.call_args.args[2]
-    assert payload["model"] == "deepseek/deepseek-r1:free" and "models" not in payload
+    assert "secret" not in str(caught.value)
+    send.assert_not_called()  # Known retired routes are rejected before any API traffic.
 
 
-@pytest.mark.parametrize("model", ["nvidia/nemotron-3.5-super-vl:free", "liquid/lfm-2.5-2.6b:free"])
+@pytest.mark.parametrize("model", ["nvidia/nemotron-3.5-super-vl:free", "liquid/lfm-2.5-2.6b:free",
+                                 "liquid/lfm-3-1.7b:free", "particle-ai/particle-1:free"])
 def test_data_collection_models_require_explicit_scoped_consent_before_sending(store, monkeypatch, model):
     from haizflow.services import translation_privacy
 
@@ -274,7 +276,8 @@ def test_data_collection_models_require_explicit_scoped_consent_before_sending(s
                                video_id="") == ["Xin chào."]
     payload = send.call_args.args[2]
     assert payload["model"] == model and "models" not in payload
-    assert payload["provider"] == {"require_parameters": True, "allow_fallbacks": True, "data_collection": "allow"}
+    assert {key: value for key, value in payload["provider"].items() if key != "max_price"} == {
+        "require_parameters": True, "allow_fallbacks": True, "data_collection": "allow"}
     assert send.call_count == 1
     other = "api:" + identifier + ":dots-studio/dots-3-note-preview:free"
     api.translate_texts(["Hello."], model=other, source_language="en", target_language="vi", video_id="")
@@ -542,6 +545,73 @@ def test_model_list_connection_check_is_readonly_and_no_inference_request(store,
     assert send.call_args.kwargs == {"timeout": 15}
 
 
+@pytest.mark.parametrize("provider", ["openai", "deepseek", "openrouter", "custom"])
+@pytest.mark.parametrize("fault,expected", [(401, "invalid"), ("invalid_api_key", "invalid"),
+    ("permission_denied", "invalid"), (402, "unavailable"), (429, "unavailable"),
+    ("server_error", "unavailable"), (None, "unavailable")])
+@pytest.mark.parametrize("model_required", [True, False])
+def test_connection_check_rejects_http200_error_envelopes(
+        store, monkeypatch, provider, fault, expected, model_required):
+    identifier = connections.add(provider, "A", "private-key", "test-model", "https://example.com/v1")
+    send = Mock(return_value={"data": [{"id": "test-model"}],
+                              "error": {"code": fault, "message": "PRIVATE RAW ERROR"}})
+    monkeypatch.setattr(api, "_json_request", send)
+    assert api.check_connection("api:" + identifier, model_required=model_required) == expected
+    assert send.call_count == 1 and len(send.call_args.args) == 2
+
+
+def test_connection_check_handles_broken_http_transport_without_leaving_ui_busy(store, monkeypatch):
+    from http.client import IncompleteRead
+
+    identifier = connections.add("custom", "A", "private", "test-model", "https://example.com/v1")
+    monkeypatch.setattr(api, "_json_request", Mock(side_effect=IncompleteRead(b"private")))
+    assert api.check_connection("api:" + identifier) == "unavailable"
+
+
+@pytest.mark.parametrize("model,metadata", [
+    ("vendor/model:batch", {}), ("vendor/model", {"endpoints": ["/api/v1/batches"]}),
+])
+def test_saved_router_incompatible_endpoint_is_rejected_without_sending(
+        store, tmp_path, monkeypatch, model, metadata):
+    from haizflow.services import translation_catalog_cache as cache
+
+    monkeypatch.setattr(cache, "_PATH", tmp_path / "models.json")
+    cache._PATH.write_text(json.dumps({"version": 2, "options": [{"value": model, **metadata}]}), "utf-8")
+    choice = "api:" + connections.add("openrouter", "Saved", "private", model)
+    send = Mock()
+    monkeypatch.setattr(api, "_json_request", send)
+    with pytest.raises(RuntimeError, match="không hỗ trợ endpoint"):
+        api.translate_texts(["Hello."], model=choice, source_language="en", target_language="vi", video_id="")
+    send.assert_not_called()
+
+
+@pytest.mark.parametrize("provider,model,effort", [
+    ("openai", "gpt-6.1-sol", ""), ("openai", "gpt-6-luna", "low"),
+    ("deepseek", "deepseek-flash", "low"), ("deepseek", "deepseek-v4-pro", "high"),
+])
+def test_reasoning_requests_split_before_sending_and_reserve_visible_output(
+        store, monkeypatch, provider, model, effort):
+    choice = "api:" + connections.add(provider, "A", "private", model)
+    def send(url, key, payload, **kwargs):
+        assert kwargs["timeout"] == 240
+        assert 10240 <= payload.get("max_output_tokens", payload.get("max_tokens")) <= 32768
+        user = payload["input"][0]["content"] if provider == "openai" else payload["messages"][1]["content"]
+        # Decode the actual subtitle task, not the neighboring/context rows.
+        task = json.loads(user.splitlines()[0])
+        rows = [{"id": row["id"], "text": "Xin chào."} for row in task]
+        assert len(rows) <= 12
+        if provider == "openai":
+            return {"status": "completed", "output": [{"type": "message", "content": [
+                {"type": "output_text", "text": json.dumps({"translations": rows})}]}]}
+        return _chat(rows)
+    request = Mock(side_effect=send)
+    monkeypatch.setattr(api, "_json_request", request)
+    texts = [f"Hello {i}." for i in range(25)]
+    assert api.translate_texts(texts, model=choice, source_language="en", target_language="vi", video_id="",
+                               reasoning_effort=effort) == ["Xin chào."] * 25
+    assert request.call_count == 3
+
+
 def test_actual_http_is_text_only_and_blocks_authenticated_redirects(store):
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -585,6 +655,8 @@ def test_actual_http_is_text_only_and_blocks_authenticated_redirects(store):
         assert all(path != "/credential-sink" for path, _ in calls)
         assert [path for path, _ in calls] == ["/v1/models", "/v1/chat/completions", "/redirect"]
         assert all(auth == "Bearer test-key" for _, auth in calls)
+        api._json_request(base + "/public-models", "")
+        assert calls[-1] == ("/public-models", None)  # No Authorization on public catalogue GET.
     finally:
         server.shutdown()
         server.server_close()
@@ -831,7 +903,8 @@ def test_cost_controls_reach_payload_without_omitting_guidance_or_sentences(
     assert {key: payload[key] for key in ("reasoning", "thinking") if key in payload} == expected
     user = payload["input"][0]["content"] if provider == "openai" else payload["messages"][1]["content"]
     assert "Hello." in user and "Thanks." in user and "vợ chồng" in user and "natural" in user
-    assert payload.get("max_output_tokens", payload.get("max_tokens")) == 2048
+    assert payload.get("max_output_tokens", payload.get("max_tokens")) == (
+        10240 if (provider, model) == ("openai", "gpt-6.1-sol") else 2048)
 
 
 @pytest.mark.parametrize("provider", ["openai", "deepseek", "openrouter", "custom"])
@@ -883,7 +956,8 @@ def test_real_http_cost_and_error_contract_without_any_live_provider(store, monk
         monkeypatch.setattr(api.gemini_translation, "_retry_delay", Mock())
         assert api.translate_texts(["Hello."], model=choice, source_language="en", target_language="vi",
                                    video_id="") == ["Xin chào."]
-        for mode, expected_calls, expected_error in [(401, 1, "401"), (429, 1, "429"), (503, 3, "503"),
+        for mode, expected_calls, expected_error in [(401, 1, "401"), (429, 1, "429"),
+                                                    (503, 1 if provider == "custom" else 3, "503"),
                                                     ("body-error", 1, "429"), ("broken-chunk", 1, "mất kết nối")]:
             state.update(mode=mode, calls=0)
             with pytest.raises(RuntimeError, match=expected_error) as caught:

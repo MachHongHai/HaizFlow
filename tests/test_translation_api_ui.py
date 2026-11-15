@@ -79,6 +79,7 @@ def exercise(width, large):
     with tempfile.TemporaryDirectory(prefix="translation-ui-") as directory:
         connections._PATH = Path(directory) / "profiles.json"
         translation_catalog_cache._PATH = Path(directory) / "public-models.json"
+        translation_catalog_cache.needs_refresh = lambda: False  # UI tests never use the live network.
         translation_privacy._PATH = Path(directory) / "consent.json"
         secrets = {}
         connections.secure_credentials.read_secret = lambda target: secrets.get(target, "")
@@ -172,6 +173,11 @@ def exercise(width, large):
             assert not qml_expression.hasError(), qml_expression.error().toString()
             return result.toVariant() if hasattr(result, "toVariant") else result
 
+        def visual_items(item):
+            yield item
+            for child in item.childItems():
+                yield from visual_items(child)
+
         for provider in ("openai", "deepseek", "openai", "deepseek", "openai"):
             evaluate(f'openProvider("{provider}")')
             assert combo.property("activeConnection") == identifiers[provider]
@@ -180,13 +186,32 @@ def exercise(width, large):
                                   for row in models)
         evaluate('openProvider("gemini")')
         QTest.qWait(20)
-        assert popup.property("height") < (280 if large else 230)
-        before = window.property("selectedModel")
-        evaluate("choose(2)")  # The unavailable Gemini model stays unavailable.
-        assert window.property("selectedModel") == before and popup.property("visible")
+        assert popup.property("height") <= 420
+        models = evaluate("modelOptions")
+        assert models == host.api.geminiModels
+        assert all(row.get("available", True) for row in models)
+        assert sum(row["pricing_kind"] == "free" for row in models) == 6
+        assert sum(row["pricing_kind"] == "paid" for row in models) == 3
+        gemini_pricing = [item for item in visual_items(window.contentItem())
+                          if item.objectName() == "geminiModelPricingLabel" and item.isVisible()]
+        assert {item.property("text") for item in gemini_pricing} == {"Miễn phí", "Tính phí"}
+        assert all(item.width() > 0 and item.height() > 0 for item in gemini_pricing)
+        evaluate('choose(modelOptions.findIndex(row => row.value === "gemini-4-hydrogen"))')
+        project_button.clicked.emit()
+        evaluate('openProvider("gemini")')
+        QTest.qWait(30)
+        gemini_pricing = [item for item in visual_items(window.contentItem())
+                          if item.objectName() == "geminiModelPricingLabel" and item.isVisible()]
+        edges = [item.mapToItem(window.contentItem(), item.width(), 0).x() for item in gemini_pricing]
+        assert max(edges) - min(edges) < 1, "Gemini checkmark must not shift pricing labels"
         snapshot = Path(__file__).parents[1] / "build" / (
             "translation-gemini-menu-narrow.png" if large else "translation-gemini-menu.png")
         assert window.grabWindow().save(str(snapshot))
+        for index, row in enumerate(models):
+            evaluate(f"choose({index})")
+            assert window.property("selectedModel") == row["value"] and not popup.property("visible")
+            project_button.clicked.emit()
+            evaluate('openProvider("gemini")')
         assert window.findChild(QQuickItem, "projectTranslationQuotaButton") is None
         window.findChild(QQuickItem, "projectTranslationBackButton").clicked.emit()
         assert combo.property("activeProvider") == ""
@@ -332,11 +357,6 @@ def exercise(width, large):
         assert {row["value"] for row in evaluate("modelOptions")} == {"vendor/free", "vendor/paid", "vendor/unknown"}
         assert evaluate("modelOptions")[0]["value"] == "vendor/free"
         assert refresh.call_count == 1
-        def visual_items(item):
-            yield item
-            for child in item.childItems():
-                yield from visual_items(child)
-
         pricing_labels = [item for item in visual_items(window.contentItem())
                           if item.objectName() == "openRouterModelPricingLabel" and item.isVisible()]
         actual_labels = {item.property("text") for item in pricing_labels}
@@ -387,6 +407,28 @@ def exercise(width, large):
             assert not any(row["value"] == retired for row in evaluate("modelOptions"))
             assert window.property("selectedModel") == retired_choice  # No silent switch to another model.
         assert refresh.call_count == 1  # Nor fetches pricing or models again.
+        # Stale public metadata refreshes in-place without changing selection,
+        # even when a previous manual refresh owns the catalogue UI.
+        from threading import Event
+        public_entered, public_release = Event(), Event()
+        def public_refresh(provider, key, **kwargs):
+            assert provider == "openrouter" and key == ""
+            public_entered.set()
+            public_release.wait(2)
+            return [{"value": "vendor/live-free", "label": "Live free", "pricing_kind": "free"}], "ready"
+        catalog.fetch_models = public_refresh
+        translation_catalog_cache.needs_refresh = lambda: True
+        evaluate('openProvider("openrouter")')
+        assert public_entered.wait(1) and host.api.routerRefreshing
+        assert len(evaluate("modelOptions")) == 3  # Keep cached rows while waiting.
+        public_release.set()
+        for _ in range(100):
+            QTest.qWait(10)
+            if not host.api.routerRefreshing:
+                break
+        assert not host.api.routerRefreshing
+        assert [row["value"] for row in evaluate("modelOptions")] == ["vendor/live-free"]
+        assert window.property("selectedModel") == retired_choice
         assert all(not any(error in message for error in ("Binding loop", "TypeError", "ReferenceError"))
                    for message in messages), messages
         window.close()

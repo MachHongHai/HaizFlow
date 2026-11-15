@@ -6,6 +6,7 @@ import "."
 ColumnLayout {
     id: root
     required property var bridge
+    property string copiedField: ""
     readonly property var details: bridge.launchDetails
     spacing: Theme.space8
 
@@ -27,13 +28,18 @@ ColumnLayout {
             Accessible.name: qsTr("Command của máy chủ MCP")
         }
         StudioButton {
-            text: qsTr("Sao chép command")
-            onClicked: root.bridge.copyLaunchField("command")
+            objectName: "mcpCopyCommandButton"
+            text: root.copiedField === "command" ? qsTr("Đã sao chép") : qsTr("Sao chép command")
+            onClicked: {
+                root.bridge.copyLaunchField("command");
+                root.copiedField = "command";
+                copiedFeedback.restart();
+            }
         }
     }
     Text {
         Layout.fillWidth: true
-        text: qsTr("Arguments: mỗi dòng dưới đây là một đối số, giữ nguyên thứ tự.")
+        text: qsTr("Arguments · mỗi dòng một đối số")
         color: Theme.textMuted
         font.family: Theme.fontFamily
         font.pixelSize: TypeScale.label
@@ -42,14 +48,30 @@ ColumnLayout {
     AppTextArea {
         objectName: "mcpLaunchArguments"
         Layout.fillWidth: true
-        Layout.preferredHeight: 110
+        Layout.preferredHeight: Math.max(110, contentHeight + topPadding + bottomPadding)
         readOnly: true
         text: root.details.arguments || ""
         accessibleName: qsTr("Arguments của máy chủ MCP")
         font.family: "Consolas"
     }
     StudioButton {
-        text: qsTr("Sao chép arguments")
-        onClicked: root.bridge.copyLaunchField("arguments")
+        objectName: "mcpCopyArgumentsButton"
+        text: root.copiedField === "arguments" ? qsTr("Đã sao chép") : qsTr("Sao chép arguments")
+        onClicked: {
+            root.bridge.copyLaunchField("arguments");
+            root.copiedField = "arguments";
+            copiedFeedback.restart();
+        }
+    }
+    Timer {
+        id: copiedFeedback
+        interval: 2000
+        onTriggered: root.copiedField = ""
+    }
+    onVisibleChanged: {
+        if (!visible) {
+            copiedFeedback.stop();
+            copiedField = "";
+        }
     }
 }

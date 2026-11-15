@@ -31,7 +31,7 @@ class _ResponseError(ValueError):
 def _json_request(url, key, payload=None, *, timeout=90):
     outgoing = request.Request(url, data=None if payload is None else json.dumps(
         payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
-        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
+        headers={**({"Authorization": "Bearer " + key} if key else {}), "Content-Type": "application/json"},
         method="GET" if payload is None else "POST")
     with request.build_opener(_NoRedirect()).open(outgoing, timeout=timeout) as response:
         raw = response.read(_MAX_RESPONSE + 1)
@@ -215,15 +215,25 @@ def _token_failure(answer):
 
 
 def _request_chunk(profile, chunk, *, key, model, source_language, target_language, video_id="",
-                   reasoning_effort="", **kwargs):
+                   reasoning_effort="", _protocol=None, **kwargs):
     from haizflow.services.translation_api_policy import request_limits, request_options
 
     if profile["provider"] == "openrouter":
         from haizflow.services import translation_privacy
         from haizflow.services.translation_model_catalog import (
-            _INCOMPATIBLE_OPENROUTER_MODELS, _UNAVAILABLE_OPENROUTER_MODELS,
+            _INCOMPATIBLE_OPENROUTER_MODELS, _RETIRED_OPENROUTER_MODELS,
+            _UNAVAILABLE_OPENROUTER_MODELS, supports_chat,
         )
 
+        if profile["model"] in _RETIRED_OPENROUTER_MODELS:
+            raise RuntimeError("OpenRouter: model đã chọn không còn endpoint khả dụng. "
+                               "Hãy tải lại danh sách và chọn model khác; app chưa gửi yêu cầu API.")
+        from haizflow.services.translation_catalog_cache import chat_supported
+
+        if (not supports_chat(profile["model"], _protocol or {})
+                or _protocol is None and not chat_supported(profile["model"])):
+            raise RuntimeError("OpenRouter: model này không hỗ trợ endpoint dịch đang dùng. "
+                               "Hãy chọn bản Chat thay vì bản Batch API; app chưa gửi yêu cầu API.")
         if profile["model"] in _UNAVAILABLE_OPENROUTER_MODELS:
             raise RuntimeError("OpenRouter: model miễn phí đang lưu hiện không ổn định hoặc bị giới hạn phía nhà cung cấp. "
                                "Hãy chọn model khác trong Model dịch; app chưa gửi yêu cầu API.")
@@ -241,13 +251,13 @@ def _request_chunk(profile, chunk, *, key, model, source_language, target_langua
     system, user = _messages(source_payload)
     schema = {"name": "subtitle_translation", "strict": True, "schema": _SCHEMA}
     limits = request_limits(profile["provider"], profile["model"],
-                            source_payload["generationConfig"]["maxOutputTokens"], reasoning_effort)
+                            source_payload["generationConfig"]["maxOutputTokens"], reasoning_effort, protocol=_protocol)
     token_limit = limits["max_tokens"]
     protocol = {}
     if profile["provider"] == "openrouter":
         from haizflow.services.translation_catalog_cache import protocol_for
 
-        protocol = protocol_for(profile["model"])
+        protocol = _protocol if _protocol is not None else protocol_for(profile["model"])
     if profile["provider"] == "openai":
         suffix = "/responses"
         payload = {"model": profile["model"], "instructions": system,
@@ -263,11 +273,13 @@ def _request_chunk(profile, chunk, *, key, model, source_language, target_langua
         if profile["provider"] == "openrouter":
             from haizflow.services.translation_catalog_cache import format_for
 
-            output_format = format_for(profile["model"]) or output_format
+            output_format = protocol.get("output_format") if _protocol is not None else format_for(profile["model"])
+            output_format = output_format or profile["format"]
         if output_format == "json_schema":
             payload["response_format"] = {"type": "json_schema", "json_schema": schema}
         elif output_format == "json_object":
             payload["response_format"] = {"type": "json_object"}
+        if output_format in {"json_object", "prompt"}:
             payload["messages"][0]["content"] += (
                 ' Output shape: {"translations":[{"id":0,"text":"translated subtitle"}]}. '
                 'Use the exact requested integer IDs; no other fields.')
@@ -277,7 +289,9 @@ def _request_chunk(profile, chunk, *, key, model, source_language, target_langua
         if profile["provider"] == "openrouter":
             payload["provider"] = {"require_parameters": True, "allow_fallbacks": True,
                                    "data_collection": "allow" if translation_privacy.allowed(profile) else "deny"}
-    payload.update(request_options(profile["provider"], profile["model"], reasoning_effort))
+            if protocol.get("pricing_kind") == "free":
+                payload["provider"]["max_price"] = {"prompt": 0, "completion": 0, "request": 0}
+    payload.update(request_options(profile["provider"], profile["model"], reasoning_effort, protocol=_protocol))
     if video_id:
         try:
             log_to_video(video_id, f"{label} request budget: sentences={len(chunk)}, max_tokens={token_limit}, "
@@ -287,14 +301,15 @@ def _request_chunk(profile, chunk, *, key, model, source_language, target_langua
                          component="TRANSLATE", level="INFO")
         except (OSError, RuntimeError):
             pass
-    for attempt in range(3):
+    attempts = 1 if profile["provider"] == "custom" else 3
+    for attempt in range(attempts):
         check_cancellation(video_id)
         try:
             answer = _json_request(profile["base_url"] + suffix, key, payload,
                                    **({"timeout": limits["timeout"]} if limits["timeout"] != 90 else {}))
         except error.HTTPError as exc:
             if video_id:
-                log_to_video(video_id, f"{label}: HTTP {exc.code}, attempt {attempt + 1}/3.",
+                log_to_video(video_id, f"{label}: HTTP {exc.code}, attempt {attempt + 1}/{attempts}.",
                              level="WARNING", component="TRANSLATE")
             status = exc.code
             answer = None
@@ -314,7 +329,7 @@ def _request_chunk(profile, chunk, *, key, model, source_language, target_langua
                                  level="WARNING", component="TRANSLATE")
                 except (OSError, RuntimeError):
                     pass
-            if status in {408, 500, 502, 503, 504} and attempt < 2:
+            if status in {408, 500, 502, 503, 504} and attempt + 1 < attempts:
                 gemini_translation._retry_delay(2 ** attempt, video_id)
                 continue
             raise RuntimeError(_model_error(status, profile, answer=answer, headers=headers)) from None
@@ -390,14 +405,20 @@ def _response_text(answer, provider):
 
 def translate_texts(texts, *, model, **kwargs):
     from haizflow.services.translation_api_policy import request_limits
+    from haizflow.services.translation_model_guard import prepare
 
     profile, key = translation_connections.resolve(model, with_key=True)
     label = translation_connections.PROVIDERS[profile["provider"]]["label"]
-    limits = request_limits(profile["provider"], profile["model"], 2048, kwargs.get("reasoning_effort", ""))
+    initial = kwargs.get("initial_translations")
+    pending = bool(texts) and (initial is None or any(value is None for value in initial))
+    protocol = prepare(profile, video_id=kwargs.get("video_id", ""),
+                       reasoning_effort=kwargs.get("reasoning_effort", "")) if pending else None
+    limits = request_limits(profile["provider"], profile["model"], 2048,
+                            kwargs.get("reasoning_effort", ""), protocol=protocol)
     return gemini_translation.translate_texts(
         texts, model=model, _key=key, _engine_name=label,
         _chunk_limits=(limits["sentences"], limits["characters"]),
-        _request_handler=lambda chunk, **args: _request_chunk(profile, chunk, **args), **kwargs)
+        _request_handler=lambda chunk, **args: _request_chunk(profile, chunk, _protocol=protocol, **args), **kwargs)
 
 
 def check_connection(model_choice, *, model_required=True):
@@ -408,6 +429,9 @@ def check_connection(model_choice, *, model_required=True):
         profile, key = translation_connections.get_connection(model_choice[4:], with_key=True)
     try:
         answer = _json_request(profile["base_url"] + "/models", key, timeout=15)
+        fault = _response_error_status(answer)
+        if fault is not None:
+            return "invalid" if fault in {401, 403} else "unavailable"
         rows = answer.get("data") if isinstance(answer, dict) else None
         if not isinstance(rows, list):
             return "unsupported-check"
@@ -418,6 +442,6 @@ def check_connection(model_choice, *, model_required=True):
     except error.HTTPError as exc:
         status = exc.code
         exc.close()
-        return "invalid" if status in {401, 403} else "unsupported-check" if status == 404 else "unavailable"
-    except (ValueError, TypeError, error.URLError, TimeoutError, OSError):
+        return "invalid" if status in {401, 403} else "unsupported-check" if status in {404, 405} else "unavailable"
+    except (ValueError, TypeError, error.URLError, TimeoutError, OSError, HTTPException):
         return "unavailable"

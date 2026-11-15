@@ -70,6 +70,8 @@ READ_COMMANDS = {
     "resources",
     "options",
     "translation_models",
+    "translation_choice",
+    "translation_api",
     "subtitle_fonts",
     "logs",
     "export_ranges",
@@ -367,6 +369,8 @@ class McpCommands:
             name = request["command"]
             if not isinstance(name, str) or name not in READ_COMMANDS - {"read_many", "visual_context"}:
                 raise ValueError("read_many accepts read-only commands, not mutations, recursion or raw media context.")
+            if name == "translation_api" and request["arguments"].get("action") in ("verify", "refresh_models"):
+                raise ValueError("Start metadata checks explicitly, outside read_many; status reads can be batched.")
             calls.append((name, self._validated_call(name, request["arguments"])))
         results = []
         for name, (function, bound) in calls:
@@ -961,14 +965,66 @@ class McpCommands:
 
     def _translation_models(
         self, provider: Literal["gemini", "openai", "deepseek", "openrouter", "custom"] = "gemini",
-        connection_id: str = "", query: str = "", offset: int = 0, limit: int = 25, free_only: bool = False,
+        connection_id: str = "", query: str = "", offset: int = 0, limit: int = 10, free_only: bool = False,
+        details: bool = False, since: str = "",
     ) -> dict:
         from haizflow.mcp.options import model_page
+        from haizflow.mcp.efficiency import observed
 
         page([], offset, limit)
-        if len(query) > 200:
-            raise ValueError("Use a model query up to 200 characters.")
-        return model_page(provider, connection_id, query, offset, limit, free_only)
+        if len(query) > 200 or limit > 50 or len(since) > 64:
+            raise ValueError("Use a query up to 200 characters, 1–50 models, and a cursor up to 64 characters.")
+        api = getattr(self.host, "translationApi", None) if connection_id else None
+        discovered = api.connectionModels(connection_id) if api and api.hasCachedModels(connection_id) else None
+        return observed(model_page(provider, connection_id, query, offset, limit, free_only, details, discovered), since)
+
+    def _translation_choice(
+        self, connection_id: str, model: str,
+        output_format: Literal["", "json_object", "json_schema", "prompt"] = "",
+    ) -> dict:
+        """Build a project-local model/format choice offline; apply using configure, never starts translation."""
+        from haizflow.mcp.options import model_choice
+
+        return model_choice(connection_id, model, output_format)
+
+    def _translation_api(
+        self, action: Literal["connections", "status", "verify", "refresh_models"] = "connections",
+        connection_id: str = "", offset: int = 0, limit: int = 10, since: str = "",
+    ) -> dict:
+        """Offline discovery/status; explicit verify/refresh only starts background metadata GETs, never inference."""
+        from haizflow.mcp.efficiency import observed
+        from haizflow.mcp.options import connection_page
+        from haizflow.services import translation_catalog_cache, translation_connections
+
+        page([], offset, limit)
+        if limit > 50 or len(since) > 64:
+            raise ValueError("Use 1–50 connections and a cursor up to 64 characters.")
+        if action == "connections":
+            return observed(connection_page(offset, limit), since)
+        profile = translation_connections.get_connection(connection_id)
+        if action in {"verify", "refresh_models"}:
+            self.bridge.require("online")
+        api = self.host.translationApi
+        busy = bool(api.busy or api.catalogState == "loading" or api.routerRefreshing)
+        started = None
+        if action == "verify":
+            started = api.verify(connection_id) if not busy else False
+        elif action == "refresh_models":
+            if busy:
+                started = False
+            else:
+                api.loadConnectionModels(connection_id)
+                started = True
+        check = next((row for row in api.profiles if row["id"] == connection_id), {})
+        own_catalog = api.catalogConnection == connection_id
+        result = {"connection_id": connection_id, "provider": profile["provider"],
+                  "verification": check.get("check_result") or "unchecked", "checking": check.get("checking", False),
+                  "catalogue": api.catalogState if own_catalog else "idle", "metadata_only": True,
+                  "busy": bool(api.busy or api.catalogState == "loading" or api.routerRefreshing),
+                  **({"stale": translation_catalog_cache.needs_refresh()} if profile["provider"] == "openrouter" else {})}
+        if started is not None:
+            result["accepted"] = started
+        return observed(result, since)
 
     def _subtitle_fonts(self, video_id: str, sample: str = "") -> dict:
         from haizflow.mcp.options import subtitle_fonts

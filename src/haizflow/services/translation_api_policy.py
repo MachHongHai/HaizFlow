@@ -11,7 +11,7 @@ def output_limit(base: int, effort: str = "") -> int:
     return max(base, {"medium": 8192, "high": 16384, "xhigh": 24576, "max": 32768}.get(effort, base))
 
 
-def request_limits(provider: str, model: str, base: int, effort: str = "") -> dict:
+def request_limits(provider: str, model: str, base: int, effort: str = "", *, protocol=None) -> dict:
     """Leave visible-output headroom when reasoning may run, without paid retries.
 
     This is a combined output ceiling, not an enforceable separate reasoning
@@ -19,15 +19,15 @@ def request_limits(provider: str, model: str, base: int, effort: str = "") -> di
     Optional boolean controls default off; enabled or undisablable reasoning
     receives bounded headroom. Unknown non-reasoning models keep their policy.
     """
-    info = capabilities(provider, model)
+    info = capabilities(provider, model, protocol=protocol)
     mandatory = info.get("mandatory", False)
     effective = effort or info.get("default", "")
-    active_reasoning = bool(mandatory or provider == "openrouter" and info
-                            and effective not in {"none", "disabled"})
+    active_reasoning = bool(mandatory or provider in {"openai", "deepseek", "openrouter"} and info
+                            and effective and effective not in {"none", "disabled"})
     if provider == "openrouter" and not info:
         from haizflow.services.translation_catalog_cache import protocol_for
 
-        active_reasoning = bool(protocol_for(model).get("reasoning_supported"))
+        active_reasoning = bool((protocol if protocol is not None else protocol_for(model)).get("reasoning_supported"))
     limit = output_limit(base, effort)
     if active_reasoning:
         limit = min(32768, max(limit, base + 8192))
@@ -35,7 +35,7 @@ def request_limits(provider: str, model: str, base: int, effort: str = "") -> di
     if provider == "openrouter":
         from haizflow.services.translation_catalog_cache import protocol_for
 
-        protocol = protocol_for(model)
+        protocol = protocol if protocol is not None else protocol_for(model)
         ceilings = [value for value in (protocol.get("max_completion_tokens"),
                     protocol.get("context_length", 0) // 2) if type(value) is int and value > 0]
         if ceilings:
@@ -51,18 +51,18 @@ def request_limits(provider: str, model: str, base: int, effort: str = "") -> di
             "mandatory": bool(mandatory), "reasoning_active": active_reasoning}
 
 
-def capabilities(provider, model, *, has_guidance=False):
+def capabilities(provider, model, *, has_guidance=False, protocol=None):
     """Model-only defaults; style/guidance never silently enables more reasoning.
 
     Keep has_guidance for callers using the existing UI/MCP contract.
     """
     name = re.sub(r"-\d{4}-\d{2}-\d{2}$", "", model.lower())
-    if provider == "gemini" and model in {"gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"}:
-        values = ["low", "medium", "high"]
-        if model != "gemini-3.8-flash":
-            values.insert(0, "minimal")
-        return {"parameter": "thinkingLevel", "values": values,
-                "default": values[0]}
+    if provider == "gemini":
+        from haizflow.core.gemini_models import THINKING_LEVELS
+
+        values = THINKING_LEVELS.get(model)
+        return ({"parameter": "thinkingLevel", "values": list(values), "default": values[0]}
+                if values else {})
     if provider == "deepseek" and name in {"deepseek-flash", "deepseek-v4-pro", "deepseek-v4-flash"}:
         return {"parameter": "reasoning_effort", "values": ["low", "high", "max"],
                 "thinking": True, "default": "disabled"}
@@ -76,6 +76,19 @@ def capabilities(provider, model, *, has_guidance=False):
         return {"parameter": "reasoning.effort", "values": values, "default": lowest}
     if provider == "openrouter":
         from haizflow.services.translation_reasoning_catalog import get
+        if protocol is None:
+            from haizflow.services.translation_catalog_cache import protocol_for
+
+            current = protocol_for(model)
+            if "parameters" in current:
+                protocol = current
+        if protocol is not None:
+            info = protocol.get("reasoning_capabilities")
+            if protocol.get("reasoning_supported") is False:
+                return ({"parameter": "reasoning", "values": [], "default": "", "mandatory": True}
+                        if isinstance(info, dict) and info.get("mandatory") else {})
+            return ({"parameter": "reasoning.enabled" if info.get("toggle") else "reasoning.effort", **info}
+                    if isinstance(info, dict) else {})
         # The dated R1 and original aliases require reasoning but do not expose
         # selectable effort levels. Keep this known fallback across restarts.
         r1 = model.removesuffix(":free").removesuffix(":nitro") in {
@@ -130,10 +143,16 @@ def _openai_effort(model: str) -> str | None:
     return None
 
 
-def request_options(provider: str, model: str, effort: str = "") -> dict:
+def request_options(provider: str, model: str, effort: str = "", *, protocol=None) -> dict:
     """Never switch models or inject vendor-specific knobs into custom APIs."""
+    if provider == "openrouter" and protocol is None:
+        from haizflow.services.translation_catalog_cache import protocol_for
+
+        current = protocol_for(model)
+        if "parameters" in current:
+            protocol = current
     if effort:
-        info = capabilities(provider, model)
+        info = capabilities(provider, model, protocol=protocol)
         if not info or effort not in info["values"] + (["disabled"] if info.get("thinking") else []):
             raise ValueError("Mức reasoning không được model đang chọn hỗ trợ.")
         if provider == "openrouter" and info.get("toggle"):
@@ -148,13 +167,17 @@ def request_options(provider: str, model: str, effort: str = "") -> dict:
     if provider == "deepseek" and model.lower() in {"deepseek-flash", "deepseek-v4-pro", "deepseek-v4-flash"}:
         return {"thinking": {"type": "disabled"}}
     if provider == "openrouter":
-        info = capabilities(provider, model)
+        if protocol is not None and protocol.get("reasoning_supported") is False:
+            return {}  # Mandatory internal reasoning need not expose a controllable request parameter.
+        info = capabilities(provider, model, protocol=protocol)
         if info.get("toggle"):
             return {"reasoning": {"enabled": False, "exclude": True}}
         if info.get("default"):
             return {"reasoning": {"effort": info["default"], "exclude": True}}
         if info.get("mandatory"):
             return {"reasoning": {"exclude": True}}  # Hide, never disable, mandatory reasoning.
+        if protocol is not None:
+            return {"reasoning": {"exclude": True}} if protocol.get("reasoning_supported") else {}
         name = model.removesuffix(":free").removesuffix(":nitro")
         effort = _openai_effort(name[7:]) if name.startswith("openai/") else None
         if name in {"deepseek/deepseek-flash", "deepseek/deepseek-v4-pro", "deepseek/deepseek-v4-flash",

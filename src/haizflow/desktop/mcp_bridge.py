@@ -42,6 +42,9 @@ class McpBridge(QObject):
         self._connection_generation = 0
         self._connection_cancel = None
         self._connectionResult.connect(self._connection_checked)
+        language_changed = getattr(host, "languageOptionsChanged", None)
+        if language_changed is not None:
+            language_changed.connect(self.changed)
         if dispatcher is None:
             from haizflow.desktop.mcp_commands import McpCommands
 
@@ -77,11 +80,14 @@ class McpBridge(QObject):
     @Property(str, notify=changed)
     def setupPrompt(self):
         return self.tr(
-            "Hãy thêm máy chủ MCP cục bộ tên haizflow vào ứng dụng agent này bằng cấu hình stdio bên dưới. "
-            "Giữ nguyên các server khác; nếu đã có haizflow thì chỉ cập nhật mục đó. "
-            "Không gọi API, xử lý, xóa hay đăng video trong lúc kết nối. "
-            "Sau khi kết nối, gọi haizflow_status để xác minh.\n\n"
+            "Hãy kết nối HaizFlow với ứng dụng này bằng cấu hình bên dưới. "
+            "Giữ nguyên các server khác; nếu đã có haizflow thì cập nhật mục đó. "
+            "Sau đó chỉ gọi haizflow_status để kiểm tra kết nối.\n\n"
         ) + self.configuration("generic")
+
+    @Property(str, notify=changed)
+    def testPrompt(self):
+        return self.tr("Gọi haizflow_status để kiểm tra kết nối HaizFlow.")
 
     @Property("QVariantMap", notify=changed)
     def approval(self):
@@ -171,6 +177,10 @@ class McpBridge(QObject):
     def copySetupPrompt(self):
         QGuiApplication.clipboard().setText(self.setupPrompt)
 
+    @Slot()
+    def copyTestPrompt(self):
+        QGuiApplication.clipboard().setText(self.testPrompt)
+
     @Slot(result=bool)
     def testConnection(self):
         if self._connection_state == "checking":
@@ -208,9 +218,8 @@ class McpBridge(QObject):
         self._connection_state = "success" if result.get("ok") else "error"
         if result.get("ok"):
             self._connection_message = self.tr(
-                "MCP cục bộ hoạt động · %1 công cụ. Đây là kiểm tra nội bộ; "
-                "hãy gọi haizflow_status trong agent để xác minh kết nối từ agent."
-            ).replace("%1", str(result["tools"]))
+                "HaizFlow sẵn sàng. Gửi câu thử trong agent để hoàn tất."
+            )
         elif result.get("reason") == "timeout":
             self._connection_message = self.tr("Kiểm tra MCP quá thời gian. Thử lại khi app đã phản hồi bình thường.")
         else:
@@ -287,7 +296,8 @@ class McpBridge(QObject):
                 raise ValueError("Invalid request envelope.")
             request_id = request["id"]
             if (
-                request["version"] != PROTOCOL_VERSION
+                type(request["version"]) is not int
+                or request["version"] != PROTOCOL_VERSION
                 or not isinstance(request_id, str)
                 or not 1 <= len(request_id) <= 80
                 or not isinstance(request["method"], str)

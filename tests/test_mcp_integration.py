@@ -178,7 +178,7 @@ def test_connection_check_is_async_readonly_and_disabled_when_mcp_is_off(app, br
             app.processEvents()
             time.sleep(.01)
         assert bridge.connectionState == "success"
-        assert "22" in bridge.connectionMessage and "nội bộ" in bridge.connectionMessage
+        assert "HaizFlow sẵn sàng" in bridge.connectionMessage
         check.assert_called_once()
 
 
@@ -704,12 +704,12 @@ def test_compact_profile_reduces_tool_schemas_without_losing_execute_access():
     asyncio.run(run())
 
 
-def test_generated_compact_launch_configuration_works_over_real_stdio(app, bridge):
+def test_generated_compact_launch_configuration_works_over_real_stdio(app, bridge, tmp_path):
     from mcp import Client, StdioServerParameters
 
     async def run():
         config = json.loads(launch_configuration(bridge.endpoint))["mcpServers"]["haizflow"]
-        async with Client(StdioServerParameters(**config), raise_exceptions=True) as session:
+        async with Client(StdioServerParameters(**config, cwd=str(tmp_path)), raise_exceptions=True) as session:
             assert len((await session.list_tools()).tools) == 9
             result = await session.call_tool("haizflow_status", {})
             assert not result.is_error
@@ -1411,6 +1411,8 @@ def test_pipe_replay_conflict_revocation_and_bad_frames(bridge):
     assert "error" in send(b"[]\n")
     assert "error" in send(b"{}\n{}\n")
     assert "error" in send(b"not-json\n")
+    assert "error" in send(encode_frame({**request, "id": "bool-version", "version": True}, MAX_REQUEST))
+    assert calls == ["create"]
 
 
 def test_model_discovery_uses_filtered_cached_openrouter_metadata_without_keys(commands, monkeypatch):
@@ -1426,7 +1428,7 @@ def test_model_discovery_uses_filtered_cached_openrouter_metadata_without_keys(c
         {"value": "vendor/paid", "label": "A paid", "pricing_kind": "paid"},
         {"value": "nvidia/nemotron-3.5-super-vl:free", "label": "Nemotron", "pricing_kind": "free"},
         {"value": "dots-studio/dots-3-note-preview:free", "label": "Dots", "pricing_kind": "free"}])
-    result = commands.dispatch("translation_models", {"connection_id": identifier, "limit": 1})
+    result = commands.dispatch("translation_models", {"connection_id": identifier, "limit": 1, "details": True})
     assert result["total"] == 3 and result["has_more"]
     assert result["provider"] == "openrouter" and result["catalogue"] == "offline_cached"
     first = result["items"][0]
@@ -1435,7 +1437,7 @@ def test_model_discovery_uses_filtered_cached_openrouter_metadata_without_keys(c
     assert first["reasoning"]["toggle"] and first["pricing_kind"] == "free"
     assert "base_url" not in str(result) and "api_key" not in str(result)
     result = commands.dispatch("translation_models", {
-        "provider": "openrouter", "query": "NEMOTRON", "free_only": True})
+        "provider": "openrouter", "query": "NEMOTRON", "free_only": True, "details": True})
     assert result["total"] == 1 and not result["has_more"]
     assert result["items"][0]["data_collection"]["required"]
     assert not result["items"][0]["data_collection"]["allowed"]
@@ -1447,7 +1449,7 @@ def test_model_discovery_uses_filtered_cached_openrouter_metadata_without_keys(c
 
 def test_model_discovery_and_scoped_options_work_in_read_many(commands):
     result = commands.dispatch("read_many", {"requests": [
-        {"command": "translation_models", "arguments": {"provider": "gemini", "query": "3.5"}},
+        {"command": "translation_models", "arguments": {"provider": "gemini", "query": "3.5", "details": True}},
         {"command": "options", "arguments": {"video_id": "test-video", "section": "export"}}]})
     rows = result["results"]
     assert rows[0]["result"]["items"][0]["reasoning"]["default"] == "minimal"
@@ -1490,6 +1492,153 @@ def test_font_discovery_follows_published_subtitle_language(commands, language, 
     assert result["automatic_by_script"] and expected in result["families"]
     assert commands.dispatch("options", {"video_id": video.video_id, "section": "subtitles"})["language"] == language
     commands.host._apply_config_to_video.assert_not_called()
+
+
+@pytest.fixture
+def translation_api_fixture(commands, tmp_path, monkeypatch):
+    from haizflow.desktop.translation_api_controller import TranslationApiController
+    from haizflow.services import translation_connections as connections
+
+    monkeypatch.setattr(connections, "_PATH", tmp_path / "connections.json")
+    monkeypatch.setattr(connections.secure_credentials, "write_secret", lambda *_args, **_kwargs: None)
+    read = Mock(return_value="SYNTHETIC-PRIVATE-KEY")
+    monkeypatch.setattr(connections.secure_credentials, "read_secret", read)
+    custom = connections.add("custom", "Proxy", "synthetic", base_url="https://example.invalid/v1")
+    official = connections.add("openai", "Official", "synthetic")
+    owner = QObject()
+    controller = TranslationApiController(owner)
+    commands.host.translationApi = controller
+    return custom, official, controller, owner, read
+
+
+def test_translation_mcp_discovery_and_custom_choice_are_offline_and_project_local(
+        commands, bridge, translation_api_fixture, monkeypatch):
+    from haizflow.services import api_translation, translation_connections
+
+    custom, official, controller, owner, read = translation_api_fixture
+    send = Mock(side_effect=AssertionError("Offline discovery must not access the network"))
+    monkeypatch.setattr(api_translation, "_json_request", send)
+    result = commands.dispatch("translation_api", {"limit": 1})
+    assert len(result["items"]) == 1 and result["total"] == 2 and result["has_more"]
+    assert "base_url" not in json.dumps(result) and "SYNTHETIC" not in json.dumps(result)
+    assert commands.dispatch("translation_api", {"limit": 1, "since": result["cursor"]}) == {
+        "cursor": result["cursor"], "changed": False}
+    original = translation_connections.get_connection(custom)
+    choice = commands.dispatch("translation_choice", {
+        "connection_id": custom, "model": "Vendor/MixedCase:latest", "output_format": "prompt"})
+    assert choice["value"] == f"api:{custom}:Vendor/MixedCase:latest#prompt"
+    assert choice["output_format"] == "prompt" and choice["reasoning"] == {} and not choice["applied"]
+    bridge.setPermission("write", True)
+    commands.dispatch("configure", {"video_id": "test-video", "settings": {"translation_model": choice["value"]}})
+    assert commands.host._apply_config_to_video.call_args.args[1].translation_model == choice["value"]
+    assert translation_connections.get_connection(custom) == original
+    read.assert_not_called()
+    send.assert_not_called()
+
+
+@pytest.mark.parametrize("model,output_format", [("bad id", "prompt"), ("x" * 201, "json_object"),
+    ("model", "guess"), ("model#prompt", ""), ("", "prompt")])
+def test_invalid_custom_choice_does_not_read_credentials_or_mutate(
+        commands, translation_api_fixture, model, output_format):
+    custom, official, controller, owner, read = translation_api_fixture
+    with pytest.raises(ValueError):
+        commands.dispatch("translation_choice", {"connection_id": custom, "model": model, "output_format": output_format})
+    read.assert_not_called()
+    commands.host._apply_config_to_video.assert_not_called()
+
+
+def test_official_choice_cannot_receive_custom_protocol_overrides(commands, translation_api_fixture):
+    custom, official, controller, owner, read = translation_api_fixture
+    with pytest.raises(ValueError):
+        commands.dispatch("translation_choice", {"connection_id": official, "model": "gpt-6-luna", "output_format": "prompt"})
+    read.assert_not_called()
+
+
+@pytest.mark.parametrize("action", ["verify", "refresh_models"])
+def test_metadata_start_requires_online_permission_before_reading_keys(
+        commands, bridge, translation_api_fixture, action):
+    custom, official, controller, owner, read = translation_api_fixture
+    bridge.setPermission("online", False)
+    with pytest.raises(ValueError, match="online"):
+        commands.dispatch("translation_api", {"action": action, "connection_id": custom})
+    read.assert_not_called()
+    with pytest.raises(ValueError, match="outside read_many"):
+        commands.dispatch("read_many", {"requests": [{"command": "translation_api",
+            "arguments": {"action": action, "connection_id": custom}}]})
+
+
+@pytest.mark.parametrize("action", ["verify", "refresh_models"])
+def test_metadata_commands_are_async_deduplicated_and_never_start_inference(
+        commands, bridge, app, translation_api_fixture, monkeypatch, action):
+    from haizflow.services import api_translation
+
+    custom, official, controller, owner, read = translation_api_fixture
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+    def send(url, key, payload=None, **kwargs):
+        assert payload is None and url == "https://example.invalid/v1/models"
+        assert key == "SYNTHETIC-PRIVATE-KEY"
+        assert threading.current_thread() is not threading.main_thread()
+        calls.append(url)
+        entered.set()
+        release.wait(2)
+        return {"data": [{"id": "Vendor/MixedCase", "name": "Local model"}]}
+    monkeypatch.setattr(api_translation, "_json_request", send)
+    bridge.setPermission("online", True)
+    started = commands.dispatch("translation_api", {"action": action, "connection_id": custom})
+    assert started["accepted"] and started["metadata_only"] and entered.wait(1)
+    repeated = commands.dispatch("translation_api", {"action": action, "connection_id": custom})
+    assert not repeated["accepted"] and repeated["busy"] and len(calls) == 1
+    status = commands.dispatch("translation_api", {"action": "status", "connection_id": custom})
+    unchanged = commands.dispatch("translation_api", {"action": "status", "connection_id": custom,
+                                                      "since": status["cursor"]})
+    assert unchanged == {"cursor": status["cursor"], "changed": False}
+    release.set()
+    from PySide6.QtTest import QTest
+    for _ in range(100):
+        QTest.qWait(10)
+        status = commands.dispatch("translation_api", {"action": "status", "connection_id": custom})
+        if not status["busy"]:
+            break
+    assert not status["busy"] and len(calls) == 1
+    assert status["verification"] == "verified" if action == "verify" else status["catalogue"] == "ready"
+    if action == "refresh_models":
+        controller.resetModels()
+        models = commands.dispatch("translation_models", {"connection_id": custom})
+        assert models["catalogue"] == "session_cached" and models["items"][0]["model"] == "Vendor/MixedCase"
+        assert len(calls) == 1
+    assert read.call_count == 1
+    commands.host._apply_config_to_video.assert_not_called()
+
+
+def test_compact_model_pages_and_cursors_save_response_tokens(commands, monkeypatch):
+    from haizflow.services import translation_catalog_cache
+    from haizflow.mcp.efficiency import encoded_size
+
+    monkeypatch.setattr(translation_catalog_cache, "load", lambda: [{"value": "vendor/model",
+        "label": "Model", "pricing_kind": "free", "context_length": 1000000,
+        "max_completion_tokens": 100000, "output_format": "json_schema"}])
+    compact = commands.dispatch("translation_models", {"provider": "openrouter"})
+    detailed = commands.dispatch("translation_models", {"provider": "openrouter", "details": True})
+    assert "reasoning" not in compact["items"][0] and "reasoning" in detailed["items"][0]
+    assert encoded_size(compact) < encoded_size(detailed)
+    unchanged = commands.dispatch("translation_models", {"provider": "openrouter", "since": compact["cursor"]})
+    assert unchanged == {"cursor": compact["cursor"], "changed": False}
+    assert encoded_size(unchanged) < 110
+    with pytest.raises(ValueError):
+        commands.dispatch("translation_models", {"provider": "openrouter", "limit": 51})
+
+
+def test_new_translation_commands_do_not_expand_compact_mcp_tool_schemas():
+    from mcp import Client
+
+    async def inspect():
+        async with Client(create_server(Mock(), tool_profile="compact")) as session:
+            tools = (await session.list_tools()).tools
+            names = {tool.name for tool in tools}
+            assert "haizflow_execute" in names
+            assert not any(name in names for name in ("haizflow_translation_choice", "haizflow_translation_api"))
+    asyncio.run(inspect())
 
 
 @pytest.mark.parametrize("project_type", ["manual", "single"])
@@ -1567,7 +1716,7 @@ def test_manual_voice_selection_reuses_bounded_controller_contract(commands, bri
         "provider": "vieneu-gpu", "voice": "vieneu:Trúc Ly", "segment_ids": ["a", "c"]})["accepted"]
     commands.host.configureAndRunManualVoice.assert_called_once_with(
         "vieneu-gpu", "vieneu:Trúc Ly", "selection", "", "single", ["a", "c"])
-    for patch in ({"segment_ids": []}, {"segment_ids": ["a", "a"]}, {"segment_ids": ["a"], "segment_id": "b"}):
+    for selection_patch in ({"segment_ids": []}, {"segment_ids": ["a", "a"]}, {"segment_ids": ["a"], "segment_id": "b"}):
         with pytest.raises(ValueError):
             commands.dispatch("voice_run", {"video_id": video.video_id,
-                "provider": "vieneu-gpu", "voice": "vieneu:Trúc Ly", **patch})
+                "provider": "vieneu-gpu", "voice": "vieneu:Trúc Ly", **selection_patch})

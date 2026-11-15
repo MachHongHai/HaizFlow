@@ -5,6 +5,7 @@ import re
 import time
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from http.client import HTTPException
 from urllib import error, parse
 
 from haizflow.services import translation_connections as connections
@@ -41,6 +42,17 @@ _INCOMPATIBLE_OPENROUTER_MODELS = frozenset({"google/gemma-2-27b-it"})
 _UNAVAILABLE_OPENROUTER_MODELS = frozenset({
     "google/gemma-4-26b-a4b-it:free", "xingchen-agi/xing4.0-29b-a4b:free",
 })
+PROTOCOL_PARAMETERS = ("max_tokens", "response_format", "structured_outputs", "reasoning")
+
+
+def supports_chat(model, row):
+    """Absent legacy hints are unknown; explicit incompatible endpoints are not."""
+    if "batch" in model.lower().split(":")[1:]:
+        return False
+    if "endpoints" not in row:
+        return True
+    endpoints = row["endpoints"]
+    return isinstance(endpoints, list) and "/api/v1/chat/completions" in endpoints
 
 
 def protocol_metadata(row):
@@ -53,10 +65,13 @@ def protocol_metadata(row):
         if type(value) is int and 0 < value <= 10**8:
             result[field] = value
     architecture = row.get("architecture")
-    if isinstance(architecture, dict) and architecture.get("instruct_type") == "gemma":
-        result["prompt_format"] = "user_only"
-    if isinstance(row.get("supported_parameters"), list) and "reasoning" in row["supported_parameters"]:
-        result["reasoning_supported"] = True
+    if isinstance(architecture, dict):
+        result["prompt_format"] = "user_only" if architecture.get("instruct_type") == "gemma" else "system_user"
+    if isinstance(row.get("supported_parameters"), list):
+        result["parameters"] = [value for value in PROTOCOL_PARAMETERS if value in row["supported_parameters"]]
+        result["reasoning_supported"] = "reasoning" in result["parameters"]
+    if "endpoints" in row:
+        result["endpoints"] = ["/api/v1/chat/completions"] if supports_chat(row.get("id", ""), row) else []
     return result
 
 
@@ -97,7 +112,8 @@ def _option(provider, row):
         if not supported:
             return None
     if provider == "openrouter":
-        if (model in _RETIRED_OPENROUTER_MODELS or model in _INCOMPATIBLE_OPENROUTER_MODELS
+        if (not supports_chat(model, row)
+                or model in _RETIRED_OPENROUTER_MODELS or model in _INCOMPATIBLE_OPENROUTER_MODELS
                 or model in _UNAVAILABLE_OPENROUTER_MODELS
                 or _NON_TRANSLATION.search(model)):
             return None
@@ -111,6 +127,11 @@ def _option(provider, row):
         parameters = row.get("supported_parameters", [])
         if not isinstance(parameters, list):
             return None
+        if "endpoints" in row:
+            hints = protocol_metadata(row)
+            if ("max_tokens" not in parameters or "context_length" not in hints
+                    or "max_completion_tokens" not in hints):
+                return None  # Do not offer a live model without a verifiable bounded request budget.
         # Free text models with JSON mode still pass the same strict post-
         # validation. Never send a JSON Schema to an endpoint advertising only
         # response_format, or silently downgrade an unknown/paid model.
@@ -141,9 +162,9 @@ def _option(provider, row):
 
 def fetch_models(provider, key, base_url="", *, cancelled=None):
     """Return (safe options, state); bounded pagination, no raw service errors."""
-    from haizflow.services.api_translation import _json_request
+    from haizflow.services.api_translation import _json_request, _response_error_status
 
-    if (provider not in connections.PROVIDERS or not key or len(key) > 4096
+    if (provider not in connections.PROVIDERS or (not key and provider != "openrouter") or len(key) > 4096
             or any(ord(char) < 33 or ord(char) > 126 for char in key)):
         return [], "invalid"
     try:
@@ -152,6 +173,7 @@ def fetch_models(provider, key, base_url="", *, cancelled=None):
     except ValueError:
         return [], "invalid"
     rows = {}
+    seen_pages = set()
     truncated = False
     deadline = time.monotonic() + 40
     try:
@@ -166,12 +188,22 @@ def fetch_models(provider, key, base_url="", *, cancelled=None):
                 url += "?" + parse.urlencode({"offset": page * 100, "limit": 100,
                     "input_modalities": "text", "output_modalities": "text"})
             data = _json_request(url, key, timeout=min(12, remaining))
+            if cancelled and cancelled.is_set():
+                return [], "cancelled"
+            fault = _response_error_status(data)
+            if fault is not None:
+                state = "auth" if fault in {401, 403} else "error"
+                return list(rows.values()), "partial" if rows else state
             if not isinstance(data, dict) or not isinstance(data.get("data"), list):
                 return list(rows.values()), "partial" if rows else "error"
             batch = data["data"]
             if len(batch) > 10000:
                 return list(rows.values()), "partial" if rows else "error"
-            before = len(rows)
+            signature = tuple(row.get("id") if isinstance(row, dict) and isinstance(row.get("id"), str)
+                              else None for row in batch)
+            if signature in seen_pages:
+                return sorted(rows.values(), key=lambda row: row["label"].casefold()), "partial"
+            seen_pages.add(signature)
             for row in batch:
                 option = _option(provider, row)
                 if option:
@@ -181,17 +213,17 @@ def fetch_models(provider, key, base_url="", *, cancelled=None):
                         truncated = True
             if provider == "openrouter":
                 from haizflow.services.translation_reasoning_catalog import remember
+                if cancelled and cancelled.is_set():
+                    return [], "cancelled"
                 remember(list(rows.values()))
             if provider != "openrouter" or len(batch) < 100:
                 options = sorted(rows.values(), key=lambda row: row["label"].casefold())
                 return options, "partial" if truncated else "ready"
-            if len(rows) == before and page > 0:
-                break  # A server ignoring offset must not cause repeated requests forever.
     except error.HTTPError as exc:
         status = exc.code
         exc.close()
         state = "auth" if status in {401, 403} else "unsupported" if status in {404, 405} else "error"
         return list(rows.values()), "partial" if rows else state
-    except (OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError, HTTPException):
         return list(rows.values()), "partial" if rows else "error"
     return sorted(rows.values(), key=lambda row: row["label"].casefold()), "partial"

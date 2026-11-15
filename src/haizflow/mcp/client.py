@@ -50,11 +50,20 @@ class DesktopClient:
                 if len(response) > MAX_RESPONSE:
                     raise DesktopClientError("HaizFlow response exceeded the size limit.")
                 if b"\n" in response:
-                    value = json.loads(response.split(b"\n", 1)[0])
-                    if value.get("id") != request_id or value.get("version") != PROTOCOL_VERSION:
+                    try:
+                        value = json.loads(response.split(b"\n", 1)[0])
+                    except (ValueError, UnicodeError):
+                        raise DesktopClientError("Invalid HaizFlow response. Reconnect the MCP server.") from None
+                    if (not isinstance(value, dict) or value.get("id") != request_id
+                            or type(value.get("version")) is not int or value["version"] != PROTOCOL_VERSION
+                            or ("error" in value) == ("result" in value)):
                         raise DesktopClientError("Invalid HaizFlow response.")
                     if "error" in value:
+                        if not isinstance(value["error"], str):
+                            raise DesktopClientError("Invalid HaizFlow response.")
                         raise DesktopClientError(value["error"])
+                    if not isinstance(value["result"], dict):
+                        raise DesktopClientError("Invalid HaizFlow response.")
                     return value["result"]
                 if not socket.waitForReadyRead(remaining()):
                     break

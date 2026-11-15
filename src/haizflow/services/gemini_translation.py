@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 import tempfile
 import threading
 import time
@@ -14,17 +15,14 @@ from urllib import error, request
 
 from haizflow.pipeline.process_registry import check_cancellation, is_paused
 from haizflow.config import RUNTIME_DATA_DIR
+from haizflow.core.gemini_models import MODEL_LABELS
 from haizflow.services import secure_credentials
 from haizflow.services.video_store import log_to_video
 from haizflow.services.translation_timing import timing_budget
 
 CREDENTIAL_TARGET = "HaizFlow/Gemini/APIKey"
 API_KEYS_URL = "https://aistudio.google.com/api-keys"
-MODELS = {
-    "gemini-3.1-flash-lite": "Gemini 3.1 Flash-Lite",
-    "gemini-3.5-flash-lite": "Gemini 3.5 Flash-Lite",
-    "gemini-3.8-flash": "Gemini 3.8 Flash",
-}
+MODELS = MODEL_LABELS
 _ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 _KEYS_PATH = Path(RUNTIME_DATA_DIR) / "gemini-api-keys.json"
 _KEYS_LOCK = threading.RLock()
@@ -336,6 +334,28 @@ def _payload_for_chunk(
     return payload
 
 
+def _zero_free_quota(exc) -> bool:
+    """Account/model has no free allocation, not a transient request-rate limit."""
+    try:
+        data = json.loads(exc.read(65536))
+    except (ValueError, OSError, AttributeError, TypeError):
+        return False
+    fault = data.get("error") if isinstance(data, dict) else None
+    if not isinstance(fault, dict):
+        return False
+    message = str(fault.get("message", ""))
+    if re.search(r"free_tier[^\n]*\blimit:\s*0\b", message, re.IGNORECASE):
+        return True
+    details = fault.get("details", [])
+    for detail in details if isinstance(details, list) else []:
+        violations = detail.get("violations", []) if isinstance(detail, dict) else []
+        for violation in violations if isinstance(violations, list) else []:
+            if (isinstance(violation, dict) and str(violation.get("quotaValue")) == "0"
+                    and "free" in str(violation.get("quotaMetric", "")).lower()):
+                return True
+    return False
+
+
 def _request_chunk(chunk: list[tuple[int, str]], *, key: str, model: str,
                    source_language: str, target_language: str, video_id: str = "", **kwargs) -> list[str]:
     payload = _payload_for_chunk(chunk, model=model, source_language=source_language,
@@ -357,11 +377,18 @@ def _request_chunk(chunk: list[tuple[int, str]], *, key: str, model: str,
             # callback before honoring Pause. Never publish it as final here.
             return _parse_translations(answer, chunk)
         except error.HTTPError as exc:
+            no_free_quota = _zero_free_quota(exc) if exc.code == 429 else False
+            exc.close()
             if video_id:
                 log_to_video(
                     video_id, f"Gemini {model}: HTTP {exc.code}, attempt {attempt + 1}/3.",
                     component="TRANSLATE", level="WARNING",
                 )
+            if no_free_quota:
+                raise RuntimeError(
+                    f"{MODELS[model]} không có hạn mức miễn phí cho key này. "
+                    "Kiểm tra Billing trong Google AI Studio hoặc chọn model khác."
+                ) from None
             if exc.code in {408, 429, 500, 502, 503, 504} and attempt < 2:
                 _retry_delay(min(8, 2 ** attempt + random.random()), video_id)
                 continue

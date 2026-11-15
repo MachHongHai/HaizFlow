@@ -6,12 +6,16 @@ import "."
 SettingsGroup {
     id: root
     required property var bridge
-    title: qsTr("Quyền truy cập")
+    property bool permissionsExpanded: false
+    readonly property int enabledCount: Number(bridge.permissions.write === true)
+        + Number(bridge.permissions.online === true) + Number(bridge.permissions["delete"] === true)
+        + Number(bridge.permissions.publish === true)
+    title: qsTr("MCP cục bộ")
 
     SettingRow {
         Layout.fillWidth: true
-        label: qsTr("MCP cục bộ")
-        description: qsTr("Bật MCP sẽ bật tất cả quyền bên dưới trong phiên này. Bạn có thể tắt riêng từng quyền; dịch vụ trực tuyến có thể phát sinh phí API.")
+        label: qsTr("Kết nối với AI agent")
+        description: qsTr("Giữ HaizFlow mở khi dùng MCP. Các quyền được bật sẵn và có thể tắt bên dưới.")
         AppSwitch {
             objectName: "mcpEnabledSwitch"
             checked: root.bridge.enabled
@@ -26,7 +30,7 @@ SettingsGroup {
     }
     StudioButton {
         objectName: "mcpTestConnectionButton"
-        text: root.bridge.connectionState === "checking" ? qsTr("Đang kiểm tra…") : qsTr("Kiểm tra kết nối MCP")
+        text: root.bridge.connectionState === "checking" ? qsTr("Đang kiểm tra…") : qsTr("Kiểm tra HaizFlow")
         enabled: root.bridge.enabled && root.bridge.connectionState !== "checking"
         onClicked: root.bridge.testConnection()
     }
@@ -48,14 +52,32 @@ SettingsGroup {
         title: qsTr("Kiểm tra MCP chưa thành công")
         details: root.bridge.connectionState === "error" ? root.bridge.connectionMessage : ""
     }
+    StudioButton {
+        objectName: "mcpPermissionsToggle"
+        visible: root.bridge.enabled
+        text: root.permissionsExpanded ? qsTr("Ẩn quyền truy cập") : qsTr("Quyền của agent · %1/4").arg(root.enabledCount)
+        checkable: true
+        checked: root.permissionsExpanded
+        onClicked: root.permissionsExpanded = !root.permissionsExpanded
+    }
+    Text {
+        Layout.fillWidth: true
+        visible: root.bridge.enabled && (root.bridge.permissions["delete"] === true || root.bridge.permissions.publish === true)
+        text: qsTr("Lệnh xóa và đăng bài không hỏi lại trong HaizFlow.")
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        color: Theme.textMuted
+        font.family: Theme.fontFamily
+        font.pixelSize: TypeScale.body
+    }
     ColumnLayout {
         Layout.fillWidth: true
-        visible: root.bridge.enabled
+        visible: root.bridge.enabled && root.permissionsExpanded
         spacing: Theme.space16
         SettingRow {
             Layout.fillWidth: true
             label: qsTr("Điều khiển và chỉnh sửa")
-            description: qsTr("Tạo dự án, chỉnh phụ đề, xử lý và xuất video. Tắt quyền này để chỉ cho đọc; các quyền còn lại cũng được tắt.")
+            description: qsTr("Tạo dự án, chỉnh sửa, xử lý và xuất video. Tắt để chỉ cho xem.")
             AppSwitch {
                 objectName: "mcpWriteSwitch"
                 checked: root.bridge.permissions.write === true
@@ -77,7 +99,7 @@ SettingsGroup {
         SettingRow {
             Layout.fillWidth: true
             label: qsTr("Xóa dự án")
-            description: qsTr("Agent xóa dự án được chỉ định ngay khi gọi lệnh, không hỏi lại trong app.")
+            description: qsTr("Cho phép xóa dự án theo yêu cầu.")
             AppSwitch {
                 objectName: "mcpDeleteSwitch"
                 checked: root.bridge.permissions["delete"] === true
@@ -88,7 +110,7 @@ SettingsGroup {
         SettingRow {
             Layout.fillWidth: true
             label: qsTr("Đăng mạng xã hội")
-            description: qsTr("Agent đăng các video được chỉ định với tài khoản và cấu hình hiện tại, không hỏi lại trong app.")
+            description: qsTr("Cho phép đăng video bằng tài khoản đã kết nối.")
             AppSwitch {
                 objectName: "mcpPublishSwitch"
                 checked: root.bridge.permissions.publish === true

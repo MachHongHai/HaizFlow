@@ -523,9 +523,9 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
                     override["provider"] = "omnivoice"
     if data.get("speech_recognition_model") not in {"small", "small-cpu", "small-gpu", "large-v3-turbo"}:
         data["speech_recognition_model"] = "small"
-    from haizflow.core.translation_models import is_api_model, translation_provider
+    from haizflow.core.translation_models import GEMINI_MODELS, LOCAL_MODELS, is_api_model, translation_provider
 
-    if data.get("translation_model") not in {"auto", "q4", "full", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"} and not is_api_model(data.get("translation_model", "")):
+    if data.get("translation_model") not in LOCAL_MODELS | GEMINI_MODELS and not is_api_model(data.get("translation_model", "")):
         data["translation_model"] = "q4"
     data["translator_provider"] = translation_provider(str(data["translation_model"]))
     if data.get("speaker_mode") not in {"single", "multiple"}:

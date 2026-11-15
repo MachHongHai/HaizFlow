@@ -8,6 +8,7 @@ from unittest.mock import Mock
 import pytest
 
 from haizflow.pipeline import manual_tools, process_video
+from haizflow.core.gemini_models import THINKING_LEVELS
 from haizflow.schemas.video import VideoConfig, VideoInfo
 from haizflow.services import batch_settings, gemini_context, gemini_translation, translation, video_export
 from haizflow.services.processing_resume import configuration_snapshot
@@ -40,7 +41,7 @@ def test_styles_control_language_instructions_not_sampling(model, style, monkeyp
     config = payload["generationConfig"]
     assert not {"temperature", "topP", "topK"} & set(config)
     assert config["thinkingConfig"] == {
-        "thinkingLevel": "minimal" if "lite" in model else "low", "includeThoughts": False}
+        "thinkingLevel": THINKING_LEVELS[model][0], "includeThoughts": False}
     system = payload["systemInstruction"]["parts"][0]["text"]
     assert gemini_context.STYLE_PROMPTS[style] in system
     assert "spelling and diacritics" in system and "correct speaker-to-addressee direction" in system
@@ -64,7 +65,7 @@ def test_default_lite_requests_remain_fast_and_use_default_sampling(model, monke
     payload = json.loads(send.call_args.args[0].data)
     config = payload["generationConfig"]
     assert "temperature" not in config
-    assert config["thinkingConfig"]["thinkingLevel"] == ("minimal" if "lite" in model else "low")
+    assert config["thinkingConfig"]["thinkingLevel"] == THINKING_LEVELS[model][0]
     assert len(payload["contents"][0]["parts"]) == 1
 
 

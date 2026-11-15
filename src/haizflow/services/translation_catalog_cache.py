@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
@@ -15,6 +16,8 @@ from haizflow.services.translation_model_catalog import (
     _NON_TRANSLATION,
     _RETIRED_OPENROUTER_MODELS,
     _UNAVAILABLE_OPENROUTER_MODELS,
+    PROTOCOL_PARAMETERS,
+    supports_chat,
 )
 from haizflow.utils.atomic_file import atomic_json
 
@@ -22,6 +25,8 @@ _PATH = Path(RUNTIME_DATA_DIR) / "translation-openrouter-models.json"
 _BUNDLED = Path(__file__).resolve().parents[1] / "assets" / "translation" / "openrouter-models.json"
 _LOCK = threading.RLock()
 _EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
+MAX_AGE = 60 * 60
+_PROTOCOL_REVISION = 1
 
 
 def _clean(options):
@@ -34,6 +39,7 @@ def _clean(options):
                 or _NON_TEXT.search(model) or model.startswith("openrouter/")
                 or model in _RETIRED_OPENROUTER_MODELS or model in _INCOMPATIBLE_OPENROUTER_MODELS
                 or model in _UNAVAILABLE_OPENROUTER_MODELS
+                or not supports_chat(model, row)
                 or _NON_TRANSLATION.search(model)):
             continue
         label = row.get("label", model)
@@ -47,10 +53,14 @@ def _clean(options):
             value = row.get(field)
             if type(value) is int and 0 < value <= 10**8:
                 item[field] = value
-        if row.get("prompt_format") == "user_only":
-            item["prompt_format"] = "user_only"
-        if row.get("reasoning_supported") is True:
-            item["reasoning_supported"] = True
+        if isinstance(row.get("prompt_format"), str) and row["prompt_format"] in {"user_only", "system_user"}:
+            item["prompt_format"] = row["prompt_format"]
+        if type(row.get("reasoning_supported")) is bool:
+            item["reasoning_supported"] = row["reasoning_supported"]
+        if isinstance(row.get("parameters"), list):
+            item["parameters"] = [value for value in PROTOCOL_PARAMETERS if value in row["parameters"]]
+        if "endpoints" in row:
+            item["endpoints"] = ["/api/v1/chat/completions"]
         info = row.get("reasoning_capabilities")
         if isinstance(info, dict) and isinstance(info.get("values"), list):
             mandatory = info.get("mandatory") is True
@@ -100,6 +110,49 @@ def load():
         return deepcopy(_load())
 
 
+@lru_cache(maxsize=8)
+def _metadata_version(path, modified, size):
+    if size > 512 * 1024:
+        return None, {}
+    try:
+        data = json.loads(Path(path).read_text("utf-8"))
+        if not isinstance(data, dict) or data.get("version") != 2 or not isinstance(data.get("options"), list):
+            return None, {}
+        endpoints = {row["value"]: supports_chat(row["value"], row) for row in data["options"][:1000]
+                     if isinstance(row, dict) and isinstance(row.get("value"), str) and "endpoints" in row}
+        fetched = data.get("fetched_at") if data.get("protocol_revision") == _PROTOCOL_REVISION else None
+        return fetched, endpoints
+    except (OSError, ValueError):
+        return None, {}
+
+
+def _public_metadata(path):
+    try:
+        stat = path.stat()
+        return _metadata_version(str(path), stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return None, {}
+
+
+def needs_refresh():
+    """Only a complete live refresh is fresh; shipped/offline hints never are."""
+    fetched, _endpoints = _public_metadata(_PATH)
+    age = time.time() - fetched if type(fetched) in {int, float} else -1
+    return not (0 <= age < MAX_AGE and _cached_read(_PATH) is not None)
+
+
+def chat_supported(model):
+    """Keep negative endpoint hints even though incompatible rows are hidden."""
+    if not supports_chat(model, {}):
+        return False
+    with _LOCK:
+        for path in (_PATH, _BUNDLED):
+            _fetched, endpoints = _public_metadata(path)
+            if model in endpoints:
+                return endpoints[model]
+    return True
+
+
 def reasoning_for(model):
     with _LOCK:
         for options in (_load(), _cached_read(_BUNDLED) or []):
@@ -117,7 +170,8 @@ def format_for(model):
 def protocol_for(model):
     with _LOCK:
         info = {}
-        fields = ("output_format", "context_length", "max_completion_tokens", "prompt_format", "reasoning_supported")
+        fields = ("output_format", "context_length", "max_completion_tokens", "prompt_format", "reasoning_supported",
+                  "endpoints", "parameters", "reasoning_capabilities", "pricing_kind")
         # Enrich an older successful cache with newly shipped protocol hints.
         for row in _cached_read(_BUNDLED) or []:
             if row["value"] == model:
@@ -125,9 +179,11 @@ def protocol_for(model):
                 break
         for row in _load():
             if row["value"] == model:
+                if "parameters" in row:
+                    info.clear()  # A live complete record supersedes, rather than inherits, old capabilities.
                 info.update({field: row[field] for field in fields if field in row})
                 break
-        return info
+        return deepcopy(info)
 
 
 def store(options, state, *, cancelled=None):
@@ -139,7 +195,10 @@ def store(options, state, *, cancelled=None):
         if state == "partial":
             options = _clean(list({row["value"]: row for row in [*load(), *options]}.values()))
         try:
-            atomic_json(_PATH, {"version": 2, "options": options}, ensure_ascii=True)
+            data = {"version": 2, "protocol_revision": _PROTOCOL_REVISION, "options": options}
+            if state == "ready":
+                data["fetched_at"] = time.time()
+            atomic_json(_PATH, data, ensure_ascii=True)
         except OSError:
             pass  # A cache write failure cannot discard a successfully fetched list.
         return options

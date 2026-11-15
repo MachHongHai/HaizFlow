@@ -6,7 +6,7 @@ import hashlib
 import json
 
 COMMAND_AREAS = {
-    "translation": {"translation_models"},
+    "translation": {"translation_models", "translation_choice", "translation_api"},
     "projects": {"projects", "project", "open", "create", "rename", "prepare_delete", "delete"},
     "sources": {"import_video", "replace_source", "replace_url_inspect", "replace_url_start",
                 "import_url_inspect", "import_url_start", "import_url_cancel"},

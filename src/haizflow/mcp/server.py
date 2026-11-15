@@ -8,6 +8,7 @@ from typing import Literal
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ResourceError, ToolError
 from mcp.types import ImageContent, TextContent, ToolAnnotations
+from haizflow import __version__
 
 from .client import DesktopClient, DesktopClientError
 
@@ -31,7 +32,7 @@ def create_server(client: DesktopClient, *, tool_profile: Literal["full", "compa
 
     server = MCPServer(
         "HaizFlow",
-        version="1.0.4",
+        version=__version__,
         instructions=(
             "Control the user's running HaizFlow desktop via its existing processing queue. "
             "MCP must be enabled in the app. Writes and online services require separate session permissions. "
@@ -62,10 +63,13 @@ def create_server(client: DesktopClient, *, tool_profile: Literal["full", "compa
             " In compact tool profile, all mutations and detailed reads remain available through execute; "
             "direct convenience wrappers are omitted to save tool-schema tokens."
             " Use options(section='translation'|'voice'|'subtitles'|'export') for scoped settings, "
-            "translation_models with query/free_only and pagination for offline model discovery, and subtitle_fonts "
+            "translation_models with query/free_only and small pages (details=true only when needed) for offline discovery. "
+            "Use translation_api to list connections or explicitly verify/refresh metadata in the background; "
+            "these GET-only checks never test inference or consume translation tokens. Do not repeat starts while busy. "
+            "Use translation_choice for a validated custom Model ID/output format, then configure to apply it. "
+            "Reuse since cursors to avoid duplicate catalogue/status payloads, and use subtitle_fonts "
             "for script-aware fonts. Style and reasoning are independent; never silently raise reasoning. "
-            "Voice studio has separate OmniVoice design and VieNeu reference-clone workflows; presets belong "
-            "to one provider only. Discover voice-area commands as needed; microphone capture stays UI-controlled. "
+            "Discover voice-area commands as needed; microphone capture stays UI-controlled. "
             "Catalogue presence does not guarantee endpoint availability or quota. No model discovery calls an AI API."
         ),
     )

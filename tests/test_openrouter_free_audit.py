@@ -74,3 +74,33 @@ def test_audit_refuses_nonofficial_post_destination(monkeypatch):
                               "synthetic-key", option())
     assert not result["usable"] and result["requests"] == 0
     send.assert_not_called()
+
+
+def test_audit_preflight_uses_two_public_reads_then_one_zero_price_post(monkeypatch):
+    from urllib.parse import quote
+
+    model = "vendor/audit:free"
+    calls = []
+    def send(url, key, payload=None, **kwargs):
+        calls.append((url, key, payload))
+        if payload is None:
+            assert key == ""
+            if url.endswith("/endpoints"):
+                return {"data": {"endpoints": [{"model_id": model, "status": 0,
+                    "supported_parameters": ["max_tokens", "structured_outputs"],
+                    "pricing": {"prompt": "0", "completion": "0"}}]}}
+            return {"data": {"id": model, "endpoints": ["/api/v1/chat/completions"],
+                "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
+                "supported_parameters": ["max_tokens", "structured_outputs"],
+                "pricing": {"prompt": "0", "completion": "0"}, "context_length": 32768,
+                "top_provider": {"max_completion_tokens": 8192}}}
+        assert key == "synthetic-key" and payload["model"] == model
+        assert payload["provider"]["max_price"] == {"prompt": 0, "completion": 0, "request": 0}
+        return answer()
+    monkeypatch.setattr(api_translation, "_json_request", send)
+    result = audit()["check"](profile(), "synthetic-key", option(model), preflight=True)
+    assert result["usable"] and result["requests"] == 1 and result["preflight"] == "passed"
+    assert [url for url, _key, _payload in calls] == [
+        "https://openrouter.ai/api/v1/model/" + quote(model, safe="/"),
+        "https://openrouter.ai/api/v1/models/" + quote(model, safe="/") + "/endpoints",
+        "https://openrouter.ai/api/v1/chat/completions"]

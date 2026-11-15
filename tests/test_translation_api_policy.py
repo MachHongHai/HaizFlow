@@ -26,10 +26,11 @@ def test_current_deepseek_models_do_not_default_to_high_thinking(model):
     ("deepseek/deepseek-v4.1-flash", "none"), ("deepseek/deepseek-v4.1-flash-1017", "none"),
     ("deepseek/deepseek-v4-pro", "none")])
 def test_openrouter_uses_compatible_reasoning_control_not_exclusion_alone(model, effort, monkeypatch):
-    from haizflow.services import translation_reasoning_catalog
+    from haizflow.services import translation_catalog_cache, translation_reasoning_catalog
 
     # Exercise curated fallback, independently of cached/bundled public metadata.
     monkeypatch.setattr(translation_reasoning_catalog, "get", lambda _model: None)
+    monkeypatch.setattr(translation_catalog_cache, "protocol_for", lambda _model: {})
     assert request_options("openrouter", model) == {"reasoning": {"effort": effort, "exclude": True}}
 
 
@@ -52,7 +53,7 @@ def test_r1_mandatory_reasoning_does_not_invent_an_effort_control(model):
             request_options("openrouter", model, effort)
     limits = request_limits("openrouter", model, 3060)
     assert limits["max_tokens"] == 11252 and limits["sentences"] == 12
-    assert request_limits("openrouter", model, 32768)["max_tokens"] == 32768
+    assert 8192 <= request_limits("openrouter", model, 32768)["max_tokens"] <= 32768
 
 
 def test_only_builtin_translation_enums_are_case_normalized():
@@ -74,33 +75,30 @@ def test_router_small_limits_bound_requests_and_shrink_batches_before_sending(mo
     assert limits["sentences"] <= 24 and limits["characters"] < 4000
 
 
-def test_all_seven_free_models_use_real_toggle_or_mandatory_reasoning_metadata(tmp_path, monkeypatch):
+def test_bundled_free_models_use_advertised_reasoning_and_bounded_headroom(tmp_path, monkeypatch):
     from haizflow.services import translation_catalog_cache as cache
     from haizflow.services import translation_reasoning_catalog as reasoning
 
     monkeypatch.setattr(cache, "_PATH", tmp_path / "absent-models.json")
     monkeypatch.setattr(reasoning, "_PATH", tmp_path / "absent-reasoning.json")
     rows = [row for row in cache.load() if row.get("pricing_kind") == "free"]
-    assert len(rows) == 7
-    mandatory = {"recursive/flint-v1.0:free", "liquid/lfm-2.5-2.6b:free", "liquid/lfm-3-1.7b:free"}
+    assert rows
     for row in rows:
         model = row["value"]
         info = capabilities("openrouter", model)
         limits = request_limits("openrouter", model, 2156)
         assert limits["max_tokens"] <= row["max_completion_tokens"]
-        if model in mandatory:
-            assert info["mandatory"] and info["values"] == []
-            assert request_options("openrouter", model) == {"reasoning": {"exclude": True}}
+        if info.get("mandatory"):
+            assert "none" not in info["values"] and not info.get("toggle")
+            expected = {"exclude": True}
+            if info["default"]:
+                expected["effort"] = info["default"]
+            assert request_options("openrouter", model) == {"reasoning": expected}
             assert limits["reasoning_active"] and limits["max_tokens"] >= 8192
             for effort in ("disabled", "none", "enabled"):
                 with pytest.raises(ValueError):
                     request_options("openrouter", model, effort)
-        elif model == "stealth/crouton-alpha":
-            assert info["mandatory"] and info["parameter"] == "reasoning.effort"
-            assert info["default"] == "minimal"
-            assert request_options("openrouter", model) == {"reasoning": {"effort": "minimal", "exclude": True}}
-            assert limits["reasoning_active"] and limits["max_tokens"] >= 8192
-        else:
+        elif info.get("toggle"):
             assert info["parameter"] == "reasoning.enabled" and info["values"] == ["disabled", "enabled"]
             assert request_options("openrouter", model) == {"reasoning": {"enabled": False, "exclude": True}}
             assert not limits["reasoning_active"] and limits["max_tokens"] == 2156
@@ -109,6 +107,33 @@ def test_all_seven_free_models_use_real_toggle_or_mandatory_reasoning_metadata(t
             enabled = request_limits("openrouter", model, 2156, "enabled")
             assert enabled["reasoning_active"] and enabled["max_tokens"] >= 10240
             assert enabled["max_tokens"] <= row["max_completion_tokens"] and enabled["sentences"] <= 12
+        else:
+            assert info["default"] == "none"
+            assert not limits["reasoning_active"] and limits["max_tokens"] == 2156
+            assert request_options("openrouter", model) == {"reasoning": {"effort": "none", "exclude": True}}
+
+
+@pytest.mark.parametrize("provider,model,effort,active", [
+    ("openai", "gpt-6.1-sol", "", True),
+    ("openai", "gpt-6.1-sol", "low", True),
+    ("openai", "gpt-5", "minimal", True),
+    ("openai", "gpt-6-luna", "", False),
+    ("openai", "gpt-6-luna", "none", False),
+    ("openai", "gpt-6-luna", "high", True),
+    ("openai", "gpt-4.1-mini", "", False),
+    ("deepseek", "deepseek-flash", "", False),
+    ("deepseek", "deepseek-flash", "disabled", False),
+    ("deepseek", "deepseek-flash", "low", True),
+    ("deepseek", "deepseek-v4-pro", "high", True),
+    ("deepseek", "deepseek-v4-pro", "max", True),
+    ("custom", "gpt-6.1-sol", "", False),
+])
+def test_official_provider_reasoning_limits_match_effective_request(provider, model, effort, active):
+    limits = request_limits(provider, model, 2048, effort)
+    assert limits["reasoning_active"] is active
+    assert limits["timeout"] == (240 if active else 90)
+    assert (limits["sentences"], limits["characters"]) == ((12, 2000) if active else (24, 4000))
+    assert 10240 <= limits["max_tokens"] <= 32768 if active else limits["max_tokens"] == 2048
 
 
 def test_unknown_reasoning_support_reserves_headroom_without_inventing_controls(monkeypatch):

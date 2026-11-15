@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import re
 
+from haizflow.core.gemini_models import MODEL_LABELS
+
 LOCAL_MODELS = frozenset({"auto", "q4", "full"})
-GEMINI_MODELS = frozenset({"gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"})
+GEMINI_MODELS = frozenset(MODEL_LABELS)
 _API_MODEL = re.compile(
     r"api:[a-f0-9]{32}(?::[A-Za-z0-9@~][A-Za-z0-9._:/@+~-]{0,199}(?:#(?:json_object|json_schema|prompt))?)?\Z")
 

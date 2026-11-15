@@ -13,7 +13,8 @@ from haizflow.services import translation_model_catalog as catalog
 def router(model, **extra):
     return {"id": model, "name": "Readable " + model,
             "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
-            "supported_parameters": ["structured_outputs"], **extra}
+            "supported_parameters": ["max_tokens", "structured_outputs"],
+            "context_length": 32768, "top_provider": {"max_completion_tokens": 8192}, **extra}
 
 
 def test_presets_are_explicit_independent_and_translation_only():
@@ -49,7 +50,9 @@ def test_router_paginates_filters_json_support_and_sanitizes(monkeypatch):
     rows, state = catalog.fetch_models("openrouter", "secret")
     assert state == "ready" and len(rows) == 101
     assert rows[0] == {"value": "vendor/final", "label": "<b>Not HTML</b>", "pricing_kind": "unknown",
-                       "output_format": "json_schema"}
+                       "output_format": "json_schema", "parameters": ["max_tokens", "structured_outputs"],
+                       "prompt_format": "system_user", "reasoning_supported": False,
+                       "context_length": 32768, "max_completion_tokens": 8192}
     assert "offset=100" in request.call_args.args[0]
     assert "supported_parameters=" not in request.call_args.args[0]
 
@@ -101,6 +104,57 @@ def test_catalogue_keeps_bounded_protocol_metadata_for_compatible_models():
         "context_length": 8192, "max_completion_tokens": 2048, "prompt_format": "user_only"}
 
 
+@pytest.mark.parametrize("model,endpoints,accepted", [
+    ("vendor/model:batch", ["/api/v1/batches"], False),
+    ("vendor/model:batch", ["/api/v1/chat/completions"], False),
+    ("vendor/model", ["/api/v1/batches"], False),
+    ("vendor/model", ["/api/v1/responses"], False),
+    ("vendor/model", [], False),
+    ("vendor/model", None, False),
+    ("vendor/model", "/api/v1/chat/completions", False),
+    ("vendor/model", ["/api/v1/chat/completions", "/api/v1/responses"], True),
+])
+def test_router_requires_compatible_explicit_endpoint(model, endpoints, accepted):
+    option = catalog._option("openrouter", router(model, endpoints=endpoints))
+    assert bool(option) is accepted
+    if accepted:
+        assert option["endpoints"] == ["/api/v1/chat/completions"]
+
+
+def test_legacy_catalogue_without_endpoints_never_resurrects_batch_alias():
+    assert catalog._option("openrouter", router("vendor/model"))
+    assert catalog._option("openrouter", router("vendor/model:batch")) is None
+
+
+def test_public_router_catalogue_needs_no_key_and_never_uses_inference(monkeypatch):
+    send = Mock(return_value={"data": [router("vendor/chat", endpoints=["/api/v1/chat/completions"])]})
+    monkeypatch.setattr(api, "_json_request", send)
+    rows, state = catalog.fetch_models("openrouter", "", "https://attacker.invalid")
+    assert state == "ready" and rows[0]["value"] == "vendor/chat"
+    assert send.call_args.args[0].startswith("https://openrouter.ai/api/v1/models?")
+    assert send.call_args.args[1] == "" and len(send.call_args.args) == 2
+    assert catalog.fetch_models("openai", "") == ([], "invalid")
+
+
+@pytest.mark.parametrize("fault,state", [(401, "auth"), ("permission_denied", "auth"),
+                                        (429, "error"), ("server_error", "error"), (None, "error")])
+def test_model_discovery_rejects_http200_error_even_with_a_data_list(monkeypatch, fault, state):
+    send = Mock(return_value={"data": [router("vendor/chat")], "error": {"code": fault, "message": "SECRET"}})
+    monkeypatch.setattr(api, "_json_request", send)
+    assert catalog.fetch_models("openrouter", "") == ([], state)
+    assert send.call_count == 1
+
+
+def test_filtered_page_does_not_hide_valid_models_on_later_pages(monkeypatch):
+    batches = [router(f"vendor/batch-{index}:batch", endpoints=["/api/v1/batches"]) for index in range(100)]
+    send = Mock(side_effect=[{"data": [router(f"vendor/chat-{i}") for i in range(100)]},
+                            {"data": batches}, {"data": [router("vendor/final")]}])
+    monkeypatch.setattr(api, "_json_request", send)
+    rows, state = catalog.fetch_models("openrouter", "")
+    assert state == "ready" and len(rows) == 101
+    assert send.call_count == 3 and any(row["value"] == "vendor/final" for row in rows)
+
+
 def test_partial_catalog_is_marked_and_repeated_page_is_bounded(monkeypatch):
     data = {"data": [router(f"model-{index}") for index in range(100)]}
     request = Mock(return_value=data)
@@ -131,6 +185,20 @@ def test_invalid_drafts_and_cancel_never_make_network_requests(monkeypatch):
     cancelled.set()
     assert catalog.fetch_models("openai", "secret", cancelled=cancelled) == ([], "cancelled")
     request.assert_not_called()
+
+
+def test_cancel_during_download_never_persists_late_capabilities(monkeypatch):
+    from haizflow.services import translation_reasoning_catalog
+
+    cancelled = threading.Event()
+    def download(*_args, **_kwargs):
+        cancelled.set()
+        return {"data": [router("vendor/late", reasoning={"mandatory": True})]}
+    remember = Mock()
+    monkeypatch.setattr(api, "_json_request", download)
+    monkeypatch.setattr(translation_reasoning_catalog, "remember", remember)
+    assert catalog.fetch_models("openrouter", "", cancelled=cancelled) == ([], "cancelled")
+    remember.assert_not_called()
 
 
 @pytest.mark.parametrize("pricing,expected", [

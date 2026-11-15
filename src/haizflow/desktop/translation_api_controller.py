@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from copy import deepcopy
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
@@ -14,6 +15,7 @@ class TranslationApiController(QObject):
     _checked = Signal(str, str)
     catalogChanged = Signal()
     _catalogLoaded = Signal(int, object, str)
+    _routerLoaded = Signal(int, object, str)
 
     def __init__(self, host):
         super().__init__(host)
@@ -27,6 +29,7 @@ class TranslationApiController(QObject):
         self._catalog_state = "idle"
         self._catalog_connection = ""
         self._catalog_provider = ""
+        self._connection_options = {}
         from haizflow.services import translation_catalog_cache
 
         self._openrouter_options = translation_catalog_cache.load()
@@ -34,6 +37,72 @@ class TranslationApiController(QObject):
         self.changed.connect(self._invalidate_ui_caches)
         self.catalogChanged.connect(self._reasoning_cache.clear)
         self._catalogLoaded.connect(self._finish_catalog)
+        self._router_generation = 0
+        self._router_revision = 0
+        self._router_cancel = threading.Event()
+        self._router_refreshing = False
+        self._router_retry_at = 0.0
+        self._routerLoaded.connect(self._finish_router_refresh)
+
+    @Property("QVariantList", constant=True)
+    def geminiModels(self):
+        from haizflow.core.gemini_models import model_options
+
+        return model_options()
+
+    @Property(bool, notify=catalogChanged)
+    def routerRefreshing(self):
+        return self._router_refreshing
+
+    @Slot(str)
+    def ensureConnectionModels(self, identifier):
+        """Stale-while-revalidate public metadata; no keys or inference requests."""
+        from haizflow.services import translation_catalog_cache
+
+        try:
+            profile = connections.get_connection(identifier)
+        except ValueError:
+            return
+        if (profile["provider"] != "openrouter" or self._router_refreshing
+                or time.monotonic() < self._router_retry_at
+                or self._catalog_provider == "openrouter" and self._catalog_state == "loading"
+                or not translation_catalog_cache.needs_refresh()):
+            return
+        self._router_refreshing = True
+        self._router_retry_at = time.monotonic() + 300
+        self._router_generation += 1
+        generation, cancelled = self._router_generation, self._router_cancel
+        self.catalogChanged.emit()
+
+        def work():
+            from haizflow.services.translation_model_catalog import fetch_models
+
+            try:
+                options, state = fetch_models("openrouter", "", cancelled=cancelled)
+                if state in {"ready", "partial"}:
+                    options = translation_catalog_cache.store(options, state, cancelled=cancelled)
+            except Exception:
+                options, state = [], "error"
+            if not cancelled.is_set():
+                try:
+                    self._routerLoaded.emit(generation, options, state)
+                except RuntimeError:
+                    pass
+
+        threading.Thread(target=work, name="HaizFlow public models", daemon=True).start()
+
+    @Slot(int, object, str)
+    def _finish_router_refresh(self, generation, options, state):
+        if generation != self._router_generation:
+            return
+        self._router_refreshing = False
+        if state in {"ready", "partial"}:
+            self._openrouter_options = deepcopy(options)
+            if self._catalog_provider == "openrouter" and self._catalog_state in {"ready", "partial"}:
+                self._catalog_options = deepcopy(options)
+        # Invalidate reasoning bindings without changing any project's selection.
+        self._router_revision += 1
+        self.catalogChanged.emit()
 
     def _invalidate_ui_caches(self):
         self._reasoning_cache.clear()
@@ -53,7 +122,7 @@ class TranslationApiController(QObject):
 
     @Property(int, notify=catalogChanged)
     def reasoningRevision(self):
-        return self._catalog_generation
+        return self._catalog_generation + self._router_revision
 
     @Slot(str, str, bool, result="QVariantMap")
     @Slot(str, str, bool, int, result="QVariantMap")
@@ -76,11 +145,15 @@ class TranslationApiController(QObject):
         except ValueError:
             return []
         options = (deepcopy(self._openrouter_options) if profile["provider"] == "openrouter"
-                   else presets(profile["provider"]))
+                   else deepcopy(self._connection_options.get(identifier, presets(profile["provider"]))))
         if (profile["provider"] != "openrouter" and profile["model"]
                 and not any(row["value"] == profile["model"] for row in options)):
             options.insert(0, {"value": profile["model"], "label": profile["model"]})
         return options
+
+    @Slot(str, result=bool)
+    def hasCachedModels(self, identifier):
+        return identifier in self._connection_options
 
     @Slot(str, str, result=str)
     @Slot(str, str, str, result=str)
@@ -165,6 +238,11 @@ class TranslationApiController(QObject):
 
     @Slot(str, str, str)
     def loadModels(self, provider, key, base_url):
+        if provider == "openrouter":
+            self._router_cancel.set()
+            self._router_cancel = threading.Event()
+            self._router_generation += 1
+            self._router_refreshing = False
         self.resetModels()
         self._catalog_provider = provider
         generation, cancelled = self._catalog_generation, self._catalog_cancel
@@ -200,6 +278,13 @@ class TranslationApiController(QObject):
         self._catalog_options = options
         if self._catalog_provider == "openrouter" and state in {"ready", "partial"}:
             self._openrouter_options = deepcopy(options)
+        elif self._catalog_connection and state in {"ready", "partial"}:
+            try:
+                profile = connections.get_connection(self._catalog_connection)
+                if profile["provider"] == self._catalog_provider:
+                    self._connection_options[self._catalog_connection] = deepcopy(options)
+            except ValueError:
+                pass
         self._catalog_state = state
         self._reasoning_cache.clear()
         self.catalogChanged.emit()
@@ -255,6 +340,7 @@ class TranslationApiController(QObject):
                                       self.tr("Không xóa được kết nối trên máy."), "warning")
             return False
         self._results.pop(identifier, None)
+        self._connection_options.pop(identifier, None)
         self.changed.emit()
         return removed
 
