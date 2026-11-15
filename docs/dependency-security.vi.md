@@ -2,12 +2,22 @@
 
 [Tài liệu](README.vi.md) · [Sẵn sàng phát hành](release-readiness.vi.md) · [English](dependency-security.md)
 
-Rà soát gần nhất: **2026-10-04**
-Rà soát tiếp theo: **trước mọi release và không muộn hơn 2026-10-08**
+Rà soát gần nhất: **2026-11-15**
+Rà soát tiếp theo: **trước mọi release**
 
 Tài liệu xác định trust boundary cho Python package, native tool và model artifact. Ngoại lệ được liệt kê chỉ có hiệu lực tạm thời và không cho phép bỏ qua advisory mới.
 
 ## Audit bắt buộc
+
+### Cập nhật an toàn 1.0.5 (2026-11-15)
+
+Audit chặn lock CPU/CUDA cũ do các lỗi mới được công bố trong NLTK và
+OpenTelemetry. Nâng NLTK lên 3.10.4, OpenTelemetry API lên 1.45.2 và các gói
+SDK liên quan theo ràng buộc tương thích; xóa ngoại lệ NLTK cũ. Build lại hai
+engine từ lock SHA-256 mới và kiểm thử EXE thực tế. Không thêm ngoại lệ mới.
+
+Nguồn upstream: [NLTK 3.10.4](https://github.com/nltk/nltk/releases/tag/v3.10.4),
+[OpenTelemetry 1.45.2](https://github.com/open-telemetry/opentelemetry-python/releases/tag/v1.45.2).
 
 ```powershell
 .\scripts\audit-dependencies.ps1
@@ -44,12 +54,6 @@ lặp an toàn và hàm sinh chuẩn không bị thay đổi. Ứng dụng chỉ
 cục bộ đã khóa, không nhận repository sinh tùy chỉnh của người dùng. Rà soát lại
 trước mọi bản phát hành và chậm nhất **2026-10-08**; xóa ngoại lệ khi bản vá upstream
 qua kiểm thử tương thích model. [Bản vá upstream](https://github.com/huggingface/transformers/commit/cbc1651a032b923da7f4b44b3d0e6f68e6ba6b55).
-
-### NLTK 3.10.3
-
-Ngoại lệ tạm: [PYSEC-2026-3740 / CVE-2026-81726](https://github.com/advisories/GHSA-8mgp-746c-j5xp).
-
-NLTK 3.10.3 đã sửa các advisory trước đó về parser, corpus reader, recursion và từ chối dịch vụ. Finding còn lại liên quan path do caller kiểm soát trong API đọc/ghi model artifact. HaizFlow không expose các API này: wrapper alignment của WhisperX thay resource loader NLTK bằng bộ tách câu nội bộ, không tải NLTK data và không nhận đường model NLTK từ user. Xóa ngoại lệ khi có bản NLTK vá tương thích.
 
 ### Accelerate 1.14.0
 

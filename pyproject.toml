@@ -59,7 +59,8 @@ ai-runtime = [
   "huggingface-hub==0.36.2",
   "demucs==4.0.1",
   "rapidocr==3.8.1",
-  "nltk==3.10.3",
+  "nltk==3.10.4",
+  "opentelemetry-api==1.45.2",
 ]
 
 [project.scripts]

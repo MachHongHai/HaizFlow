@@ -2,12 +2,24 @@
 
 [Documentation](README.md) · [Release readiness](release-readiness.md) · [Tiếng Việt](dependency-security.vi.md)
 
-Last reviewed: **2026-10-04**
-Next review: **before every release and no later than 2026-10-08**
+Last reviewed: **2026-11-15**
+Next review: **before every release**
 
 This policy defines the trust boundary for Python packages, native tools, and model artifacts used by HaizFlow. A listed exception is temporary and does not waive future advisories.
 
 ## Mandatory audit
+
+### 1.0.5 security refresh (2026-11-15)
+
+The release audit blocked the previous CPU/CUDA locks on newly reported NLTK
+and OpenTelemetry findings. Upgrade NLTK to 3.10.4 and OpenTelemetry API to
+1.45.2, including its matching SDK/exporter family where required. Remove the
+older NLTK exception rather than suppressing the new findings. Rebuild both
+engines from the regenerated SHA-256 locks and rerun frozen import smoke tests.
+No new advisory exception is added.
+
+Upstream fixes: [NLTK 3.10.4](https://github.com/nltk/nltk/releases/tag/v3.10.4),
+[OpenTelemetry 1.45.2](https://github.com/open-telemetry/opentelemetry-python/releases/tag/v1.45.2).
 
 ### 1.0.4 security refresh (2026-10-25)
 
@@ -65,12 +77,6 @@ idempotence and unchanged standard generation. HaizFlow accepts only pinned loca
 checkpoints, not caller-selected generation repositories. Re-review before every
 release and by **2026-10-08**; remove the exception after a patched dependency
 passes model compatibility tests. [Upstream fix](https://github.com/huggingface/transformers/commit/cbc1651a032b923da7f4b44b3d0e6f68e6ba6b55).
-
-### NLTK 3.10.3
-
-Temporarily accepted: [PYSEC-2026-3740 / CVE-2026-81726](https://github.com/advisories/GHSA-8mgp-746c-j5xp).
-
-NLTK 3.10.3 fixes the earlier parser, corpus-reader, recursion, and denial-of-service advisories. The remaining finding concerns caller-controlled paths in model-artifact loading and persistence APIs. HaizFlow does not expose those APIs: its WhisperX alignment wrapper replaces the NLTK resource loader with an internal sentence splitter, performs no NLTK download, and accepts no user-selected NLTK model path. Remove this exception when a compatible patched NLTK release is available.
 
 ### Accelerate 1.14.0
 

@@ -12,7 +12,7 @@ faster-whisper==1.2.1
 demucs==4.0.1
 soundfile==0.14.0
 soxr==1.1.0
-nltk==3.10.3
+nltk==3.10.4
 # Imported by the external OmniVoice SDK, invisible to PyInstaller's graph.
 pydub==0.25.1
 audioop-lts==0.2.2
@@ -22,4 +22,4 @@ multidict==6.9.1
 aiohttp==3.14.5
 # Security-fixed transitive dependencies; keep unrelated model packages pinned.
 filelock==4.2.1
-opentelemetry-api==1.45.1
+opentelemetry-api==1.45.2
