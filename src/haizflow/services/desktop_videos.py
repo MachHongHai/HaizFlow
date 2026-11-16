@@ -437,6 +437,12 @@ def create_desktop_video(
             video_info.video_width = 0
             video_info.video_height = 0
 
+        if config.project_type == "batch":
+            from haizflow.services.batch_settings import subtitle_style_for_size
+            video_info.subtitle_style = subtitle_style_for_size(
+                config.subtitle_style, config.batch_subtitle_reference_width, config.batch_subtitle_reference_height,
+                video_info.video_width, video_info.video_height)
+
         video_store.save_video(video_info)
         video_store.log_to_video(video_id, f"Imported input video: {video_path}")
         if move_input and not _same_path(video_path, input_path):

@@ -15,7 +15,7 @@ from haizflow.utils.ffmpeg import _binary
 from haizflow.utils.atomic_file import atomic_json
 
 from haizflow.core.bundled_models import MODEL_FILE, MODEL_SIZE, MODEL_SHA256, MODEL_REVISION, MODEL_URL as MODEL_URL
-IDENTITY_VERSION = "wespeaker-stable-target-voices-v9-float-subturn-childstyle"
+IDENTITY_VERSION = "wespeaker-stable-target-voices-v10-abbreviation-boundaries"
 FALLBACK_VOICE = "omnivoice:female_gentle"
 
 
@@ -418,7 +418,8 @@ def _clause_candidates(segment, audio):
     """
     import numpy as np
     text = str(segment.get("text") or "")
-    clauses = [part.strip() for part in re.split(r"(?<=[!?。！？])\s*|(?<=\.)\s+(?=[A-Z])", text) if part.strip()]
+    from haizflow.core.speaker_sentences import split_speaker_sentences
+    clauses = split_speaker_sentences(text)
     if not 1 < len(clauses) <= 6:
         return []
     start, end = float(segment['start']), float(segment['end'])

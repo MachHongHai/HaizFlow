@@ -92,6 +92,9 @@ class WatermarkPosition(BaseModel):
 
 
 class VideoConfig(BaseModel):
+    # Import-only reference canvas; persisted video styles use source pixels.
+    batch_subtitle_reference_width: int = Field(default=0, ge=0, le=32768)
+    batch_subtitle_reference_height: int = Field(default=0, ge=0, le=32768)
     mode: WorkflowMode = "A"  # A = full auto, review = pause after translation.
     source_language: str = "auto"  # Automatic detection is performed for every speech segment.
     target_language: str = "vi"

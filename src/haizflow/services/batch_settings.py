@@ -6,7 +6,7 @@ from collections import Counter
 from functools import lru_cache
 from pathlib import Path
 
-from haizflow.schemas.video import VideoConfig
+from haizflow.schemas.video import VideoConfig, SubtitleStyle
 from haizflow.services import project_store
 from haizflow.core.storage_ownership import owned_path
 from haizflow.desktop.catalog import TARGET_LANGUAGE_CODES
@@ -73,6 +73,33 @@ def differences(actual: dict, expected: dict) -> list[str]:
         asset_identity(value) != asset_identity(expected[key]) if key in ASSETS else value != expected[key])]
 
 
+def subtitle_style_for_size(style: SubtitleStyle, reference_width: int, reference_height: int,
+                            width: int, height: int) -> SubtitleStyle:
+    """Keep shared batch typography proportional, positions stay percentages."""
+    if min(reference_width, reference_height, width, height) <= 0:
+        return style.model_copy(deep=True)
+    scale = min(width, height) / min(reference_width, reference_height)
+    payload = style.model_dump()
+    for field, low, high in (("font_size", 10, 600), ("margin_bottom", 0, 1000),
+                             ("outline", 0, 40), ("shadow", 0, 100)):
+        payload[field] = max(low, min(high, round(payload[field] * scale)))
+    payload["letter_spacing"] = max(-20, min(100, payload["letter_spacing"] * scale))
+    return SubtitleStyle.model_validate(payload)
+
+
+def values_for_video(values: dict, video) -> dict:
+    width = int(getattr(video, "video_width", 0) or 0)
+    height = int(getattr(video, "video_height", 0) or 0)
+    reference_width = int(values.get("subtitleReferenceWidth") or 0)
+    reference_height = int(values.get("subtitleReferenceHeight") or 0)
+    if min(width, height, reference_width, reference_height) <= 0:
+        return values
+    style = dict(values.get("subtitleStyle") or {})
+    manual = bool(style.pop("manual", False))
+    scaled = subtitle_style_for_size(SubtitleStyle.model_validate(style), reference_width, reference_height, width, height)
+    return {**values, "subtitleStyle": {**scaled.model_dump(), "manual": manual}}
+
+
 def config_for(values: dict) -> VideoConfig:
     payload = {field: values[key] for key, field in FIELDS.items() if key in values}
     payload["mode"] = "A"
@@ -85,6 +112,8 @@ def config_for(values: dict) -> VideoConfig:
     style = dict(values.get("subtitleStyle") or {})
     payload["subtitle_layout_override"] = bool(style.pop("manual", False))
     payload["subtitle_style"] = style
+    payload["batch_subtitle_reference_width"] = values.get("subtitleReferenceWidth", 0)
+    payload["batch_subtitle_reference_height"] = values.get("subtitleReferenceHeight", 0)
     payload.update({field + "_path": str(values.get(key) or "") for key, field in ASSETS.items()})
     if payload.get("target_language", "vi") not in TARGET_LANGUAGE_CODES:
         raise ValueError("Choose a supported target language.")

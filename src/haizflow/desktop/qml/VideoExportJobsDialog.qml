@@ -65,7 +65,7 @@ AppDialog {
             }
             Text {
                 Layout.fillWidth: true
-                text: exportJob.modelData.status === "preparing" ? qsTr("Đang chuẩn bị") : exportJob.modelData.status === "rendering" ? ((exportJob.modelData.process ? qsTr("Đang xử lý và dựng video") : qsTr("Đang dựng video")) + (exportJob.measured ? " · " + exportJob.progressPercent + "%" : "")) : exportJob.modelData.status === "exporting" ? qsTr("Đang lưu · %1%").arg(exportJob.modelData.progress) : exportJob.modelData.status === "done" ? qsTr("Đã xuất thành công") : exportJob.modelData.status === "pending" ? qsTr("Đang chờ") : exportJob.modelData.status === "cancelled" ? qsTr("Đã hủy xuất") : qsTr("Xuất chưa hoàn tất")
+                text: exportJob.modelData.queued && ["preparing", "rendering"].includes(exportJob.modelData.status) ? qsTr("Đang chờ") : exportJob.modelData.status === "preparing" ? qsTr("Đang chuẩn bị") : exportJob.modelData.status === "rendering" ? ((exportJob.modelData.process ? qsTr("Đang xử lý và dựng video") : qsTr("Đang dựng video")) + (exportJob.measured ? " · " + exportJob.progressPercent + "%" : "")) : exportJob.modelData.status === "exporting" ? qsTr("Đang lưu · %1%").arg(exportJob.modelData.progress) : exportJob.modelData.status === "done" ? qsTr("Đã xuất thành công") : exportJob.modelData.status === "pending" ? qsTr("Đang chờ") : exportJob.modelData.status === "cancelled" ? qsTr("Đã hủy xuất") : qsTr("Xuất chưa hoàn tất")
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 color: exportJob.modelData.status === "failed" ? Theme.danger : Theme.textMuted
@@ -75,7 +75,7 @@ AppDialog {
             AppProgressBar {
                 objectName: "exportJobProgress"
                 Layout.fillWidth: true
-                visible: exportJob.modelData.status === "preparing" || exportJob.modelData.status === "exporting" || exportJob.modelData.status === "rendering"
+                visible: !exportJob.modelData.queued && (exportJob.modelData.status === "preparing" || exportJob.modelData.status === "exporting" || exportJob.modelData.status === "rendering")
                 value: exportJob.progressPercent
                 indeterminate: !exportJob.measured
                 active: visible

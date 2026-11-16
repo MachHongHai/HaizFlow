@@ -89,14 +89,19 @@ ApplicationWindow {{ width: 1000; height: 800; visible: true
     dialog = window.findChild(QObject, "exportDialog")
     button = window.findChild(QObject, "chooseExportDestination")
 
-    def folder_picker(_caption, directory):
-        assert os.environ["USERPROFILE"] == str(native)
+    def folder_picker(kind, _caption, directory, *_args):
+        assert kind == "folder"
+        assert os.environ["USERPROFILE"] == str(portable)
         assert Path(directory) == downloads.resolve()
-        return True, selected.pop(0)
+        path = selected.pop(0)
+        return ([path] if path else []), ""
 
-    def save_picker(*_args):
-        assert os.environ["USERPROFILE"] == str(native)
-        return str(tmp_path / "manual.mp4"), ""
+    def pick(kind, *args):
+        if kind == "folder":
+            return folder_picker(kind, *args)
+        assert kind == "save"
+        assert os.environ["USERPROFILE"] == str(portable)
+        return [str(tmp_path / "manual.mp4")], ""
 
     def unchanged():
         assert {key: os.environ[key] for key in before} == before
@@ -105,8 +110,8 @@ ApplicationWindow {{ width: 1000; height: 800; visible: true
         with (
             patch.dict(os.environ, before),
             patch.object(localization, "NATIVE_WINDOWS_USERPROFILE", str(native)),
-            patch.object(localization, "_native_windows_folder_dialog", side_effect=folder_picker) as native_picker,
-            patch.object(localization.QtFileDialog, "getSaveFileName", side_effect=save_picker),
+            patch("haizflow.desktop.native_file_picker.shell_environment", return_value={"USERPROFILE":str(native)}),
+            patch("haizflow.desktop.native_file_picker.pick", side_effect=pick) as native_picker,
             patch("haizflow.desktop.video_export_controller.desktop_settings.load_settings", return_value={}),
             patch("haizflow.desktop.video_export_controller.validate_export_destination",
                   side_effect=AssertionError("Picker must not scan batch destinations")),
@@ -135,7 +140,7 @@ ApplicationWindow {{ width: 1000; height: 800; visible: true
             assert QMetaObject.invokeMethod(button, "clicked")
             assert dialog.property("destination") == str(tmp_path / "manual.mp4")
             unchanged()
-            assert native_picker.call_count == backend.folder_calls == 3
+            assert native_picker.call_count == 4 and backend.folder_calls == 3
     finally:
         window.close()
         window.deleteLater()

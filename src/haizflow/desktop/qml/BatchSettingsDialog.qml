@@ -42,6 +42,8 @@ FloatingToolDialog {
     property int draftSubtitleBoxWidth: 72
     property int draftSubtitleBoxHeight: 6
     property bool draftSubtitleManual: false
+    property int draftSubtitleReferenceWidth: 0
+    property int draftSubtitleReferenceHeight: 0
     property int draftSubtitleMarginBottom: 40
     property int draftSubtitleOutline: 2
     property int draftSubtitleMaxChars: 32
@@ -70,6 +72,9 @@ FloatingToolDialog {
     property int previewIndex: 0
     property var previewMedia: ({})
     readonly property var previewSource: previewSources[previewIndex] || ({})
+    readonly property real subtitlePreviewScale: Math.min(Number(previewSource.videoWidth || 1), Number(previewSource.videoHeight || 1))
+        / Math.max(1, Math.min(draftSubtitleReferenceWidth, draftSubtitleReferenceHeight))
+    readonly property int previewSubtitleFontSize: Math.max(10, Math.round(draftSubtitleFontSize * subtitlePreviewScale))
 
     function refreshPreview() {
         previewMedia = AppController.batchPreviewMedia(String(previewSource.videoId || ""));
@@ -127,6 +132,8 @@ FloatingToolDialog {
         const selected = previewSources.findIndex(item => item.videoId === AppController.selectedVideoId);
         previewIndex = Math.max(0, selected);
         refreshPreview();
+        draftSubtitleReferenceWidth = Number(settings.subtitleReferenceWidth || previewSource.videoWidth || 1920);
+        draftSubtitleReferenceHeight = Number(settings.subtitleReferenceHeight || previewSource.videoHeight || 1080);
         replaceOverrides = true;
         draftVoiceReferencePath = settings.voiceReferencePath || "";
         draftBackgroundMusicLoop = settings.backgroundMusicLoop !== false;
@@ -222,6 +229,8 @@ FloatingToolDialog {
             "removeOriginalSubtitles": draftRemoveOriginalSubtitles,
             "originalSubtitleRemovalMode": draftOriginalSubtitleRemovalMode,
             "originalSubtitleRegion": draftOriginalSubtitleRegion,
+            "subtitleReferenceWidth": draftSubtitleReferenceWidth,
+            "subtitleReferenceHeight": draftSubtitleReferenceHeight,
             "subtitleStyle": Object.assign({}, draftSubtitleStyle, {
                 "font_size": draftSubtitleFontSize,
                 "margin_bottom": draftSubtitleMarginBottom,
@@ -430,7 +439,7 @@ FloatingToolDialog {
                     AppController.sourceCoverPreviewMedia(String(root.previewSource.videoId || "")),
                     root.draftOriginalSubtitleRegion])
                 onSubtitleLayoutRequested: batchSubtitlePreviewDialogLoader.invoke("openWithLayout", [
-                    root.draftSubtitleFontSize, root.draftSubtitlePositionX, root.draftSubtitlePositionY,
+                    root.previewSubtitleFontSize, root.draftSubtitlePositionX, root.draftSubtitlePositionY,
                     root.draftSubtitleBoxWidth, root.draftSubtitleBoxHeight])
                 onAudioSeparationEdited: function(value) { root.draftEnableAudioSeparation = value }
                 onAudioMixRequested: batchAudioMixDialogLoader.invoke("open", [])
@@ -619,7 +628,7 @@ FloatingToolDialog {
                 previewMedia: root.previewMedia
                 previewSource: root.previewSource.thumbnailSource || ""
                 appearance: Object.assign({}, root.draftSubtitleStyle, {
-                    font_size: root.draftSubtitleFontSize, outline: root.draftSubtitleOutline
+                    font_size: root.previewSubtitleFontSize, outline: Math.round(root.draftSubtitleOutline * root.subtitlePreviewScale)
                 })
                 coverEnabled: root.draftRemoveOriginalSubtitles
                 autoAlignToCover: !root.draftSubtitleManual
@@ -627,12 +636,12 @@ FloatingToolDialog {
                 onAutoAlignmentEdited: function(enabled) { root.draftSubtitleManual = !enabled; }
                 onSubtitleAppearanceEdited: function(patch) {
                     root.draftSubtitleStyle = Object.assign({}, root.draftSubtitleStyle, patch);
-                    if (patch.font_size !== undefined) root.draftSubtitleFontSize = Number(patch.font_size);
-                    if (patch.outline !== undefined) root.draftSubtitleOutline = Number(patch.outline);
+                    if (patch.font_size !== undefined) root.draftSubtitleFontSize = Math.max(10, Math.round(Number(patch.font_size) / root.subtitlePreviewScale));
+                    if (patch.outline !== undefined) root.draftSubtitleOutline = Math.max(0, Math.round(Number(patch.outline) / root.subtitlePreviewScale));
                 }
                 onClosed: batchSubtitlePreviewDialogLoader.release()
                 onSubtitleLayoutEdited: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
-                    root.draftSubtitleFontSize = fontSize
+                    root.draftSubtitleFontSize = Math.max(10, Math.round(fontSize / root.subtitlePreviewScale))
                     root.draftSubtitlePositionX = positionX
                     root.draftSubtitlePositionY = positionY
                     root.draftSubtitleBoxWidth = boxWidth

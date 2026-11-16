@@ -933,7 +933,8 @@ class ProjectCommandsController:
             video = video_store.get_video(key)
             if video and (changed := batch_settings.differences(_batch_values_for_device(
                     batch_settings.values_for(video), str(getattr(host, "_settings_processing_device", "cpu")),
-                    total_vram_bytes=getattr(getattr(host, "_hardware_capabilities", None), "total_vram_bytes", None)), expected)):
+                    total_vram_bytes=getattr(getattr(host, "_hardware_capabilities", None), "total_vram_bytes", None)),
+                    batch_settings.values_for_video(expected, video))):
                 result.append({"videoId": key, "fileName": video.original_filename, "differences": changed})
         return result
 
@@ -1056,6 +1057,13 @@ class ProjectCommandsController:
             return False
         old_values = self.batch_settings_values()
         normalized = {**old_values, **values}
+        if "subtitleStyle" in values and not (normalized.get("subtitleReferenceWidth")
+                                                and normalized.get("subtitleReferenceHeight")):
+            reference = next((video for video in videos if getattr(video, "video_width", 0)
+                              and getattr(video, "video_height", 0)), None)
+            if reference is not None:
+                normalized.update(subtitleReferenceWidth=reference.video_width,
+                                  subtitleReferenceHeight=reference.video_height)
         from haizflow.core.model_choices import project_translation_choice
 
         normalized["translationModel"] = project_translation_choice(
@@ -1065,7 +1073,8 @@ class ProjectCommandsController:
         selected = [video for video in videos if replace_overrides or not batch_settings.differences(
             _batch_values_for_device(batch_settings.values_for(video),
                                      str(getattr(host, "_settings_processing_device", "cpu")),
-                                     total_vram_bytes=getattr(getattr(host, "_hardware_capabilities", None), "total_vram_bytes", None)), old_values)]
+                                     total_vram_bytes=getattr(getattr(host, "_hardware_capabilities", None), "total_vram_bytes", None)),
+                                     batch_settings.values_for_video(old_values, video))]
         before = {}
         before_state = {}
         changed_ids = []
@@ -1097,12 +1106,14 @@ class ProjectCommandsController:
             }
             for video in selected:
                 actual = batch_settings.values_for(video)
-                changed = bool(batch_settings.differences(actual, normalized))
+                effective = batch_settings.values_for_video(normalized, video)
+                video_config = batch_settings.config_for(effective)
+                changed = bool(batch_settings.differences(actual, effective))
                 if not changed:
                     continue
                 changed_ids.append(video.video_id)
-                fields = {field: getattr(config, field) for field in batch_settings.FIELDS.values()}
-                fields.update(subtitle_style=config.subtitle_style, subtitle_layout_override=config.subtitle_layout_override,
+                fields = {field: getattr(video_config, field) for field in batch_settings.FIELDS.values()}
+                fields.update(subtitle_style=video_config.subtitle_style, subtitle_layout_override=video_config.subtitle_layout_override,
                               source_language="auto", translator_provider=config.translator_provider)
                 video_store.update_video(video.video_id, **fields)
                 for key, setter in (("backgroundMusicPath", set_desktop_background_music),

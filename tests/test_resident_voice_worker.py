@@ -11,11 +11,12 @@ from haizflow.services.resident_voice_worker import ResidentVoiceWorker
 SERVER = r'''
 import json, os, sys, time
 from pathlib import Path
+from haizflow.utils.atomic_file import replace_with_retry
 def write(path, value):
     path = Path(path)
     tmp = path.with_suffix('.new')
     tmp.write_text(json.dumps(value), encoding='utf-8')
-    os.replace(tmp, path)
+    replace_with_retry(tmp, path)
 count = 0
 for line in sys.stdin:
     request = json.loads(Path(line.strip()).read_text(encoding='utf-8'))

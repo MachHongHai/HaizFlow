@@ -16,7 +16,8 @@ class NativeMediaDialogTests(unittest.TestCase):
             profile = Path(temporary) / "WindowsUser"
             downloads = profile / "Downloads"
             downloads.mkdir(parents=True)
-            with patch.object(localization, "NATIVE_WINDOWS_USERPROFILE", str(profile)):
+            with patch.object(localization, "NATIVE_WINDOWS_USERPROFILE", str(profile)), \
+                    patch("haizflow.desktop.native_file_picker.shell_environment", return_value={"USERPROFILE":str(profile)}):
                 self.assertEqual(localization.native_media_dialog_directory(), str(downloads.resolve()))
 
     def test_video_import_uses_the_native_media_location(self):
@@ -33,8 +34,8 @@ class NativeMediaDialogTests(unittest.TestCase):
             selected = str(Path(temporary) / "Batch videos")
             with (
                 patch.object(
-                    localization, "_native_windows_folder_dialog",
-                    return_value=(True, selected),
+                    localization, "_windows_picker",
+                    return_value=([selected], ""),
                 ) as native_picker,
                 patch.object(localization.QtFileDialog, "getExistingDirectory") as qt_picker,
             ):
@@ -47,8 +48,9 @@ class NativeMediaDialogTests(unittest.TestCase):
         # Check the wrapper's actual localized contract and filesystem identity,
         # not English-only copy or the exact spelling of Windows separators.
         native_picker.assert_called_once()
-        caption, directory = native_picker.call_args.args
-        self.assertEqual(caption, localization._ui_text("Choose a folder of videos for batch processing"))
+        kind, caption, directory = native_picker.call_args.args
+        self.assertEqual(kind, "folder")
+        self.assertEqual(caption, "Choose a folder of videos for batch processing")
         self.assertEqual(Path(directory).resolve(), Path(temporary).resolve())
         qt_picker.assert_not_called()
 
@@ -57,8 +59,8 @@ class NativeMediaDialogTests(unittest.TestCase):
             fallback = str(Path(temporary) / "Fallback")
             with (
                 patch.object(
-                    localization, "_native_windows_folder_dialog",
-                    return_value=(False, ""),
+                    localization, "_windows_picker",
+                    return_value=None,
                 ),
                 patch.object(
                     localization.QtFileDialog, "getExistingDirectory",

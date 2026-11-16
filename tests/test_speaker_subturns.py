@@ -21,6 +21,20 @@ def test_clause_candidates_follow_a_quiet_gap_not_equal_halves():
     assert identity._clause_candidates(source,np.full(17600,5000,dtype=np.float32))==[]
 
 
+@pytest.mark.parametrize("title", ["Mrs.", "Mr.", "Dr.", "Ms.", "Prof.", "J."])
+def test_name_abbreviation_never_becomes_a_second_speaker(title):
+    wave = np.full(11520, 5000, dtype=np.float32)
+    wave[6080:7360] = 0
+    assert identity._clause_candidates({'start':21.545, 'end':22.265,
+        'text':f"Don't worry, {title} Lime."}, wave) == []
+
+
+def test_name_abbreviation_keeps_true_next_sentence_boundary():
+    from haizflow.core.speaker_sentences import split_speaker_sentences
+    assert split_speaker_sentences("Don't worry, Mrs. Lime. No!") == ["Don't worry, Mrs. Lime.", "No!"]
+    assert split_speaker_sentences('Giá là 3.14 đô. Không!') == ['Giá là 3.14 đô.', 'Không!']
+
+
 def test_very_short_embedding_repeats_own_features_without_borrowing_next_voice():
     audio = np.sin(2*np.pi*120*np.arange(6080)/16000)*2000
     features = identity._features(audio)

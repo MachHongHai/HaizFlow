@@ -58,7 +58,7 @@ def export_job_summary(jobs):
             result["waiting"] = True
         if status in {"preparing", "rendering", "exporting", "pending"}:
             result["activeVideoIds"].append(job.get("videoId"))
-            if not result["activeJob"]:
+            if not result["activeJob"] or (result["activeJob"].get("queued") and not job.get("queued")):
                 result["activeJob"] = dict(job)
     return result
 
@@ -342,6 +342,7 @@ class VideoExportController(QObject):
         job = {"videoId": video.video_id, "name": target.name, "path": str(target),
                "status": "pending", "progress": 0, "error": "", "overwrite": bool(overwrite),
                "process": bool(process),
+               "queued": bool(process),
                "rangeMs": [selected_range["startMs"], selected_range["endMs"]] if selected_range else None,
                "targetIdentity": self._chosen_targets.get(str(target), destination_identity(target))}
         previous_jobs = self.jobs
@@ -410,7 +411,7 @@ class VideoExportController(QObject):
                     raise FileExistsError(str(target))
                 jobs.append({"videoId": video.video_id, "name": target.name, "path": str(target),
                              "status": "rendering" if process else "pending", "progress": 0, "error": "",
-                             "overwrite": bool(overwrite), "process": bool(process),
+                             "overwrite": bool(overwrite), "process": bool(process), "queued": bool(process),
                              "targetIdentity": self._chosen_targets.get(str(target), destination_identity(target))})
         except (OSError, ValueError) as exc:
             self.alert(exc)
@@ -540,6 +541,7 @@ class VideoExportController(QObject):
                 processing_runs.disarm_export(video.video_id)
                 return False
         job["status"] = "rendering"
+        job["queued"] = True
         self._capture_render_owner(job)
         return True
 
@@ -755,6 +757,10 @@ class VideoExportController(QObject):
         changed = False
         pending_cleanup = False
         settled_run = False
+        pending_method = getattr(self.host._processing_queue, "pending_ids", None)
+        pending_video_ids = (set(pending_method()) if callable(pending_method)
+                             and any(job.get("process") or job.get("renderRequired") for job in self.jobs)
+                             else None)
         while not self.events.empty():
             identifier, status, progress, error = self.events.get_nowait()
             job = next((item for item in self.jobs if item["videoId"] == identifier), None)
@@ -782,6 +788,15 @@ class VideoExportController(QObject):
             if job["status"] not in {"rendering", "paused", "awaiting_review"}:
                 continue
             video = video_store.get_video(job["videoId"])
+            if video and (job.get("process") or job.get("renderRequired")):
+                queued = (job["videoId"] in pending_video_ids if pending_video_ids is not None
+                          else video.status == "pending" or str(video.step or "") == "queued")
+                if queued != bool(job.get("queued")):
+                    job["queued"] = queued
+                    changed = True
+                if queued and self.host._processing_queue.contains(job["videoId"]):
+                    # A pending queue member has no active inference/progress yet.
+                    continue
             if video:
                 measured = str(video.step or "") not in {
                     "extracting_audio", "separating_audio", "transcribing",

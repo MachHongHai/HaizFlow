@@ -59,6 +59,11 @@ if not getattr(sys, "frozen", False) and VENV_PYTHON.exists() and not _running_i
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+if len(sys.argv) == 3 and sys.argv[1] == "--native-file-dialog":
+    from haizflow.desktop.native_file_picker import main as run_native_file_dialog
+
+    raise SystemExit(run_native_file_dialog(sys.argv[2]))
+
 # Configure portable cache/model/temp paths before importing Qt, Torch,
 # WhisperX, or any worker implementation.
 import haizflow.config as _runtime_config  # noqa: E402,F401

@@ -89,10 +89,8 @@ def _speaker_utterance_plan(segment: dict, source: dict) -> list[dict]:
                  "offset_ms":0,"duration_ms":max(1,round((float(segment.get('end',0))-float(segment.get('start',0)))*1000))}]
     # Korean/CJK scripts have no uppercase letters. A translated speaker turn
     # can follow an ASCII/fullwidth stop, with or without an inter-sentence space.
-    caseless = r"\u1100-\u11ff\u3130-\u318f\uac00-\ud7af\u3040-\u30ff\u3400-\u9fff"
-    boundary = (r"(?<=[!?。！？])\s*|(?<=[.．])\s+(?=[A-ZÀ-Ỹ¿¡" + caseless + r"])"
-                r"|(?<=[.．])(?=[" + caseless + r"])")
-    clauses = [part.strip() for part in re.split(boundary, str(segment['text'])) if part.strip()]
+    from haizflow.core.speaker_sentences import split_speaker_sentences
+    clauses = split_speaker_sentences(str(segment['text']))
     if len(clauses) != len(turns):
         raise ValueError("Câu nguồn có nhiều người nói nhưng phụ đề đã mất ranh giới giữa các câu. "
                          "Hãy tách các câu bằng dấu chấm, chấm hỏi hoặc chấm than trước khi tạo giọng.")
@@ -428,8 +426,11 @@ def generate_voice_parts(
         if not isinstance(segment,dict) or not str(segment.get('text') or '').strip():
             raise RuntimeError(f"Translated subtitle segment {index} is missing text.")
         source = source_reference_for(segment)
-        prepared_plans[index] = (_speaker_utterance_plan(segment,source) if speaker_mode == 'multiple'
-                                 else [{'text':segment['text'],'voice':voice}])
+        try:
+            prepared_plans[index] = (_speaker_utterance_plan(segment,source) if speaker_mode == 'multiple'
+                                     else [{'text':segment['text'],'voice':voice}])
+        except ValueError as error:
+            raise ValueError(f"Câu {index} ({float(segment.get('start', 0)):.2f}s): {error}") from error
 
     peer_indices = list(range(1,len(segments)+1)) if level_peer_indices is None else level_peer_indices
     if any(index < 1 or index > len(segments) for index in peer_indices):

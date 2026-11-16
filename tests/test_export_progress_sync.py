@@ -50,6 +50,32 @@ def test_progress_reserves_publication_phase_and_reaches_100_only_on_success():
     assert VideoExportController.job_progress({}, "exporting", 100) == 99
 
 
+def test_waiting_batch_member_never_borrows_active_progress(monkeypatch):
+    host = QObject()
+    host.exportStateChanged = Mock()
+    waiting = {"second"}
+    pending_ids = Mock(side_effect=lambda: list(waiting))
+    host._processing_queue = SimpleNamespace(contains=lambda _: True, pending_ids=pending_ids)
+    exporter = VideoExportController(host)
+    exporter.timer.stop()
+    exporter.jobs = [{"videoId": key, "status": "rendering", "progress": 0, "process": True, "queued": True}
+                     for key in ("first", "second")]
+    records = {key: SimpleNamespace(step="transcribing", status="processing", progress=61)
+               for key in ("first", "second")}
+    monkeypatch.setattr("haizflow.desktop.video_export_controller.video_store.get_video", records.get)
+    try:
+        exporter.poll()
+        assert pending_ids.call_count == 1
+        assert exporter.jobs[0]["progress"] == 55 and not exporter.jobs[0]["queued"]
+        assert exporter.jobs[1]["progress"] == 0 and exporter.jobs[1]["queued"]
+        waiting.clear()
+        exporter.poll()
+        assert pending_ids.call_count == 2
+        assert not exporter.jobs[1]["queued"] and exporter.jobs[1]["progress"] == 55
+    finally:
+        exporter.shutdown()
+
+
 def test_render_to_copy_transition_does_not_reset_or_finish_early(monkeypatch):
     host = QObject()
     host.exportStateChanged = Mock()
