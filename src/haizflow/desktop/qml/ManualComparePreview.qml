@@ -20,9 +20,16 @@ Rectangle {
     property bool emptySource: false
     property bool previewBusy: false
     property bool audioPreparationBusy: false
+    property bool audioPreparationNoticeReady: false
     onAudioPreparationBusyChanged: {
+        audioPreparationNoticeReady = false;
         if (audioPreparationBusy)
             pausePlayback();
+    }
+    Timer {
+        interval: 250
+        running: root.audioPreparationBusy
+        onTriggered: root.audioPreparationNoticeReady = root.audioPreparationBusy
     }
     property real previewProgress: 0
     property bool inputMuted: true
@@ -653,7 +660,7 @@ Rectangle {
                 muted: root.resultMuted
                 mediaKey: String(root.effectiveResultSource)
                 awaitingMedia: String(root.effectiveResultSource).length === 0
-                busy: root.previewBusy
+                busy: root.previewBusy && (!root.audioPreparationBusy || root.audioPreparationNoticeReady)
                 progress: root.previewProgress
                 onFirstFramePresented: {
                     // Let VideoOutput consume/upload the replacement frame
@@ -1600,7 +1607,7 @@ Rectangle {
             height: 36
             radius: Theme.radiusSmall
             color: Theme.scrim
-            visible: pane === resultPane && root.audioPreparationBusy
+            visible: pane === resultPane && root.audioPreparationBusy && root.audioPreparationNoticeReady
             z: 9
 
             Text {

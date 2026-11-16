@@ -143,14 +143,32 @@ class PreviewTransportUiTests(unittest.TestCase):
         self.preview.setProperty("previewProgress", .45)
         self.app.processEvents()
         notice = self.preview.findChild(QQuickItem, "audioPreparationNotice")
-        self.assertTrue(notice.isVisible())
+        self.assertFalse(notice.isVisible())
+        viewport = self.child(self.preview, "manualResultViewport")
+        pane = viewport.parentItem()
+        self.assertFalse(pane.property("busy"))
+        self.assertTrue(self.preview.property("previewBusy"))
         for comparing in (False, True):
             self.preview.setProperty("comparing", comparing)
             QMetaObject.invokeMethod(self.preview, "togglePlayback", Qt.DirectConnection)
             self.assertFalse(self.preview.property("resultPlaybackRequested"))
+        QTest.qWait(310)
+        self.assertTrue(notice.isVisible())
+        self.assertTrue(pane.property("busy"))
         self.preview.setProperty("audioPreparationBusy", False)
         self.app.processEvents()
         self.assertFalse(notice.isVisible())
+
+    def test_quick_audio_cache_restore_does_not_flash_or_leave_a_delayed_notice(self):
+        notice = self.preview.findChild(QQuickItem, "audioPreparationNotice")
+        for _ in range(2):
+            self.preview.setProperty("audioPreparationBusy", True)
+            self.app.processEvents()
+            self.assertFalse(notice.isVisible())
+            QTest.qWait(40)
+            self.preview.setProperty("audioPreparationBusy", False)
+            QTest.qWait(280)
+            self.assertFalse(notice.isVisible())
 
     def test_caption_overlay_stays_visible_during_independent_cache_refresh(self):
         viewport = self.child(self.preview, "manualResultViewport")

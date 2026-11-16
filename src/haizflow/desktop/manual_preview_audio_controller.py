@@ -1,12 +1,13 @@
 """One audio owner: stream an untouched source, mix PCM only when needed."""
 from __future__ import annotations
 
-import hashlib
 import bisect
+import hashlib
 import json
 import logging
 import math
 import os
+import stat
 import subprocess
 import tempfile
 import threading
@@ -28,6 +29,7 @@ from haizflow.utils.ffmpeg import _binary
 
 RATE = 48000
 PCM_BUFFER_FRAMES = RATE // 5
+PCM_CACHE_BUDGET_BYTES = 1024 * 1024 * 1024
 _LOG = logging.getLogger(__name__)
 
 
@@ -284,8 +286,9 @@ class ManualPreviewAudioController(QObject):
         return Path(path)
 
     @staticmethod
-    def _map_pcm(path, *, persistent=False):
-        samples = np.memmap(path, dtype="<i2", mode="r", shape=(path.stat().st_size // 4, 2))
+    def _map_pcm(path, *, persistent=False, size=None):
+        size = path.stat().st_size if size is None else size
+        samples = np.memmap(path, dtype="<i2", mode="r", shape=(size // 4, 2))
         weakref.finalize(samples, _dispose_pcm, samples._mmap, path, persistent)
         return samples
 
@@ -429,10 +432,19 @@ class ManualPreviewAudioController(QObject):
                 return self._cache[key]
         for candidate in (key, legacy_key) if legacy_key is not None else (key,):
             cache_path = self._pcm_cache_path(candidate)
-            if cache_path is not None and cache_path.is_file() and cache_path.stat().st_size > 0 and cache_path.stat().st_size % 4 == 0:
-                samples = self._map_pcm(cache_path, persistent=True)
+            if cache_path is None:
+                continue
+            try:
+                info = cache_path.stat()
+            except OSError:
+                continue
+            if stat.S_ISREG(info.st_mode) and info.st_size > 0 and info.st_size % 4 == 0:
+                samples = self._map_pcm(cache_path, persistent=True, size=info.st_size)
                 try:
-                    cache_path.touch()
+                    # LRU pruning only needs coarse last-use timestamps. Avoid
+                    # a metadata write on every quick project/app reopen.
+                    if time.time_ns() - info.st_mtime_ns >= 60_000_000_000:
+                        cache_path.touch()
                 except OSError:
                     pass
                 self._remember_pcm(key, samples, generation=generation)
@@ -578,8 +590,7 @@ class ManualPreviewAudioController(QObject):
             self.release()
             self._video_id = video.video_id
         from haizflow.pipeline import manual_tools
-        from haizflow.services import editor_documents
-        from haizflow.services import video_store
+        from haizflow.services import editor_documents, video_store
 
         try:
             self._pcm_cache_directory = Path(video_store.get_video_dir(video.video_id)) / "temp" / "manual-preview-pcm"
@@ -985,7 +996,8 @@ class ManualPreviewAudioController(QObject):
             self._native_player.setPlaybackRate(self._playback_rate)
             self._finish_preparing()
             self.voiceTimingsChanged.emit()
-        source = next((c for c in document.clips if c.track_id == "source-audio" and c.enabled), None) if document else None
+        source = next((c for c in document.clips if c.track_id == "source-audio" and c.enabled), None) \
+            if document else None
         track = next((t for t in document.tracks if t.track_id == "source-audio"), None) if document else None
         self._native_gain = (source.volume_percent / max(1, int(video.original_video_volume or 100))) if source else 1.0
         if (document and not source) or (source and source.muted) or (track and (track.muted or not track.visible)):
@@ -1007,13 +1019,20 @@ class ManualPreviewAudioController(QObject):
         if directory is None or generation != self._generation:
             return
         try:
-            paths = sorted(directory.glob("*.pcm"), key=lambda path: path.stat().st_mtime_ns, reverse=True)
+            with os.scandir(directory) as entries:
+                paths = [(entry.path, entry.stat()) for entry in entries
+                         if entry.name.lower().endswith(".pcm") and entry.is_file()]
+            if sum(info.st_size for _path, info in paths) <= PCM_CACHE_BUDGET_BYTES:
+                return
+            paths.sort(key=lambda item: item[1].st_mtime_ns, reverse=True)
             used = 0
-            for path in paths:
-                used += path.stat().st_size
-                if used > 1024 * 1024 * 1024:
+            for path, info in paths:
+                if generation != self._generation:
+                    return
+                used += info.st_size
+                if used > PCM_CACHE_BUDGET_BYTES:
                     try:
-                        path.unlink()  # Windows protects files still mapped by playback.
+                        Path(path).unlink()  # Windows protects files still mapped by playback.
                     except OSError:
                         pass
         except OSError:
