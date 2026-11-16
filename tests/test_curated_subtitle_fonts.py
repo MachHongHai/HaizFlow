@@ -62,6 +62,10 @@ def sample_for_family(family):
 
 @pytest.mark.parametrize("family", FONT_FILES)
 def test_actual_libass_export_uses_selected_font_without_missing_glyphs(tmp_path, family):
+    from fontTools.ttLib import TTFont
+
+    from haizflow.core.subtitle_fonts import bundled_font_path
+
     language, text = sample_for_family(family)
     source, target = tmp_path / "captions.srt", tmp_path / "captions.ass"
     source.write_text(f"1\n00:00:00,000 --> 00:00:02,000\n{text}\n", encoding="utf-8")
@@ -78,6 +82,8 @@ def test_actual_libass_export_uses_selected_font_without_missing_glyphs(tmp_path
     assert result.returncode == 0, log
     selections = "\n".join(line for line in log.splitlines() if "fontselect:" in line or "Glyph" in line)
     assert "fontselect:" in selections and "Glyph" not in selections and "ArialMT" not in selections, selections
+    with TTFont(bundled_font_path(family)) as face:
+        assert face["name"].getDebugName(6).casefold() in selections.casefold(), selections
     assert max(result.stdout) > 100, log
 
 

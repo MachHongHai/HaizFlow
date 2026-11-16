@@ -1,5 +1,4 @@
 module HaizFlow
-TranslationConnectionPicker 1.0 TranslationConnectionPicker.qml
 SubtitleFontPicker 1.0 SubtitleFontPicker.qml
 ManualVoiceScope 1.0 ManualVoiceScope.qml
 SettingsPageLoader 1.0 SettingsPageLoader.qml
@@ -9,7 +8,6 @@ TranslationApiEntryForm 1.0 TranslationApiEntryForm.qml
 TranslationProjectModelDialog 1.0 TranslationProjectModelDialog.qml
 TranslationDataConsentDialog 1.0 TranslationDataConsentDialog.qml
 TranslationReasoningControl 1.0 TranslationReasoningControl.qml
-TranslationApiListRow 1.0 TranslationApiListRow.qml
 SettingsMcpGroup 1.0 SettingsMcpGroup.qml
 McpSettingsPage 1.0 McpSettingsPage.qml
 McpConnectionGuide 1.0 McpConnectionGuide.qml

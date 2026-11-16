@@ -369,8 +369,10 @@ class McpCommands:
             name = request["command"]
             if not isinstance(name, str) or name not in READ_COMMANDS - {"read_many", "visual_context"}:
                 raise ValueError("read_many accepts read-only commands, not mutations, recursion or raw media context.")
-            if name == "translation_api" and request["arguments"].get("action") in ("verify", "refresh_models"):
-                raise ValueError("Start metadata checks explicitly, outside read_many; status reads can be batched.")
+            if (name == "translation_api"
+                    and request["arguments"].get("action") in ("verify", "refresh_models", "select")):
+                raise ValueError("Start checks or change API selection explicitly, outside read_many; "
+                                 "status reads can be batched.")
             calls.append((name, self._validated_call(name, request["arguments"])))
         results = []
         for name, (function, bound) in calls:
@@ -968,15 +970,24 @@ class McpCommands:
         connection_id: str = "", query: str = "", offset: int = 0, limit: int = 10, free_only: bool = False,
         details: bool = False, since: str = "",
     ) -> dict:
-        from haizflow.mcp.options import model_page
         from haizflow.mcp.efficiency import observed
+        from haizflow.mcp.options import model_page
+        from haizflow.services import translation_connections
 
         page([], offset, limit)
         if len(query) > 200 or limit > 50 or len(since) > 64:
             raise ValueError("Use a query up to 200 characters, 1–50 models, and a cursor up to 64 characters.")
+        if connection_id:
+            provider = translation_connections.get_connection(connection_id)["provider"]
+        if provider in translation_connections.PROVIDERS:
+            try:
+                connection_id = translation_connections.active_connection(provider)["id"]
+            except ValueError:
+                connection_id = ""
         api = getattr(self.host, "translationApi", None) if connection_id else None
         discovered = api.connectionModels(connection_id) if api and api.hasCachedModels(connection_id) else None
-        return observed(model_page(provider, connection_id, query, offset, limit, free_only, details, discovered), since)
+        return observed(model_page(provider, connection_id, query, offset, limit, free_only, details, discovered),
+                        since)
 
     def _translation_choice(
         self, connection_id: str, model: str,
@@ -988,10 +999,10 @@ class McpCommands:
         return model_choice(connection_id, model, output_format)
 
     def _translation_api(
-        self, action: Literal["connections", "status", "verify", "refresh_models"] = "connections",
+        self, action: Literal["connections", "status", "verify", "refresh_models", "select"] = "connections",
         connection_id: str = "", offset: int = 0, limit: int = 10, since: str = "",
     ) -> dict:
-        """Offline discovery/status; explicit verify/refresh only starts background metadata GETs, never inference."""
+        """List/status offline, select a global Settings credential, or verify/refresh metadata without inference."""
         from haizflow.mcp.efficiency import observed
         from haizflow.mcp.options import connection_page
         from haizflow.services import translation_catalog_cache, translation_connections
@@ -1002,12 +1013,16 @@ class McpCommands:
         if action == "connections":
             return observed(connection_page(offset, limit), since)
         profile = translation_connections.get_connection(connection_id)
+        if action == "select":
+            self.bridge.require("write")
         if action in {"verify", "refresh_models"}:
             self.bridge.require("online")
         api = self.host.translationApi
         busy = bool(api.busy or api.catalogState == "loading" or api.routerRefreshing)
         started = None
-        if action == "verify":
+        if action == "select":
+            started = api.select(connection_id)
+        elif action == "verify":
             started = api.verify(connection_id) if not busy else False
         elif action == "refresh_models":
             if busy:
@@ -1018,10 +1033,12 @@ class McpCommands:
         check = next((row for row in api.profiles if row["id"] == connection_id), {})
         own_catalog = api.catalogConnection == connection_id
         result = {"connection_id": connection_id, "provider": profile["provider"],
+                  "active": check.get("active", False),
                   "verification": check.get("check_result") or "unchecked", "checking": check.get("checking", False),
-                  "catalogue": api.catalogState if own_catalog else "idle", "metadata_only": True,
+                  "catalogue": api.catalogState if own_catalog else "idle", "metadata_only": action != "select",
                   "busy": bool(api.busy or api.catalogState == "loading" or api.routerRefreshing),
-                  **({"stale": translation_catalog_cache.needs_refresh()} if profile["provider"] == "openrouter" else {})}
+                  **({"stale": translation_catalog_cache.needs_refresh()}
+                     if profile["provider"] == "openrouter" else {})}
         if started is not None:
             result["accepted"] = started
         return observed(result, since)
@@ -1054,7 +1071,7 @@ class McpCommands:
         translation_config = translation_settings(video)
         if section == "translation":
             return {**translation_config, "connections": [
-                {key: row[key] for key in ("id", "provider", "label")} for row in list_connections()],
+                {key: row[key] for key in ("id", "provider", "label", "active")} for row in list_connections()],
                 "model_lookup": "translation_models"}
         return {
             "translation_settings": translation_config,
@@ -1062,14 +1079,15 @@ class McpCommands:
             "target_languages": [code for code, _, _ in POPULAR_TARGET_LANGUAGES],
             "gemini_models": MODELS,
             "translation_reasoning": translation_config["reasoning"],
-            "translation_api_models": [{"value": "api:" + row["id"] if row["model"] else None,
+            "translation_api_models": [{"value": ("api:" + row["provider"] + ":" + row["model"]
+                                                  if row["model"] else None),
                                         "provider": row["provider"], "model": row["model"], "label": row["label"],
-                                        "value_prefix": "api:" + row["id"] + ":",
+                                        "value_prefix": "api:" + row["provider"] + ":",
                                         "requires_model": not bool(row["model"]),
-                                        "models": [{"value": "api:" + row["id"] + ":" + option["value"],
+                                        "models": [{"value": "api:" + row["provider"] + ":" + option["value"],
                                                     "model": option["value"], "label": option["label"]}
                                                    for option in presets(row["provider"])]}
-                                       for row in list_connections()],
+                                       for row in list_connections() if row.get("active")],
             "tts_providers": self.host.ttsProviderOptionsForLanguage(language),
             "voices": self.host.voiceOptionsForLanguageAndProvider(language, video.tts_provider),
             "export_presets": ["source", "1080p", "1080p-high", "720p", "2160p"],

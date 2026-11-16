@@ -94,7 +94,7 @@ def test_custom_public_catalogue_is_only_reachable_not_key_verified(isolated, mo
     assert all(len(call.args) == 2 for call in request.call_args_list)  # GET only, no generation.
 
 
-def test_two_connections_keep_explicit_key_identity_without_fallback(isolated, monkeypatch):
+def test_two_connections_follow_global_selection_without_fallback(isolated, monkeypatch):
     from haizflow.services import translation_model_guard
 
     first = connections.add("openrouter", "Primary", "primary-secret")
@@ -103,6 +103,7 @@ def test_two_connections_keep_explicit_key_identity_without_fallback(isolated, m
     run = Mock(return_value=["Xin chào"])
     monkeypatch.setattr(api.gemini_translation, "translate_texts", run)
     for identifier, secret in ((first, "primary-secret"), (second, "backup-secret")):
+        connections.select(identifier)
         choice = "api:" + identifier + ":vendor/model:free"
         api.translate_texts(["Hello"], model=choice, source_language="en", target_language="vi")
         assert run.call_args.kwargs["_key"] == secret

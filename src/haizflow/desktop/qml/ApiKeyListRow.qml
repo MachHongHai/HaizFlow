@@ -9,6 +9,7 @@ Rectangle {
     objectName: "apiKeyCredentialRow"
     required property var credential
     property bool zernio: false
+    property bool translationApi: false
     property bool locked: false
     readonly property string checkResult: String(credential.check_result || "")
     readonly property bool checked: checkResult.length > 0 && checkResult !== "checking"
@@ -19,6 +20,7 @@ Rectangle {
         : checkResult === "rate-limit" || checkResult === "rate-limited" ? qsTr("Dịch vụ đang giới hạn yêu cầu. Thử lại sau.")
         : checkResult === "billing-required" ? qsTr("Cần kiểm tra số dư hoặc thanh toán")
         : checkResult === "unsupported-check" ? qsTr("Chưa xác minh được API key")
+        : checkResult === "reachable-unverified" ? qsTr("Dịch vụ phản hồi, chưa xác minh được API key")
         : checked ? qsTr("Kiểm tra thất bại") : qsTr("Chưa kiểm tra")
     signal removeRequested(string id, string label)
     implicitHeight: Math.max(76, content.implicitHeight + Theme.space32)
@@ -69,6 +71,16 @@ Rectangle {
                     font.pixelSize: TypeScale.metadata
                 }
             }
+            Text {
+                Layout.fillWidth: true
+                visible: root.translationApi && root.credential.provider === "custom" && text.length > 0
+                text: String(root.credential.base_url || "")
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                color: Theme.textMuted
+                font.family: Theme.fontFamily
+                font.pixelSize: TypeScale.metadata
+            }
             RowLayout {
                 Layout.fillWidth: true
                 visible: root.checkResult.length > 0
@@ -101,7 +113,8 @@ Rectangle {
                 text: qsTr("Sử dụng")
                 enabled: !root.locked
                 onClicked: {
-                    if (root.zernio) AppController.selectZernioApiKey(root.credential.id);
+                    if (root.translationApi) AppController.translationApi.select(root.credential.id);
+                    else if (root.zernio) AppController.selectZernioApiKey(root.credential.id);
                     else AppController.selectGeminiApiKey(root.credential.id);
                 }
             }
@@ -109,7 +122,8 @@ Rectangle {
                 objectName: "verifyApiKeyButton_" + root.credential.id
                 text: qsTr("Kiểm tra")
                 enabled: !root.locked
-                onClicked: root.zernio ? AppController.verifyZernioApiKey(root.credential.id)
+                onClicked: root.translationApi ? AppController.translationApi.verify(root.credential.id)
+                    : root.zernio ? AppController.verifyZernioApiKey(root.credential.id)
                     : AppController.verifyGeminiApiKey(root.credential.id)
             }
             StudioIconButton {

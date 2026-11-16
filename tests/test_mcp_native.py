@@ -105,7 +105,7 @@ def check_native():
                     result = decoded(await session.call_tool("haizflow_execute", {
                         "command": "translation_choice", "arguments": {"connection_id": connection_id,
                             "model": "Vendor/MixedCase", "output_format": "prompt"}}))
-                    assert result["value"] == f"api:{connection_id}:Vendor/MixedCase#prompt" and not result["applied"]
+                    assert result["value"] == "api:custom:Vendor/MixedCase#prompt" and not result["applied"]
                     for action, field, final in (("verify", "verification", "verified"),
                                                   ("refresh_models", "catalogue", "ready")):
                         result = decoded(await session.call_tool("haizflow_execute", {

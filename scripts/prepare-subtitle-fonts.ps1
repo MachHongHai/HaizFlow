@@ -8,6 +8,30 @@ $Index = if (Test-Path -LiteralPath $IndexPath) { Get-Content -LiteralPath $Inde
 $Noto = 'f8d157532fbfaeda587e826d4cd5b21a49186f7c'
 $Google = '2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc'
 $Pretendard = '7aeb0698819be2b4097dae8ec8fe6a795e5cf3ae'
+$CjkFonts = @(
+    @{ Folder='blackhansans'; Name='BlackHanSans-Regular.ttf' }
+    @{ Folder='jua'; Name='Jua-Regular.ttf' }
+    @{ Folder='dohyeon'; Name='DoHyeon-Regular.ttf' }
+    @{ Folder='gowundodum'; Name='GowunDodum-Regular.ttf' }
+    @{ Folder='gowunbatang'; Name='GowunBatang-Bold.ttf' }
+    @{ Folder='sunflower'; Name='Sunflower-Bold.ttf' }
+    @{ Folder='gugi'; Name='Gugi-Regular.ttf' }
+    @{ Folder='gaegu'; Name='Gaegu-Bold.ttf' }
+    @{ Folder='zenmarugothic'; Name='ZenMaruGothic-Black.ttf' }
+    @{ Folder='zenkakugothicnew'; Name='ZenKakuGothicNew-Black.ttf' }
+    @{ Folder='yuseimagic'; Name='YuseiMagic-Regular.ttf' }
+    @{ Folder='reggaeone'; Name='ReggaeOne-Regular.ttf' }
+    @{ Folder='kleeone'; Name='KleeOne-SemiBold.ttf' }
+    @{ Folder='hachimarupop'; Name='HachiMaruPop-Regular.ttf' }
+    @{ Folder='rocknrollone'; Name='RocknRollOne-Regular.ttf' }
+    @{ Folder='zcoolkuaile'; Name='ZCOOLKuaiLe-Regular.ttf' }
+    @{ Folder='zhimangxing'; Name='ZhiMangXing-Regular.ttf' }
+    @{ Folder='mashanzheng'; Name='MaShanZheng-Regular.ttf' }
+    @{ Folder='zcoolqingkehuangyou'; Name='ZCOOLQingKeHuangYou-Regular.ttf' }
+    @{ Folder='iansui'; Name='Iansui-Regular.ttf' }
+    @{ Folder='lxgwwenkaitc'; Name='LXGWWenKaiTC-Bold.ttf' }
+    @{ Folder='huninn'; Name='Huninn-Regular.ttf' }
+)
 $Assets = @(
     @{ Name='ArchivoBlack-Regular.ttf'; Url="https://raw.githubusercontent.com/google/fonts/$Google/ofl/archivoblack/ArchivoBlack-Regular.ttf" },
     @{ Name='Barlow-Bold.ttf'; Url="https://raw.githubusercontent.com/google/fonts/$Google/ofl/barlow/Barlow-Bold.ttf" },
@@ -40,6 +64,9 @@ $Assets = @(
     @{ Name='DelaGothicOne-Regular.ttf'; Url="https://raw.githubusercontent.com/google/fonts/$Google/ofl/delagothicone/DelaGothicOne-Regular.ttf" },
     @{ Name='Pretendard-ExtraBold.otf'; Url="https://raw.githubusercontent.com/orioncactus/pretendard/$Pretendard/packages/pretendard/dist/public/static/Pretendard-ExtraBold.otf" }
 )
+$Assets += $CjkFonts | ForEach-Object {
+    @{ Name=$_.Name; Url="https://raw.githubusercontent.com/google/fonts/$Google/ofl/$($_.Folder)/$($_.Name)" }
+}
 foreach ($Asset in $Assets) {
     $Target = Join-Path $Destination $Asset.Name
     $Expected = if ($null -ne $Index) {
@@ -83,6 +110,9 @@ $Notices = @(
     @{ Name='DelaGothicOne-OFL.txt'; Url="https://raw.githubusercontent.com/google/fonts/$Google/ofl/delagothicone/OFL.txt" },
     @{ Name='Pretendard-OFL.txt'; Url="https://raw.githubusercontent.com/orioncactus/pretendard/$Pretendard/LICENSE" }
 )
+$Notices += $CjkFonts | ForEach-Object {
+    @{ Name=(($_.Name -split '-')[0] + '-OFL.txt'); Url="https://raw.githubusercontent.com/google/fonts/$Google/ofl/$($_.Folder)/OFL.txt" }
+}
 foreach ($Notice in $Notices) {
     $Target = Join-Path $Licenses $Notice.Name
     if ($Force -or !(Test-Path -LiteralPath $Target)) { Invoke-WebRequest -Uri $Notice.Url -OutFile $Target }

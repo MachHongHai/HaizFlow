@@ -44,7 +44,7 @@ def test_connections_are_translation_only_and_never_persist_or_return_keys(store
     assert "private-secret" not in json.dumps(connections.list_connections())
     assert connections.remove(identifier)
     assert not store
-    with pytest.raises(ValueError, match="đã bị xóa"):
+    with pytest.raises(ValueError, match="Chưa chọn API"):
         connections.resolve(choice)
 
 
@@ -767,7 +767,7 @@ def test_project_model_override_is_immutable_and_isolates_progress_signatures(st
 def test_key_can_be_saved_without_model_and_cannot_start_inference_until_selected(store, monkeypatch):
     identifier = connections.add("openai", "New key", "private-only-key")
     profile = connections.get_connection(identifier)
-    assert profile["model"] == "" and connections.list_connections() == [profile]
+    assert profile["model"] == "" and connections.list_connections() == [{**profile, "active": True}]
     send = Mock(return_value={"data": []})
     monkeypatch.setattr(api, "_json_request", send)
     with pytest.raises(ValueError, match="Chưa chọn model"):

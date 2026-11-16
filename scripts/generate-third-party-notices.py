@@ -217,6 +217,9 @@ def generate(
                 "https://github.com/syakuzen/DelaGothic |",
                 "| Pretendard ExtraBold | Bundled Korean subtitle font | SIL OFL 1.1; Pretendard-OFL.txt | "
                 "https://github.com/orioncactus/pretendard |",
+                "| Curated Korean, Japanese and Chinese caption fonts | Bundled unmodified static faces; "
+                "see docs/subtitle-fonts.md and per-family *-OFL.txt notices | SIL OFL 1.1 | "
+                "https://github.com/google/fonts/tree/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl |",
                 "| ECAPA voice-profile classifier, q8 ONNX | Bundled CPU acoustic preset classifier; "
                 "see ECAPA-Voice-Profile-MIT.txt | MIT | "
                 "https://huggingface.co/Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8 |",

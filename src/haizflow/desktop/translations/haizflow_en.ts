@@ -26,6 +26,8 @@
 </context>
 <context>
     <name>TranslationApiController</name>
+    <message><source>Chọn API sử dụng trong Cài đặt</source><translation>Select the API to use in Settings</translation></message>
+    <message><source>Không chọn được API key. Kiểm tra key trong Cài đặt.</source><translation>Could not select the API key. Check the key in Settings.</translation></message>
     <message><source>Không lưu được quyền model</source><translation>Could not save model permission</translation></message>
     <message><source>Chưa cấp quyền thu thập dữ liệu. Hãy thử chọn lại model.</source><translation>Data collection permission was not granted. Try selecting the model again.</translation></message>
     <message><source>Không lưu được kết nối. Kiểm tra tên, API key và Base URL; dùng HTTPS cho API từ xa.</source><translation>Could not save the connection. Check the name, API key and Base URL; use HTTPS for remote APIs.</translation></message>
@@ -324,6 +326,7 @@
 </context>
 <context>
     <name>ApiKeysPage</name>
+    <message><source>Chọn API sử dụng tại đây. Chọn model trong dự án.</source><translation>Select the API to use here. Choose the model in the project.</translation></message>
     <message><source>%1 API key</source><translation>%1 API key</translation></message>
     <message><source>Chưa có API key.</source><translation>No API key yet.</translation></message>
     <message><source>API tùy chỉnh</source><translation>Custom API</translation></message>
@@ -5521,6 +5524,7 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ApiKeyListRow</name>
+    <message><source>Dịch vụ phản hồi, chưa xác minh được API key</source><translation>Service responded; the API key could not be verified</translation></message>
     <message><source>API key hợp lệ</source><translation>API key verified</translation></message>
     <message><source>Đang kiểm tra…</source><translation>Checking…</translation></message>
     <message><source>API key không hợp lệ hoặc đã bị thu hồi</source><translation>API key is invalid or revoked</translation></message>

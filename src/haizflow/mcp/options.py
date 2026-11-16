@@ -39,7 +39,8 @@ def model_choice(connection_id, model, output_format=""):
     """Construct a validated project-local choice; never save settings or read a key."""
     if not model or not translation_connections._MODEL.fullmatch(model):
         raise ValueError("Use an opaque Model ID up to 200 characters, without format suffixes.")
-    choice = f"api:{connection_id}:{model}" + ("#" + output_format if output_format else "")
+    provider = translation_connections.get_connection(connection_id)["provider"]
+    choice = f"api:{provider}:{model}" + ("#" + output_format if output_format else "")
     profile = translation_connections.resolve(choice)
     effective_format = profile["format"]
     if profile["provider"] == "openrouter":
@@ -57,6 +58,7 @@ def model_choice(connection_id, model, output_format=""):
 def connection_page(offset, limit):
     rows = translation_connections.list_connections()
     return {"items": [{"id": row["id"], "provider": row["provider"], "label": row["label"],
+                       "active": row.get("active", False),
                        "default_model": row["model"], "output_format": row["format"]}
                       for row in rows[offset:offset + limit]],
             "total": len(rows), "offset": offset, "has_more": offset + limit < len(rows),
@@ -65,8 +67,8 @@ def connection_page(offset, limit):
 
 def model_page(provider, connection_id, query, offset, limit, free_only, details=False, discovered=None):
     """Only return one filtered page of public catalogue metadata, with usable IDs."""
-    from haizflow.services import translation_catalog_cache, translation_model_catalog
     from haizflow.core.gemini_models import model_options
+    from haizflow.services import translation_catalog_cache, translation_model_catalog
 
     if connection_id:
         provider = translation_connections.get_connection(connection_id)["provider"]
@@ -90,7 +92,7 @@ def model_page(provider, connection_id, query, offset, limit, free_only, details
         needs_consent = translation_privacy.required(profile)
         items.append({
             "model": model, "label": row["label"],
-            "value": f"api:{connection_id}:{model}" if connection_id else model,
+            "value": f"api:{provider}:{model}" if provider in translation_connections.PROVIDERS else model,
             "pricing_kind": row.get("pricing_kind", "unknown"),
             **({"reasoning": translation_api_policy.capabilities(provider, model),
                 **{key: row[key] for key in ("context_length", "max_completion_tokens", "output_format") if key in row}}

@@ -1487,7 +1487,7 @@ def test_model_discovery_uses_filtered_cached_openrouter_metadata_without_keys(c
     assert result["provider"] == "openrouter" and result["catalogue"] == "offline_cached"
     first = result["items"][0]
     assert first["model"] == "dots-studio/dots-3-note-preview:free"
-    assert first["value"] == f"api:{identifier}:" + first["model"]
+    assert first["value"] == "api:openrouter:" + first["model"]
     assert first["reasoning"]["toggle"] and first["pricing_kind"] == "free"
     assert "base_url" not in str(result) and "api_key" not in str(result)
     result = commands.dispatch("translation_models", {
@@ -1580,7 +1580,7 @@ def test_translation_mcp_discovery_and_custom_choice_are_offline_and_project_loc
     original = translation_connections.get_connection(custom)
     choice = commands.dispatch("translation_choice", {
         "connection_id": custom, "model": "Vendor/MixedCase:latest", "output_format": "prompt"})
-    assert choice["value"] == f"api:{custom}:Vendor/MixedCase:latest#prompt"
+    assert choice["value"] == "api:custom:Vendor/MixedCase:latest#prompt"
     assert choice["output_format"] == "prompt" and choice["reasoning"] == {} and not choice["applied"]
     bridge.setPermission("write", True)
     commands.dispatch("configure", {"video_id": "test-video", "settings": {"translation_model": choice["value"]}})
@@ -1606,6 +1606,29 @@ def test_official_choice_cannot_receive_custom_protocol_overrides(commands, tran
     with pytest.raises(ValueError):
         commands.dispatch("translation_choice", {"connection_id": official, "model": "gpt-6-luna", "output_format": "prompt"})
     read.assert_not_called()
+
+
+def test_global_api_selection_requires_write_and_is_not_a_batched_read(commands, bridge, translation_api_fixture):
+    from haizflow.services import translation_connections
+
+    custom, official, controller, owner, read = translation_api_fixture
+    backup = translation_connections.add("openai", "Backup", "synthetic")
+    read.reset_mock()
+    bridge.setPermission("write", False)
+    with pytest.raises(ValueError, match="write"):
+        commands.dispatch("translation_api", {"action": "select", "connection_id": backup})
+    read.assert_not_called()
+    with pytest.raises(ValueError, match="outside read_many"):
+        commands.dispatch("read_many", {"requests": [{"command": "translation_api",
+            "arguments": {"action": "select", "connection_id": backup}}]})
+    bridge.setPermission("write", True)
+    result = commands.dispatch("translation_api", {"action": "select", "connection_id": backup})
+    assert result["accepted"] and result["active"] and not result["metadata_only"]
+    assert translation_connections.resolve("api:openai:ExactModel")["id"] == backup
+    rows = commands.dispatch("translation_api", {})["items"]
+    assert next(row for row in rows if row["id"] == backup)["active"]
+    assert not next(row for row in rows if row["id"] == official)["active"]
+    assert "synthetic" not in json.dumps(rows).lower()
 
 
 @pytest.mark.parametrize("action", ["verify", "refresh_models"])

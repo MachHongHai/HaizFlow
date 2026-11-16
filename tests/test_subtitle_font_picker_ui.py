@@ -172,7 +172,7 @@ ApplicationWindow {{
         assert not popup.property("opened")
         picker.setProperty("language", "ja")
         open_picker()
-        assert view.property("count") == 4
+        assert view.property("count") == len(font_choices("ja")) == 11
         category = window.findChild(QObject, "subtitleFontCategory")
         category.setProperty("currentIndex", 2)
         category.activated.emit(2)
@@ -196,6 +196,65 @@ ApplicationWindow {{
         QTest.keyClick(window, Qt.Key_Escape)
         QTest.qWait(50)
         assert picker.property("catalog").toVariant() == []
+    finally:
+        window.close()
+        window.deleteLater()
+        app.processEvents()
+
+
+def test_expanded_regional_picker_selects_real_fonts_and_displays_native_samples(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    if os.name == "nt":
+        for name in ("SegUIVar.ttf", "SegoeIcons.ttf"):
+            QFontDatabase.addApplicationFont(str(Path(os.environ["WINDIR"]) / "Fonts" / name))
+    controller, engine = FontController(), QQmlEngine()
+    warnings = []
+    engine.warnings.connect(lambda errors: warnings.extend(error.toString() for error in errors))
+    engine.rootContext().setContextProperty("AppController", controller)
+    qml_dir = QUrl.fromLocalFile(str(ROOT / "src/haizflow/desktop/qml")).toString()
+    component = QQmlComponent(engine)
+    component.setData(f'''
+import QtQuick
+import QtQuick.Controls.Basic
+import "{qml_dir}"
+ApplicationWindow {{
+    width: 640; height: 640; visible: true; color: Theme.window
+    SubtitleFontPicker {{
+        objectName: "fontPicker"; width: 350; x: 145; y: 40
+        onFontSelected: function(value) {{ family = value; }}
+    }}
+}}
+'''.encode(), QUrl.fromLocalFile(str(tmp_path / "expanded-picker.qml")))
+    for _ in range(30):
+        if component.status() != QQmlComponent.Loading:
+            break
+        QTest.qWait(20)
+    window = component.create()
+    assert window is not None, [error.toString() for error in component.errors()]
+    try:
+        QTest.qWait(40)
+        picker = window.findChild(QObject, "fontPicker")
+        trigger = window.findChild(QQuickItem, "subtitleFontButton")
+        for language, family in (("ko", "Black Han Sans"), ("ja", "Zen Maru Gothic"),
+                                 ("zh", "ZCOOL KuaiLe"), ("zh-tw", "Huninn")):
+            picker.setProperty("language", language)
+            trigger.clicked.emit()
+            QTest.qWait(80)
+            popup = window.findChild(QObject, "subtitleFontPopup")
+            assert popup.property("opened")
+            view = window.findChild(QQuickItem, "subtitleFontList")
+            assert view.property("count") == len(font_choices(language))
+            search = window.findChild(QQuickItem, "subtitleFontSearch")
+            search.setProperty("text", family)
+            QTest.qWait(40)
+            assert view.property("count") == 1
+            assert window.grabWindow().save(str(ROOT / "build" / f"font-picker-{language}-expanded.png"))
+            QTest.keyClick(window, Qt.Key_Down)
+            QTest.keyClick(window, Qt.Key_Return)
+            QTest.qWait(50)
+            assert picker.property("family") == family and not popup.property("opened")
+        assert not any(any(value in warning for value in ("Binding loop", "TypeError", "ReferenceError"))
+                       for warning in warnings), warnings
     finally:
         window.close()
         window.deleteLater()

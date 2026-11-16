@@ -156,15 +156,15 @@ def exercise(width, large):
                 yield from visual_items(child)
 
         page.setProperty("provider", "openai")
-        for state, expected in (("verified", "API key hợp lệ"), ("invalid", "API key không hợp lệ hoặc thiếu quyền"),
+        for state, expected in (("verified", "API key hợp lệ"), ("invalid", "API key không hợp lệ hoặc đã bị thu hồi"),
                                 ("reachable-unverified", "Dịch vụ phản hồi, chưa xác minh được API key"),
                                 ("rate-limited", "Dịch vụ đang giới hạn yêu cầu. Thử lại sau.")):
             host.api._results[identifiers["openai"]] = state
             host.api.changed.emit()
             QTest.qWait(25)
             credential_row = next(item for item in visual_items(window.contentItem())
-                                  if item.objectName() == "translationApiCredentialRow")
-            assert credential_row.property("statusText") == expected
+                                  if item.objectName() == "apiKeyCredentialRow")
+            assert credential_row.property("checkDescription") == expected
         combo = window.findChild(QQuickItem, "apiModelCombo")
         page.setVisible(False)
         combo.setVisible(True)
@@ -237,31 +237,30 @@ def exercise(width, large):
             "translation-project-models-narrow-preview.png" if large else "translation-project-models-preview.png")
         assert window.grabWindow().save(str(snapshot))
         evaluate('choose(modelOptions.findIndex(row => row.value === "gpt-6-luna"))')
-        choice = "api:" + identifiers["openai"] + ":gpt-6-luna"
+        choice = "api:openai:gpt-6-luna"
         assert window.property("selectedModel") == choice
         assert connections.get_connection(identifiers["openai"])["model"] == ""
         QTest.qWait(30)
         active_key = window.findChild(QQuickItem, "projectTranslationActiveConnectionPicker")
-        assert active_key.isVisible() and active_key.property("currentValue") == identifiers["openai"]
+        assert active_key is None
+        assert window.findChild(QQuickItem, "projectTranslationConnectionPicker") is None
         assert host.api.addCredential("openai", "OpenAI dự phòng", "second-private-key", "")
         second_id = host.api.profiles[-1]["id"]
         QTest.qWait(30)
-        active_key.setProperty("currentIndex", 1)
-        active_key.activated.emit(1)
+        assert host.api.select(second_id)
         QTest.qWait(40)
-        second_choice = "api:" + second_id + ":gpt-6-luna"
+        second_choice = choice
         assert window.property("selectedModel") == second_choice
-        assert active_key.property("currentValue") == second_id
-        assert "OpenAI dự phòng" in host.api.choiceLabel(second_choice)
+        assert connections.resolve(second_choice)["id"] == second_id
+        assert "OpenAI dự phòng" not in host.api.choiceLabel(second_choice)
         window.setProperty("selectedModel", "q4")
         QTest.qWait(20)
         window.setProperty("selectedModel", second_choice)
         QTest.qWait(20)
-        assert active_key.property("currentValue") == second_id
+        assert connections.resolve(second_choice)["id"] == second_id
         snapshot = Path(__file__).parents[1] / "build" / f"translation-project-api-selection-{width}.png"
         assert window.grabWindow().save(str(snapshot))
-        active_key.setProperty("currentIndex", 0)
-        active_key.activated.emit(0)
+        assert host.api.select(identifiers["openai"])
         QTest.qWait(30)
         assert window.property("selectedModel") == choice
         assert host.api.remove(second_id)
@@ -291,7 +290,7 @@ def exercise(width, large):
         window.findChild(QQuickItem, "projectTranslationFormatCombo").setProperty("currentIndex", 2)
         window.findChild(QQuickItem, "projectTranslationApplyManualModelButton").clicked.emit()
         QTest.qWait(40)
-        custom_choice = "api:" + identifiers["custom"] + ":vendor/Chosen:free#prompt"
+        custom_choice = "api:custom:vendor/Chosen:free#prompt"
         assert window.property("selectedModel") == custom_choice
         assert connections.resolve(custom_choice)["format"] == "prompt"
         assert connections.get_connection(identifiers["custom"])["format"] == "json_object"
@@ -425,7 +424,7 @@ def exercise(width, large):
         search.accepted.emit()
         QTest.qWait(20)
         router_id = next(row["id"] for row in connections.list_connections() if row["provider"] == "openrouter")
-        assert window.property("selectedModel") == "api:" + router_id + ":vendor/paid"
+        assert window.property("selectedModel") == "api:openrouter:vendor/paid"
         assert connections.get_connection(router_id)["model"] == ""
         manual_choice = "api:" + router_id + ":0/unlisted:free"
         window.setProperty("selectedModel", manual_choice)

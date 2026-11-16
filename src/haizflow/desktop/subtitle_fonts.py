@@ -1,12 +1,12 @@
 """Load only caption fonts actually needed by a Qt fallback/selection preview."""
-from functools import lru_cache
+from functools import cache
 
 from PySide6.QtGui import QFontDatabase, QGuiApplication
 
 from haizflow.core.subtitle_fonts import bundled_font_path, font_catalog, subtitle_font_for_text
 
 
-@lru_cache(maxsize=32)
+@cache
 def _register(family):
     path = bundled_font_path(family)
     if path is None or QFontDatabase.addApplicationFont(str(path)) < 0:

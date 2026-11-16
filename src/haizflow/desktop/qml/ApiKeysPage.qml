@@ -19,7 +19,7 @@ Item {
     readonly property bool configured: apiKeys.length > 0
     readonly property bool credentialLocked: zernio ? (AppController.zernioCredentialBusy
         || AppController.tiktokPublishBusy || AppController.zernioAccountSyncing)
-        : provider === "gemini" && AppController.translationApi.geminiBusy
+        : externalApi ? AppController.translationApi.busy : AppController.translationApi.geminiBusy
     readonly property string checkResult: String(AppController.zernioCredentialResult || "")
     readonly property bool checkFinished: zernio && !AppController.zernioCredentialBusy
         && checkResult.length > 0
@@ -102,7 +102,7 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     text: root.provider === "custom" ? qsTr("API tương thích OpenAI. Chỉ dùng để dịch văn bản.")
-                        : root.externalApi ? qsTr("Chọn kết nối trong mục Model dịch của dự án.")
+                        : root.externalApi ? qsTr("Chọn API sử dụng tại đây. Chọn model trong dự án.")
                         : root.zernio ? qsTr("Kết nối đăng bài. Chọn tài khoản trong dự án.")
                         : qsTr("Dịch bằng Gemini. Chọn model trong dự án.")
                     color: Theme.textMuted
@@ -151,8 +151,10 @@ Item {
                     sourceComponent: root.externalApi ? translationRow : legacyRow
                     Component {
                         id: translationRow
-                        TranslationApiListRow {
+                        ApiKeyListRow {
                             credential: credentialLoader.modelData
+                            translationApi: true
+                            locked: root.credentialLocked
                             onRemoveRequested: function(id, label) { removeLoader.invoke("confirm", [id, label, root.provider]); }
                         }
                     }

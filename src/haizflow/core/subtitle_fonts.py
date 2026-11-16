@@ -46,6 +46,28 @@ FONT_FILES = {
     "Noto Sans KR Black": "NotoSansKR-Black.otf",
     "Dela Gothic One": "DelaGothicOne-Regular.ttf",
     "Pretendard ExtraBold": "Pretendard-ExtraBold.otf",
+    "Black Han Sans": "BlackHanSans-Regular.ttf",
+    "Jua": "Jua-Regular.ttf",
+    "Do Hyeon": "DoHyeon-Regular.ttf",
+    "Gowun Dodum": "GowunDodum-Regular.ttf",
+    "Gowun Batang": "GowunBatang-Bold.ttf",
+    "Sunflower": "Sunflower-Bold.ttf",
+    "Gugi": "Gugi-Regular.ttf",
+    "Gaegu": "Gaegu-Bold.ttf",
+    "Zen Maru Gothic": "ZenMaruGothic-Black.ttf",
+    "Zen Kaku Gothic New": "ZenKakuGothicNew-Black.ttf",
+    "Yusei Magic": "YuseiMagic-Regular.ttf",
+    "Reggae One": "ReggaeOne-Regular.ttf",
+    "Klee One": "KleeOne-SemiBold.ttf",
+    "Hachi Maru Pop": "HachiMaruPop-Regular.ttf",
+    "RocknRoll One": "RocknRollOne-Regular.ttf",
+    "ZCOOL KuaiLe": "ZCOOLKuaiLe-Regular.ttf",
+    "Zhi Mang Xing": "ZhiMangXing-Regular.ttf",
+    "Ma Shan Zheng": "MaShanZheng-Regular.ttf",
+    "ZCOOL QingKe HuangYou": "ZCOOLQingKeHuangYou-Regular.ttf",
+    "Iansui": "Iansui-Regular.ttf",
+    "LXGW WenKai TC": "LXGWWenKaiTC-Bold.ttf",
+    "Huninn": "Huninn-Regular.ttf",
 }
 _KANA = re.compile(r"[\u3040-\u30ff\u31f0-\u31ff\uff66-\uff9f]")
 _HANGUL = re.compile(r"[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]")
@@ -56,7 +78,14 @@ _REGIONS = {"ja": ("Dela Gothic One", "Noto Sans JP Black"),
             "zh-tw": ("Noto Sans TC Black", "Noto Sans TC Black")}
 _FAMILY_REGIONS = {family: language for language, families in _REGIONS.items() for family in families}
 _FAMILY_REGIONS.update({"Noto Serif SC Bold": "zh", "Noto Serif TC Bold": "zh-tw",
-                        "Noto Serif JP Bold": "ja", "Noto Serif KR Bold": "ko"})
+                        "Noto Serif JP Bold": "ja", "Noto Serif KR Bold": "ko",
+                        **dict.fromkeys(("Black Han Sans", "Jua", "Do Hyeon", "Gowun Dodum", "Gowun Batang",
+                                         "Sunflower", "Gugi", "Gaegu"), "ko"),
+                        **dict.fromkeys(("Zen Maru Gothic", "Zen Kaku Gothic New", "Yusei Magic", "Reggae One",
+                                         "Klee One", "Hachi Maru Pop", "RocknRoll One"), "ja"),
+                        **dict.fromkeys(("ZCOOL KuaiLe", "Zhi Mang Xing", "Ma Shan Zheng",
+                                         "ZCOOL QingKe HuangYou"), "zh"),
+                        **dict.fromkeys(("Iansui", "LXGW WenKai TC", "Huninn"), "zh-tw")})
 FONT_SAMPLES = {"vi": "Xin bạn 1 star GitHub", "en": "Every word tells a story.",
                 "es": "Cada palabra cuenta una historia.", "zh": "一起开始新的故事。",
                 "zh-tw": "一起開始新的故事。", "ja": "新しい物語を始めよう！", "ko": "오늘도 좋은 하루!"}
@@ -66,6 +95,11 @@ _FONT_CATEGORIES = {"Bangers": "display", "Lobster": "display", "Bree Serif": "s
                     "Pacifico": "display", "Patrick Hand": "display", "Amatic SC": "display",
                     "Itim": "display", "Chakra Petch": "display"}
 _FONT_CATEGORIES.update({family: "serif" for family in FONT_FILES if family.startswith("Noto Serif")})
+_FONT_CATEGORIES.update({"Gowun Batang": "serif",
+                        **dict.fromkeys(("Jua", "Gugi", "Gaegu", "Yusei Magic", "Reggae One", "Klee One",
+                                         "Hachi Maru Pop", "RocknRoll One", "ZCOOL KuaiLe", "Ma Shan Zheng",
+                                         "Zhi Mang Xing", "ZCOOL QingKe HuangYou", "Iansui", "LXGW WenKai TC"),
+                                        "display")})
 _LANGUAGE_PROBES = {"vi": _VIETNAMESE, "es": "ÁÉÍÓÚÜÑáéíóúüñ¿¡"}
 
 
@@ -103,7 +137,7 @@ def font_catalog() -> dict:
     return json.loads((FONT_DIRECTORY.parent / "subtitle-fonts.json").read_text("utf-8"))["fonts"]
 
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=len(FONT_FILES))
 def _coverage(family):
     ranges = font_catalog()[family]["coverage"]
     return tuple(start for start, _end in ranges), tuple(end for _start, end in ranges)

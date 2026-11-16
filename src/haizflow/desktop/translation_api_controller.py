@@ -225,12 +225,36 @@ class TranslationApiController(QObject):
         try:
             original = connections.get_connection(identifier)
             suffix = "#" + output_format if output_format and original["provider"] == "custom" else ""
-            choice = "api:" + identifier + ":" + model + suffix
-            profile = connections.resolve(choice)
+            choice = "api:" + original["provider"] + ":" + model + suffix
+            connections.resolve(choice)
         except ValueError:
             return ""
-        return "api:" + identifier if (original["model"], original["format"]) == (
-            profile["model"], profile["format"]) else choice
+        return choice
+
+    @Slot(str, result=str)
+    def choiceProvider(self, choice):
+        return connections.choice_provider(choice)
+
+    @Slot(str, result=str)
+    def choiceModel(self, choice):
+        try:
+            return connections.resolve(choice)["model"]
+        except ValueError:
+            return ""
+
+    @Slot(str, result=bool)
+    def select(self, identifier):
+        if self.busy:
+            return False
+        try:
+            connections.select(identifier)
+        except (OSError, ValueError):
+            self.host._show_app_alert(self.tr("Kết nối dịch"),
+                                     self.tr("Không chọn được API key. Kiểm tra key trong Cài đặt."), "warning")
+            return False
+        self.resetModels()
+        self.changed.emit()
+        return True
 
     @Slot(str, result=str)
     def choiceLabel(self, choice):
@@ -239,11 +263,13 @@ class TranslationApiController(QObject):
         try:
             profile = connections.resolve(choice)
         except ValueError:
+            if connections.choice_provider(choice):
+                return self.tr("Chọn API sử dụng trong Cài đặt")
             return self.tr("Kết nối dịch không còn trên máy")
         provider = profile["provider"]
         label = self.tr("API tùy chỉnh") if provider == "custom" else connections.PROVIDERS[provider]["label"]
         model = dict(PRESETS.get(provider, ())).get(profile["model"], profile["model"])
-        return f"{label} · {model} · {profile['label']}"
+        return f"{label} · {model}"
 
     @Slot(str, result=bool)
     def dataCollectionRequired(self, choice):
@@ -363,10 +389,11 @@ class TranslationApiController(QObject):
         rows, options = connections.list_connections(), []
         for provider, info in connections.PROVIDERS.items():
             provider_label = self.tr("API tùy chỉnh") if provider == "custom" else info["label"]
-            matches = [row for row in rows if row["provider"] == provider]
+            matches = [row for row in rows if row["provider"] == provider and row.get("active")]
             for row in matches:
                 options.append({"label": f"{provider_label} · {row['model']} · {row['label']}",
-                                "value": "api:" + row["id"]})
+                                "value": ("api:" + provider + ":" + row["model"]
+                                          if row["model"] else "setup:" + provider)})
             if not matches:
                 options.append({"label": provider_label + " · " + self.tr("Thêm API key"),
                                 "value": "setup:" + provider})

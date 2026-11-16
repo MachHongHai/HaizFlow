@@ -9,7 +9,8 @@ Item {
     id: root
     property string selectedModel: "q4"
     property string activeProvider: ""
-    property string activeConnection: ""
+    readonly property string activeConnection: connections.filter(function(row) { return row.active; })
+        .map(function(row) { return row.id; }).join("")
     property string requestOwner: ""
     readonly property var api: AppController.translationApi || null
     readonly property var profiles: api ? api.profiles : []
@@ -46,9 +47,8 @@ Item {
     onVisibleOptionsChanged: Qt.callLater(root.resetListPosition)
     readonly property string displayText: {
         if (selectedModel.indexOf("api:") === 0) {
-            const identifier = selectedModel.split(":")[1];
-            return api && profiles.some(function(row) { return row.id === identifier; })
-                ? api.choiceLabel(selectedModel) : qsTr("Kết nối dịch không còn trên máy");
+            const revision = profiles;
+            return api ? api.choiceLabel(selectedModel) : qsTr("Kết nối dịch không còn trên máy");
         }
         for (const row of localModels.concat(geminiModels)) {
             if (row.value === selectedModel) return row.label;
@@ -56,35 +56,29 @@ Item {
         return selectedModel === "auto" ? localModels[0].label : selectedModel;
     }
     readonly property int currentIndex: selectedModel.indexOf("gemini-") === 0 ? 1
-        : selectedModel.indexOf("api:") === 0 && api ? providerIndex(selectedModel.split(":")[1]) : 0
+        : selectedModel.indexOf("api:") === 0 && api ? providerIndex(api.choiceProvider(selectedModel)) : 0
     readonly property string currentValue: selectedModel
     readonly property string selectedApiModel: {
         const pieces = selectedModel.split(":");
         if (pieces.length > 2) return pieces.slice(2).join(":").split("#")[0];
-        for (const row of profiles) {
-            if (row.id === pieces[1]) return row.model;
-        }
-        return "";
+        const revision = profiles;
+        return api && selectedModel.indexOf("api:") === 0 ? api.choiceModel(selectedModel) : "";
     }
     signal edited(string value)
     signal setupRequested(string provider)
-    implicitHeight: UiMetrics.controlHeight + (connectionPicker.visible
-        ? Theme.space12 + connectionPicker.implicitHeight : 0)
+    implicitHeight: UiMetrics.controlHeight
 
     function providerIndex(connectionId) {
-        for (const row of profiles) {
-            if (row.id === connectionId) {
-                for (let index = 0; index < providers.length; index++)
-                    if (providers[index].value === row.provider) return index;
-            }
-        }
+        for (let index = 0; index < providers.length; index++)
+            if (providers[index].value === connectionId) return index;
         return -1;
     }
+    function selectedProvider() { return api ? api.choiceProvider(selectedModel) : ""; }
     function connectionOptions() {
         const revision = api ? api.reasoningRevision : 0;
         const options = (ownCatalog && (catalogState === "ready" || catalogState === "partial")
             ? api.catalogOptions : api.connectionModels(activeConnection)).slice();
-        if (activeProvider !== "openrouter" && selectedModel.split(":")[1] === activeConnection && selectedApiModel
+        if (activeProvider !== "openrouter" && selectedProvider() === activeProvider && selectedApiModel
                 && !options.some(function(row) { return row.value === root.selectedApiModel; }))
             options.unshift({label: selectedApiModel, value: selectedApiModel});
         if (activeProvider === "openrouter")
@@ -98,7 +92,7 @@ Item {
     function resetListPosition() {
         if (!popup.visible) return;
         const selectedValue = externalProvider
-            ? selectedModel.split(":")[1] === activeConnection ? selectedApiModel : ""
+            ? selectedProvider() === activeProvider ? selectedApiModel : ""
             : selectedModel;
         const index = activeProvider ? visibleOptions.findIndex(function(row) {
             return row.value === selectedValue;
@@ -116,10 +110,6 @@ Item {
         requestOwner = "";
         modelSearch.text = "";
         activeProvider = provider;
-        const matches = profiles.filter(function(row) { return row.provider === provider; });
-        const selectedId = selectedModel.indexOf("api:") === 0 ? selectedModel.split(":")[1] : "";
-        activeConnection = matches.some(function(row) { return row.id === selectedId; })
-            ? selectedId : matches.length ? matches[0].id : "";
         if (provider === "openrouter" && activeConnection && api)
             api.ensureConnectionModels(activeConnection);
         resetListPosition();
@@ -132,7 +122,7 @@ Item {
         const option = visibleOptions[index];
         if (!option || option.available === false) return;
         if (!activeProvider) { openProvider(option.value); return; }
-        const format = activeProvider === "custom" && selectedModel.split(":")[1] === activeConnection
+        const format = activeProvider === "custom" && selectedProvider() === activeProvider
             && selectedModel.indexOf("#") >= 0 ? selectedModel.split("#")[1] : "";
         const value = externalProvider ? api.modelChoice(activeConnection, option.value, format) : option.value;
         commit(value);
@@ -201,17 +191,6 @@ Item {
         }
         onClicked: popup.visible ? popup.close() : popup.open()
         Keys.onDownPressed: popup.open()
-    }
-    TranslationConnectionPicker {
-        id: connectionPicker
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: displayButton.bottom
-        anchors.topMargin: Theme.space12
-        api: root.api
-        selectedModel: root.selectedModel
-        modelId: root.selectedApiModel
-        onChoiceEdited: function(value) { root.commit(value); }
     }
     Popup {
         id: popup
@@ -292,21 +271,6 @@ Item {
                         onClicked: root.configureApi()
                     }
                 }
-                SettingLabel {
-                    visible: root.externalProvider && root.connectionExists
-                    text: qsTr("API sử dụng")
-                }
-                AppComboBox {
-                    objectName: "projectTranslationConnectionPicker"
-                    Layout.fillWidth: true
-                    visible: root.externalProvider && root.connectionExists
-                    model: root.connections
-                    textRole: "label"
-                    valueRole: "id"
-                    Accessible.name: qsTr("Chọn API cho model dịch")
-                    currentIndex: root.connections.findIndex(function(row) { return row.id === root.activeConnection; })
-                    onActivated: { root.activeConnection = String(currentValue); modelSearch.text = ""; list.currentIndex = 0; }
-                }
                 AppTextField {
                     id: modelSearch
                     objectName: "openRouterModelSearch"
@@ -323,7 +287,7 @@ Item {
                     objectName: "projectTranslationSetupButton"
                     Layout.fillWidth: true
                     visible: root.externalProvider && !root.connectionExists
-                    text: qsTr("Thêm API key")
+                    text: qsTr("Quản lý API key")
                     onClicked: root.configureApi()
                 }
                 StudioButton {
@@ -336,7 +300,7 @@ Item {
                         const identifier = root.activeConnection;
                         const profile = root.connections.find(function(row) { return row.id === identifier; });
                         if (!profile) return;
-                        const modelId = root.selectedModel.split(":")[1] === identifier ? root.selectedApiModel : "";
+                        const modelId = root.selectedProvider() === root.activeProvider ? root.selectedApiModel : "";
                         const format = root.selectedModel.indexOf("#") >= 0 ? root.selectedModel.split("#")[1] : profile.format;
                         const custom = root.activeProvider === "custom";
                         popup.close();

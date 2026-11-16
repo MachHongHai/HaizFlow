@@ -47,6 +47,10 @@ def exercise(width, large):
         geminiApiKeys = Property("QVariantList", lambda self: self.keys, notify=changed)
         zernioApiKeys = Property("QVariantList", lambda self: self.keys, notify=changed)
         geminiBusy = Property(bool, lambda self: self.locked, notify=changed)
+        busy = Property(bool, lambda self: self.locked, notify=changed)
+        profiles = Property("QVariantList", lambda self: [
+            {**row, "provider": provider} for provider in ("openai", "deepseek", "openrouter", "custom")
+            for row in self.keys], notify=changed)
         zernioCredentialBusy = Property(bool, lambda self: self.locked, notify=changed)
         zernioCredentialResult = Property(str, lambda self: "", constant=True)
         zernioApiKeyConfigured = Property(bool, lambda self: True, constant=True)
@@ -68,6 +72,14 @@ def exercise(width, large):
         @Slot(str)
         def selectZernioApiKey(self, identifier):
             self.calls.append(("use-zernio", identifier))
+
+        @Slot(str)
+        def select(self, identifier):
+            self.calls.append(("use-external", identifier))
+
+        @Slot(str)
+        def verify(self, identifier):
+            self.calls.append(("external", identifier))
 
     def visual_items(item):
         assert isinstance(item, QQuickItem)
@@ -101,7 +113,7 @@ ApplicationWindow {
     def right(item):
         return item.mapToItem(window.contentItem(), item.width(), 0).x()
 
-    for provider in ("gemini", "zernio"):
+    for provider in ("gemini", "zernio", "openai", "deepseek", "openrouter", "custom"):
         host.apiKeySettingsRequested.emit(provider)
         QTest.qWait(50)
         assert find("checkAllZernioKeysButton") is None
@@ -131,12 +143,15 @@ ApplicationWindow {
         button = find("verifyApiKeyButton_backup")
         position = button.mapToScene(QPointF(button.width() / 2, button.height() / 2)).toPoint()
         QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, position)
-        assert host.calls[-1] == (provider, "backup")
-        assert len([call for call in host.calls if call == (provider, "backup")]) == 1
+        mode = provider if provider in ("gemini", "zernio") else "external"
+        prior_checks = len(host.calls)
+        assert host.calls[-1] == (mode, "backup")
         # Keyboard activation remains available on the same per-key action.
         button.forceActiveFocus()
         QTest.keyClick(window, Qt.Key_Space)
-        assert host.calls[-1] == (provider, "backup")
+        assert host.calls[-1] == (mode, "backup") and len(host.calls) == prior_checks + 1
+        find("useApiKeyButton_backup").clicked.emit()
+        assert host.calls[-1] == ("use-" + mode, "backup")
         host.locked = True
         host.changed.emit()
         QTest.qWait(20)

@@ -60,14 +60,18 @@ def _target(identifier):
     return "HaizFlow/Translation/APIKey/" + identifier
 
 
-def _read():
+def _document():
     try:
         if _PATH.stat().st_size > 1024 * 1024:
-            return []
+            return {}
         data = json.loads(_PATH.read_text("utf-8"))
     except (OSError, ValueError):
-        return []
-    rows = data.get("connections", []) if isinstance(data, dict) else []
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _read():
+    rows = _document().get("connections", [])
     result = []
     for row in rows[:100] if isinstance(rows, list) else []:
         if not isinstance(row, dict):
@@ -89,12 +93,38 @@ def _read():
     return result
 
 
-def _save(rows):
+def _selection_state(rows):
+    data = _document()
+    raw_active = data.get("active")
+    active = {p: str(raw_active[p]) for p in PROVIDERS if p in raw_active} if isinstance(raw_active, dict) else {}
+    # One-time compatibility default; explicit deselection must never choose another key.
+    if not isinstance(raw_active, dict):
+        for row in rows:
+            active.setdefault(row["provider"], row["id"])
+    aliases = data.get("providers", {})
+    aliases = {i: p for i, p in aliases.items() if _ID.fullmatch(i)
+               and isinstance(p, str) and p in PROVIDERS} if isinstance(aliases, dict) else {}
+    aliases.update({row["id"]: row["provider"] for row in rows})
+    return active, aliases
+
+
+def _save(rows, *, active=None, aliases=None):
+    previous_rows = _read()
+    previous_active, previous_aliases = _selection_state(previous_rows)
+    active = previous_active if active is None else active
+    aliases = previous_aliases if aliases is None else aliases
+    aliases.update({row["id"]: row["provider"] for row in rows})
+    legacy = _document().get("legacy_models", {})
+    legacy = legacy if isinstance(legacy, dict) else {}
+    legacy.update({row["id"]: {"model": row["model"], "format": row["format"]}
+                   for row in [*previous_rows, *rows]})
     _PATH.parent.mkdir(parents=True, exist_ok=True)
     handle, temporary = tempfile.mkstemp(prefix=".translation-connections-", suffix=".tmp", dir=_PATH.parent)
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            json.dump({"version": 1, "connections": rows}, stream, ensure_ascii=False, indent=2)
+            json.dump({"version": 2, "connections": rows, "active": active, "providers": aliases,
+                       "legacy_models": legacy},
+                      stream, ensure_ascii=False, indent=2)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, _PATH)
@@ -104,7 +134,38 @@ def _save(rows):
 
 def list_connections():
     with _LOCK:
-        return _read()
+        rows = _read()
+        active, _ = _selection_state(rows)
+        return [{**row, "active": active.get(row["provider"]) == row["id"]} for row in rows]
+
+
+def choice_provider(model_choice: str):
+    identifier = model_choice.removeprefix("api:").partition(":")[0]
+    if identifier in PROVIDERS:
+        return identifier
+    with _LOCK:
+        _, aliases = _selection_state(_read())
+        return aliases.get(identifier, "")
+
+
+def active_connection(provider: str, *, with_key=False):
+    with _LOCK:
+        rows = _read()
+        active, _ = _selection_state(rows)
+        identifier = active.get(provider, "")
+        if not any(row["id"] == identifier and row["provider"] == provider for row in rows):
+            raise ValueError("Chưa chọn API sử dụng. Vào Cài đặt → API Key để chọn Sử dụng.")
+        return get_connection(identifier, with_key=with_key)
+
+
+def select(identifier: str):
+    with _LOCK:
+        row, _ = get_connection(identifier, with_key=True)
+        rows = _read()
+        active, aliases = _selection_state(rows)
+        active[row["provider"]] = identifier
+        _save(rows, active=active, aliases=aliases)
+    return True
 
 
 def add(provider: str, label: str, key: str, model: str = "", base_url: str = "", output_format: str = "json_object"):
@@ -131,7 +192,10 @@ def add(provider: str, label: str, key: str, model: str = "", base_url: str = ""
             raise ValueError("Đã đạt giới hạn 100 kết nối dịch.")
         secure_credentials.write_secret(_target(identifier), key, username=PROVIDERS[provider]["label"])
         try:
-            _save([*rows, row])
+            active, aliases = _selection_state(rows)
+            if not any(item["provider"] == provider for item in rows) and provider not in active:
+                active[provider] = identifier
+            _save([*rows, row], active=active, aliases=aliases)
         except OSError:
             secure_credentials.delete_secret(_target(identifier))
             raise
@@ -159,12 +223,27 @@ def resolve(model_choice: str, *, with_key: bool = False):
         raise ValueError("Model API dịch không hợp lệ.")
     identifier, _, selected_model = model_choice[4:].partition(":")
     selected_model, _, output_format = selected_model.partition("#")
-    result = get_connection(identifier, with_key=with_key)
+    provider = choice_provider(model_choice)
+    # Read legacy model before routing to the globally selected credential.
+    legacy = None
+    if _ID.fullmatch(identifier) and not selected_model:
+        with _LOCK:
+            try:
+                legacy = get_connection(identifier)
+            except ValueError:
+                saved = _document().get("legacy_models", {})
+                legacy = saved.get(identifier) if isinstance(saved, dict) else None
+                if (not isinstance(legacy, dict) or not isinstance(legacy.get("model"), str)
+                        or not _MODEL.fullmatch(legacy["model"])
+                        or not isinstance(legacy.get("format"), str)
+                        or legacy["format"] not in {"json_object", "json_schema", "prompt"}):
+                    raise ValueError("Chưa chọn model dịch. Hãy chọn lại model trong dự án.") from None
+    result = active_connection(provider, with_key=with_key)
     profile = result[0] if with_key else result
     if output_format and profile["provider"] != "custom":
         raise ValueError("Chỉ API tùy chỉnh mới hỗ trợ đổi định dạng JSON.")
-    profile = {**profile, "model": selected_model or profile["model"],
-               "format": output_format or profile["format"]}
+    profile = {**profile, "model": selected_model or (legacy or profile)["model"],
+               "format": output_format or (legacy or profile)["format"]}
     if not profile["model"]:
         raise ValueError("Chưa chọn model dịch. Hãy chọn model trong cài đặt của dự án.")
     return (profile, result[1]) if with_key else profile
@@ -173,6 +252,7 @@ def resolve(model_choice: str, *, with_key: bool = False):
 def signature_parts(model_choice: str):
     try:
         row = resolve(model_choice)
+        row = {key: row[key] for key in ("provider", "model", "base_url", "format")}
     except ValueError:
         return ("translation-api-v1", model_choice, "missing-connection")
     fingerprint = hashlib.sha256(json.dumps(row, sort_keys=True).encode()).hexdigest()
@@ -185,10 +265,14 @@ def remove(identifier: str):
         if not any(row["id"] == identifier for row in rows):
             return False
         target = _target(identifier)
+        active, aliases = _selection_state(rows)
+        for provider, selected in active.items():
+            if selected == identifier:
+                active[provider] = ""
         previous = secure_credentials.read_secret(target)
         secure_credentials.delete_secret(target)
         try:
-            _save([row for row in rows if row["id"] != identifier])
+            _save([row for row in rows if row["id"] != identifier], active=active, aliases=aliases)
         except OSError:
             if previous:
                 secure_credentials.write_secret(target, previous, username="Translation API")
