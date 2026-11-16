@@ -59,6 +59,15 @@ if not getattr(sys, "frozen", False) and VENV_PYTHON.exists() and not _running_i
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from haizflow.core.startup_arguments import mcp_server_arguments  # noqa: E402
+
+try:
+    _mcp_arguments = mcp_server_arguments(sys.argv[1:])
+except ValueError as exc:
+    _restore_internal_standard_streams()
+    print(f"HaizFlow MCP: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+
 if len(sys.argv) == 3 and sys.argv[1] == "--native-file-dialog":
     from haizflow.desktop.native_file_picker import main as run_native_file_dialog
 
@@ -85,10 +94,10 @@ _INTERNAL_STREAM_MODES = {
 if any(mode in sys.argv for mode in _INTERNAL_STREAM_MODES):
     _restore_internal_standard_streams()
 
-if "--mcp-server" in sys.argv:
+if _mcp_arguments is not None:
     from haizflow.mcp.__main__ import main as run_mcp_server
 
-    raise SystemExit(run_mcp_server(sys.argv[sys.argv.index("--mcp-server") + 1:]))
+    raise SystemExit(run_mcp_server(_mcp_arguments))
 
 if "--engine-worker" in sys.argv:
     from haizflow.engine.main import main as run_engine_worker

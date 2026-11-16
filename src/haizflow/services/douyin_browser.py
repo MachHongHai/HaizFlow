@@ -231,6 +231,17 @@ class DouyinBrowserSession:
         return any(marker in body for marker in (
             "请完成验证", "安全验证", "拖动滑块", "验证后继续", "complete verification", "verify you are human"))
 
+    async def _optional_login_panel(self):
+        """Return only the known, visible, optional invitation, never a login gate."""
+        panel = self._page.locator("#douyin_login_comp_flat_panel")
+        if await panel.count() != 1 or not await panel.is_visible():
+            return None
+        title = panel.locator("#douyin_login_comp_flat_panel_title")
+        if (await title.count() != 1 or not await title.is_visible()
+                or (await title.inner_text(timeout=750)).strip() != OPTIONAL_LOGIN_TITLE):
+            return None
+        return panel
+
     async def _dismiss_optional_login(self) -> bool | None:
         """Click the site's own X on its known dismissible invitation only.
 
@@ -238,27 +249,26 @@ class DouyinBrowserSession:
         No DOM removal, Escape-key fallback, forced click or authentication occurs.
         None means no invitation; bool means one bounded dismissal was attempted.
         """
+        known_panel = False
         try:
-            panel = self._page.locator("#douyin_login_comp_flat_panel")
-            if await panel.count() != 1 or not await panel.is_visible():
+            panel = await self._optional_login_panel()
+            if panel is None:
                 return None
+            known_panel = True
             title = panel.locator("#douyin_login_comp_flat_panel_title")
-            if (await title.count() != 1 or not await title.is_visible()
-                    or (await title.inner_text(timeout=750)).strip() != OPTIONAL_LOGIN_TITLE):
-                return None
             # The observed header contains the title and exactly one X icon.
             # Match its shape, not obfuscated class names or a page-wide close button.
             close = title.locator("..").locator(OPTIONAL_LOGIN_CLOSE)
             if await close.count() != 1 or not await close.is_visible():
                 return False
             await close.click(timeout=1500)  # Normal hit testing: never force through an overlay.
-            await panel.wait_for(state="hidden", timeout=750)
+            await panel.wait_for(state="hidden", timeout=2000)
             logger.info("douyin browser optional_login_prompt=closed")
             return True
         except Exception as exc:
             # A changing page must not crash UI or expose browser request/session data.
             logger.info("douyin browser optional_login_prompt=not_closed error_type=%s", type(exc).__name__)
-            return False
+            return False if known_panel else None
 
     async def _snapshot(self):
         cookies = await self._context.cookies(["https://www.douyin.com/"])
@@ -298,14 +308,16 @@ class DouyinBrowserSession:
         deadline = time.monotonic() + SDK_WAIT_SECONDS
         human_deadline = time.monotonic() + HUMAN_WAIT_SECONDS
         delay, waiting, errors, prompt_attempts = 0.25, False, 0, 0
+        login_waiting = False
+        login_prompt_notified = False
         while True:
             _check_cancel(cancel_event)
             challenge = await self._challenge()
             if challenge is None:
                 # Human verification may navigate/reload the document. Preserve
                 # its human deadline until the page can be examined again.
-                if time.monotonic() >= (human_deadline if waiting else deadline):
-                    if waiting:
+                if time.monotonic() >= (human_deadline if waiting or login_waiting else deadline):
+                    if waiting or login_waiting:
                         raise RuntimeError("Creating the Douyin session timed out. Try again later.")
                     logger.info("douyin browser readiness=page_loading_timeout")
                     raise DouyinError(Outcome.NETWORK)
@@ -327,11 +339,48 @@ class DouyinBrowserSession:
                 deadline = time.monotonic() + SDK_WAIT_SECONDS
                 if status_callback:
                     status_callback("Checking the Douyin session")
+            prompt_result = None
             if prompt_attempts < 2:
                 prompt_result = await self._dismiss_optional_login()
                 if prompt_result is not None:
                     prompt_attempts += 1
                 _check_cancel(cancel_event)
+            else:
+                try:
+                    if await self._optional_login_panel() is not None:
+                        prompt_result = False
+                except Exception:
+                    # A navigation during observation is unknown, not proof
+                    # that a blocking popup disappeared.
+                    if login_waiting:
+                        prompt_result = False
+            if prompt_result is False:
+                if not human:
+                    raise DouyinError(Outcome.CHALLENGE)
+                if not login_waiting:
+                    login_waiting = True
+                    logger.info("douyin browser readiness=waiting_for_optional_popup")
+                if prompt_attempts >= 2 and status_callback and not login_prompt_notified:
+                    status_callback("Close the login popup in the Douyin window to continue.")
+                    login_prompt_notified = True
+                if time.monotonic() >= human_deadline:
+                    raise RuntimeError("Creating the Douyin session timed out. Try again later.")
+                # Do not sign through the overlay, burn the SDK deadline, or
+                # reload/recreate it. Give the site's X (or the user) time.
+                await asyncio.sleep(0.5)
+                continue
+            if login_waiting or prompt_result is True:
+                login_waiting = False
+                login_prompt_notified = False
+                deadline = time.monotonic() + SDK_WAIT_SECONDS
+                errors, delay = 0, 0.25
+                if status_callback:
+                    status_callback("Checking the Douyin session")
+                if prompt_result is True:
+                    # Let the site finish its close/navigation handlers before
+                    # signing; re-check for human verification on the next turn.
+                    await asyncio.sleep(delay)
+                    continue
             try:
                 return await self._capture(path, params)
             except DouyinError as exc:

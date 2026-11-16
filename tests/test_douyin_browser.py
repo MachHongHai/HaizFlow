@@ -212,7 +212,7 @@ def test_only_known_visible_dismissible_login_invitation_is_closed(text, visible
         assert asyncio.run_coroutine_threadsafe(backend._dismiss_optional_login(), backend._loop).result(2) is expected
         if expected is True:
             close.click.assert_awaited_once_with(timeout=1500)
-            panel.wait_for.assert_awaited_once_with(state="hidden", timeout=750)
+            panel.wait_for.assert_awaited_once_with(state="hidden", timeout=2000)
         else:
             close.click.assert_not_awaited()
     finally:
@@ -243,16 +243,92 @@ def test_captcha_has_priority_over_login_prompt_dismissal():
     context.close.assert_awaited_once()
 
 
-def test_recurring_invitation_has_two_attempt_cap_without_unbounded_retries():
+def test_recurring_invitation_waits_without_reloading_after_two_close_attempts():
     driver, _, page = guest()
     panel, close = login_prompt()
     body = page.locator("body")
     page.locator = Mock(side_effect=lambda selector: body if selector == "body" else panel)
     with patch("haizflow.services.douyin_browser._driver", return_value=driver), \
          patch.object(DouyinBrowserSession, "_capture", AsyncMock(side_effect=DouyinError(Outcome.SIGNATURE))), \
-         patch("haizflow.services.douyin_browser.SDK_WAIT_SECONDS", 0.8), pytest.raises(DouyinError):
+         patch("haizflow.services.douyin_browser.HUMAN_WAIT_SECONDS", 0.8), pytest.raises(RuntimeError, match="timed out"):
         create_anonymous_state()
-    assert close.click.await_count == 4  # Two per readiness attempt; one bounded startup retry.
+    assert close.click.await_count == 2
+    page.reload.assert_not_awaited()
+
+
+def test_popup_close_failures_wait_for_user_without_signing_or_reloading():
+    backend = DouyinBrowserSession()
+    page = SimpleNamespace(reload=AsyncMock())
+    backend._page = page
+    statuses = []
+    panel_checks = 0
+
+    async def visible_panel():
+        nonlocal panel_checks
+        panel_checks += 1
+        return object() if panel_checks < 3 else None  # User eventually closes X.
+
+    async def capture(*_args):
+        assert panel_checks == 3  # Never sign through the blocked popup.
+        return "signed", {"cookies": []}
+
+    try:
+        with patch.object(backend, "_challenge", AsyncMock(return_value=False)), \
+             patch.object(backend, "_dismiss_optional_login", AsyncMock(return_value=False)) as dismiss, \
+             patch.object(backend, "_optional_login_panel", visible_panel), \
+             patch.object(backend, "_capture", side_effect=capture) as sign, \
+             patch("haizflow.services.douyin_browser.SDK_WAIT_SECONDS", 0):
+            result = backend._submit(backend._ready(DETAIL_PATH, {"aweme_id": "0"},
+                status_callback=statuses.append, human=True), timeout=5)
+        assert result[0] == "signed"
+        assert dismiss.await_count == 2 and sign.await_count == 1
+        assert statuses == ["Close the login popup in the Douyin window to continue.",
+                            "Checking the Douyin session"]
+        page.reload.assert_not_awaited()
+    finally:
+        backend.close()
+
+
+def test_popup_wait_is_cancellable_and_never_signs_before_user_action():
+    backend = DouyinBrowserSession()
+    cancel = threading.Event()
+    statuses = []
+    def progress(status):
+        statuses.append(status)
+        cancel.set()
+    try:
+        with patch.object(backend, "_challenge", AsyncMock(return_value=False)), \
+             patch.object(backend, "_dismiss_optional_login", AsyncMock(return_value=False)), \
+             patch.object(backend, "_capture", AsyncMock()) as sign, pytest.raises(DownloadCancelled):
+            backend._submit(backend._ready(DETAIL_PATH, {"aweme_id": "0"}, cancel,
+                status_callback=progress, human=True), timeout=4)
+        sign.assert_not_awaited()
+        assert statuses == ["Close the login popup in the Douyin window to continue."]
+    finally:
+        backend.close()
+
+
+def test_popup_closed_then_captcha_is_rechecked_before_signing():
+    backend = DouyinBrowserSession()
+    try:
+        with patch.object(backend, "_challenge", AsyncMock(side_effect=[False, True])), \
+             patch.object(backend, "_dismiss_optional_login", AsyncMock(return_value=True)), \
+             patch.object(backend, "_capture", AsyncMock()) as sign, \
+             patch("haizflow.services.douyin_browser.HUMAN_WAIT_SECONDS", 0), \
+             pytest.raises(RuntimeError, match="timed out"):
+            backend._submit(backend._ready(DETAIL_PATH, {"aweme_id": "0"}, human=True), timeout=3)
+        sign.assert_not_awaited()
+    finally:
+        backend.close()
+
+
+def test_popup_observation_during_navigation_is_not_treated_as_blocking_login():
+    backend = DouyinBrowserSession()
+    try:
+        with patch.object(backend, "_optional_login_panel", AsyncMock(side_effect=ValueError("navigation"))):
+            assert backend._submit(backend._dismiss_optional_login()) is None
+    finally:
+        backend.close()
 
 
 def test_loading_document_timeout_is_unknown_not_absence_of_captcha():

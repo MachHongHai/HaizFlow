@@ -19,8 +19,8 @@ class _Response:
     def __exit__(self, *_args):
         return False
 
-    def read(self):
-        return self._payload
+    def read(self, size=-1):
+        return self._payload if size < 0 else self._payload[:size]
 
 
 class _UploadResponse:

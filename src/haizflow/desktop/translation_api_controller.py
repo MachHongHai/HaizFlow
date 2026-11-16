@@ -12,6 +12,8 @@ from haizflow.services import translation_connections as connections
 
 class TranslationApiController(QObject):
     changed = Signal()
+    geminiChanged = Signal()
+    _geminiChecked = Signal(str, str)
     _checked = Signal(str, str)
     catalogChanged = Signal()
     _catalogLoaded = Signal(int, object, str)
@@ -22,6 +24,9 @@ class TranslationApiController(QObject):
         self.host = host
         self._busy_id = ""
         self._results = {}
+        self._gemini_results = {}
+        self._gemini_pending = set()
+        self._geminiChecked.connect(self._finish_gemini_check)
         self._checked.connect(self._finish_check)
         self._catalog_generation = 0
         self._catalog_cancel = threading.Event()
@@ -49,6 +54,65 @@ class TranslationApiController(QObject):
         from haizflow.core.gemini_models import model_options
 
         return model_options()
+
+    @Property(bool, notify=geminiChanged)
+    def geminiBusy(self):
+        return bool(self._gemini_pending)
+
+    @Property("QVariantList", notify=geminiChanged)
+    def geminiProfiles(self):
+        from haizflow.services import gemini_translation
+
+        return [{**row, "check_result": self._gemini_results.get(row["id"], ""),
+                 "checking": row["id"] in self._gemini_pending} for row in gemini_translation.list_keys()]
+
+    def invalidateGemini(self, identifier):
+        self._gemini_results.pop(identifier, None)
+        self.geminiChanged.emit()
+
+    @Slot(result=bool)
+    @Slot(str, result=bool)
+    def verifyGemini(self, identifier=""):
+        from haizflow.services import gemini_translation
+
+        if self.geminiBusy:
+            return False
+        try:
+            identifiers = [row["id"] for row in gemini_translation.list_keys()
+                           if not identifier or row["id"] == identifier]
+        except OSError:
+            return False
+        if not identifiers:
+            return False
+        self._gemini_pending = set(identifiers)
+        self._gemini_results.update(dict.fromkeys(identifiers, "checking"))
+        self.geminiChanged.emit()
+
+        def work():
+            from haizflow.services.gemini_credentials import check_key
+
+            for key_id in identifiers:
+                try:
+                    result = check_key(gemini_translation.key_value(key_id))
+                except (OSError, ValueError):
+                    result = "invalid"
+                except Exception:
+                    result = "unavailable"
+                try:
+                    self._geminiChecked.emit(key_id, result)
+                except RuntimeError:
+                    return
+
+        threading.Thread(target=work, name="HaizFlow Gemini key checks", daemon=True).start()
+        return True
+
+    @Slot(str, str)
+    def _finish_gemini_check(self, identifier, result):
+        if identifier not in self._gemini_pending:
+            return
+        self._gemini_pending.discard(identifier)
+        self._gemini_results[identifier] = result
+        self.geminiChanged.emit()
 
     @Property(bool, notify=catalogChanged)
     def routerRefreshing(self):
@@ -179,7 +243,7 @@ class TranslationApiController(QObject):
         provider = profile["provider"]
         label = self.tr("API tùy chỉnh") if provider == "custom" else connections.PROVIDERS[provider]["label"]
         model = dict(PRESETS.get(provider, ())).get(profile["model"], profile["model"])
-        return f"{label} · {model}"
+        return f"{label} · {model} · {profile['label']}"
 
     @Slot(str, result=bool)
     def dataCollectionRequired(self, choice):
@@ -361,7 +425,7 @@ class TranslationApiController(QObject):
 
             try:
                 result = check_connection("api:" + identifier, model_required=False)
-            except (OSError, ValueError):
+            except Exception:
                 result = "unavailable"
             try:
                 self._checked.emit(identifier, result)

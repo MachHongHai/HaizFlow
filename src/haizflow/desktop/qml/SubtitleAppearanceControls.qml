@@ -7,6 +7,7 @@ import "."
 ColumnLayout {
     id: root
     property var style: ({})
+    property string fontLanguage: AppController.targetLanguage
     signal changeRequested(var patch)
     readonly property var compactStyle: Object.assign({}, style, {
         "font_weight": style.bold ? 700 : 400,
@@ -19,6 +20,7 @@ ColumnLayout {
         Layout.fillWidth: true
         style: root.compactStyle
         karaokeEnabled: true
+        fontLanguage: root.fontLanguage
         onChangeRequested: function (patch) {
             const mapped = Object.assign({}, patch);
             if (mapped.font_weight !== undefined) {

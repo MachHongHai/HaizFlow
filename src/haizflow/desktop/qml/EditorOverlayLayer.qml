@@ -100,7 +100,7 @@ Item {
                         readonly property var styleData: overlay.modelData.style || ({})
                         readonly property bool subtitle: String(styleData.target_type || "") === "subtitle"
                         readonly property var captionFont: subtitle
-                            ? AppController.subtitleFontSpecForText(String(overlay.modelData.name || ""), AppController.manualVoiceLanguage)
+                            ? AppController.subtitleFontSpecForStyle(String(overlay.modelData.name || ""), AppController.manualVoiceLanguage, String(styleData.font_family || "Bangers"))
                             : ({})
                         readonly property var spriteData: overlay.modelData.sprite || ({})
                         readonly property bool hasSprite: String(spriteData.sourceUrl || "").length > 0

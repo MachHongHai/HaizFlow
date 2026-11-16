@@ -138,7 +138,8 @@ def test_saved_unstable_free_model_stops_without_consuming_requests(store, monke
     send = Mock()
     monkeypatch.setattr(api, "_json_request", send)
     with pytest.raises(RuntimeError, match="app chưa gửi yêu cầu API"):
-        api.translate_texts(["Hello."], model=choice, source_language="English", target_language="Vietnamese", video_id="")
+        api.translate_texts(["Hello."], model=choice, source_language="English",
+                            target_language="Vietnamese", video_id="")
     send.assert_not_called()
 
 
@@ -547,7 +548,7 @@ def test_model_list_connection_check_is_readonly_and_no_inference_request(store,
 
 @pytest.mark.parametrize("provider", ["openai", "deepseek", "openrouter", "custom"])
 @pytest.mark.parametrize("fault,expected", [(401, "invalid"), ("invalid_api_key", "invalid"),
-    ("permission_denied", "invalid"), (402, "unavailable"), (429, "unavailable"),
+    ("permission_denied", "invalid"), (402, "billing-required"), (429, "rate-limited"),
     ("server_error", "unavailable"), (None, "unavailable")])
 @pytest.mark.parametrize("model_required", [True, False])
 def test_connection_check_rejects_http200_error_envelopes(
@@ -627,6 +628,9 @@ def test_actual_http_is_text_only_and_blocks_authenticated_redirects(store):
                 self.send_response(302)
                 self.send_header("Location", "/credential-sink")
                 self.end_headers()
+            elif self.path == "/v1/models" and self.headers.get("Authorization") != "Bearer test-key":
+                self.send_response(401)
+                self.end_headers()
             else:
                 self.send_response(200)
                 self.end_headers()
@@ -653,8 +657,9 @@ def test_actual_http_is_text_only_and_blocks_authenticated_redirects(store):
             api._json_request(base + "/redirect", "test-key")
         caught.value.close()
         assert all(path != "/credential-sink" for path, _ in calls)
-        assert [path for path, _ in calls] == ["/v1/models", "/v1/chat/completions", "/redirect"]
-        assert all(auth == "Bearer test-key" for _, auth in calls)
+        assert [path for path, _ in calls] == ["/v1/models", "/v1/models", "/v1/chat/completions", "/redirect"]
+        assert all(auth == "Bearer test-key" for i, (_, auth) in enumerate(calls) if i != 1)
+        assert calls[1][1].startswith("Bearer haizflow-invalid-")
         api._json_request(base + "/public-models", "")
         assert calls[-1] == ("/public-models", None)  # No Authorization on public catalogue GET.
     finally:

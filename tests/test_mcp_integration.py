@@ -236,6 +236,60 @@ def test_client_configs_parse_and_use_current_interpreter(bridge):
         assert json.loads(launch_configuration(bridge.endpoint, name))["mcpServers"]["haizflow"] == config
 
 
+def test_setup_copies_one_argument_at_a_time_and_rejects_bulk_copy(bridge, app):
+    from PySide6.QtGui import QGuiApplication
+
+    clipboard = QGuiApplication.clipboard()
+    with patch.object(sys, "frozen", True, create=True), patch.object(
+        sys, "executable", "C:/Ứng dụng HaizFlow/HaizFlowCore.exe"
+    ):
+        details = bridge.launchDetails
+        expected = ["--mcp-server", "--endpoint", bridge.endpoint, "--tool-profile", "compact"]
+        assert details["argumentItems"] == expected
+        bridge.copyLaunchField("command")
+        assert clipboard.text() == "C:/Ứng dụng HaizFlow/HaizFlowCore.exe"
+        for index, value in enumerate(expected):
+            bridge.copyLaunchArgument(index)
+            assert clipboard.text() == value
+        for invalid_index in (-1, len(expected), 10000):
+            clipboard.setText("unchanged")
+            bridge.copyLaunchArgument(invalid_index)
+            assert clipboard.text() == "unchanged"
+        bridge.copyLaunchField("arguments")
+        assert clipboard.text() == "unchanged"
+        details["argumentItems"].clear()
+        assert bridge.launchDetails["argumentItems"] == expected
+
+
+@pytest.mark.parametrize("client,label", [
+    ("claude-code", "Claude Code"),
+    ("antigravity-ide", "Antigravity IDE"),
+    ("antigravity-app", "Antigravity App"),
+])
+def test_setup_prompt_targets_the_selected_agent_with_structured_args(bridge, app, client, label):
+    from PySide6.QtGui import QGuiApplication
+
+    prompt = bridge.setupPromptFor(client)
+    assert label in prompt and "haizflow_status" in prompt
+    config = json.loads(prompt[prompt.index("{"):])
+    assert config == json.loads(bridge.configuration("generic"))
+    assert len(config["mcpServers"]["haizflow"]["args"]) > 1
+    assert prompt.startswith("/agy-customizations") == client.startswith("antigravity")
+    bridge.copySetupPromptFor(client)
+    assert QGuiApplication.clipboard().text() == prompt
+    if client == "claude-code":
+        assert bridge.setupPrompt == prompt
+
+
+def test_unknown_setup_prompt_does_not_change_clipboard(bridge, app):
+    from PySide6.QtGui import QGuiApplication
+
+    QGuiApplication.clipboard().setText("unchanged")
+    assert bridge.setupPromptFor("not-a-client") == ""
+    bridge.copySetupPromptFor("not-a-client")
+    assert QGuiApplication.clipboard().text() == "unchanged"
+
+
 def test_sdk_tool_and_resource_discovery_do_not_execute_mutations():
     from mcp import Client
 
@@ -1577,9 +1631,12 @@ def test_metadata_commands_are_async_deduplicated_and_never_start_inference(
     calls = []
     def send(url, key, payload=None, **kwargs):
         assert payload is None and url == "https://example.invalid/v1/models"
-        assert key == "SYNTHETIC-PRIVATE-KEY"
         assert threading.current_thread() is not threading.main_thread()
         calls.append(url)
+        if key != "SYNTHETIC-PRIVATE-KEY":
+            from urllib.error import HTTPError
+            assert key.startswith("haizflow-invalid-")
+            raise HTTPError(url, 401, "Unauthorized", {}, None)
         entered.set()
         release.wait(2)
         return {"data": [{"id": "Vendor/MixedCase", "name": "Local model"}]}
@@ -1600,7 +1657,7 @@ def test_metadata_commands_are_async_deduplicated_and_never_start_inference(
         status = commands.dispatch("translation_api", {"action": "status", "connection_id": custom})
         if not status["busy"]:
             break
-    assert not status["busy"] and len(calls) == 1
+    assert not status["busy"] and len(calls) == (2 if action == "verify" else 1)
     assert status["verification"] == "verified" if action == "verify" else status["catalogue"] == "ready"
     if action == "refresh_models":
         controller.resetModels()

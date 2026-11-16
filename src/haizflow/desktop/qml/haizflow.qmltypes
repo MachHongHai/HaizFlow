@@ -2311,6 +2311,9 @@ Module {
         Method { name: "adoptSubtitlePreviewLayout"; type: "bool" }
         Method { name: "subtitleSampleText"; type: "string"; Parameter { name: "text"; type: "string" } Parameter { name: "fontSize"; type: "int" } Parameter { name: "boxWidth"; type: "int" } Parameter { name: "boxHeight"; type: "int" } Parameter { name: "width"; type: "int" } Parameter { name: "height"; type: "int" } }
         Method { name: "subtitleFontSpecForText"; type: "QVariantMap"; Parameter { name: "text"; type: "string" } Parameter { name: "language"; type: "string" } }
+        Method { name: "subtitleFontSpecForStyle"; type: "QVariantMap"; Parameter { name: "text"; type: "string" } Parameter { name: "language"; type: "string" } Parameter { name: "family"; type: "string" } }
+        Method { name: "subtitleFontChoices"; type: "QVariantList"; Parameter { name: "language"; type: "string" } Parameter { name: "sample"; type: "string" } }
+        Method { name: "subtitleSamplePhraseForLanguage"; type: "string"; Parameter { name: "language"; type: "string" } }
         Method { name: "subtitleSampleText"; type: "string"; Parameter { name: "text"; type: "string" } Parameter { name: "fontSize"; type: "int" } Parameter { name: "boxWidth"; type: "int" } Parameter { name: "boxHeight"; type: "int" } Parameter { name: "width"; type: "int" } Parameter { name: "height"; type: "int" } Parameter { name: "appearance"; type: "QVariantMap" } }
         Method { name: "applySubtitleAppearance"; type: "bool"; Parameter { name: "patch"; type: "QVariantMap" } }
         Method { name: "clearVoiceCloneReference"; type: "bool" }
@@ -2388,6 +2391,9 @@ Module {
         }
         Method { name: "clearZernioApiKey"; type: "bool" }
         Method { name: "verifyZernioApiKey"; type: "bool" }
+        Method { name: "verifyZernioApiKey"; type: "bool"; Parameter { name: "key_id"; type: "string" } }
+        Method { name: "verifyGeminiApiKey"; type: "bool" }
+        Method { name: "verifyGeminiApiKey"; type: "bool"; Parameter { name: "key_id"; type: "string" } }
         Method { name: "connectZernioTikTok"; type: "bool" }
         Method {
             name: "connectZernioPlatform"

@@ -15,10 +15,13 @@ from test_omnivoice_batching import fake_speech_wave, fake_torch
 
 @pytest.mark.parametrize("language", ["ja", "ko", "es"])
 @pytest.mark.parametrize("voice_id", ["omnivoice:female_gentle", "omnivoice:deep"])
-def test_unmigrated_presets_keep_their_exact_english_reference(language, voice_id):
+def test_packaged_presets_use_their_exact_native_language_reference(language, voice_id):
     path, text = voice._preset_reference(voice_id, language)
     original_path, original_text = voice._preset_reference(voice_id, "en")
-    assert path == original_path and text == original_text
+    assert path != original_path and text != original_text
+    assert Path(path).name == language + ".mp3"
+    manifest = json.loads((Path(path).parents[2] / "samples.json").read_text(encoding="utf-8"))
+    assert text == manifest["sentences"][language]
     assert Path(path).is_file() and Path(path).stat().st_size > 512
     assert voice_id.replace(":", "_") in path
 

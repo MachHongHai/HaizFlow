@@ -9,10 +9,23 @@ ColumnLayout {
 
     property var style: ({})
     property bool karaokeEnabled: false
+    property string fontLanguage: "vi"
     property int maximumOutline: 20
     signal changeRequested(var patch)
 
     spacing: Theme.space12
+
+    Loader {
+        Layout.fillWidth: true
+        active: root.karaokeEnabled
+        sourceComponent: Component {
+            SubtitleFontPicker {
+                family: String(root.style.font_family || "Bangers")
+                language: root.fontLanguage
+                onFontSelected: function(value) { root.changeRequested({ "font_family": value }) }
+            }
+        }
+    }
 
     RowLayout {
         Layout.fillWidth: true

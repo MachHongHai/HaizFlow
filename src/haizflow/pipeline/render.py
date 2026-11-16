@@ -17,6 +17,7 @@ import srt
 
 from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS
 from haizflow.core.subtitle_fonts import (
+    ass_font_family,
     bundled_font_path,
     caption_region,
     covers_text,
@@ -789,7 +790,7 @@ def _write_positioned_ass(
         subtitles = list(srt.parse(file.read()))
     if not subtitles:
         raise RuntimeError("Final render requires at least one valid subtitle cue.")
-    language = caption_region(" ".join(cue.content for cue in subtitles), subtitle_language,
+    language = subtitle_language or caption_region(" ".join(cue.content for cue in subtitles), subtitle_language,
                               subtitle_style.font_family)
     subtitle_style = resolved_subtitle_style(subtitle_style, language=language)
     style_outline = _karaoke_outline(
@@ -809,7 +810,7 @@ def _write_positioned_ass(
             # ASS karaoke renders not-yet-spoken glyphs with SecondaryColour and
             # sweeps PrimaryColour across each word. Bangers supplies the chunky,
             # naturally slanted display shape used by modern short-video captions.
-            f"Style: Default,{subtitle_style.font_family},{subtitle_style.font_size},"
+            f"Style: Default,{ass_font_family(subtitle_style.font_family)},{subtitle_style.font_size},"
             f"{_ass_color(subtitle_style.karaoke_color)},{_ass_color(subtitle_style.text_color)},"
             f"{_ass_color(subtitle_style.outline_color)},&H80000000,"
             f"{-1 if subtitle_style.bold else 0},{-1 if subtitle_style.italic else 0},0,0,"
@@ -867,7 +868,7 @@ def _write_positioned_ass(
                 karaoke = _karaoke_ass_from_units(units, durations)
                 cue_outline = _karaoke_outline(font_size, cue_style.outline)
                 inline_style = (
-                    f"\\fn{cue_style.font_family}"
+                    f"\\fn{ass_font_family(cue_style.font_family)}"
                     f"\\1c{_ass_color(cue_style.karaoke_color)}"
                     f"\\2c{_ass_color(cue_style.text_color)}"
                     f"\\3c{_ass_color(cue_style.outline_color)}"
@@ -893,7 +894,7 @@ def _write_positioned_ass(
             )
             lines.append(
                 f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,"
-                f"{{\\an{alignment_tag}\\pos({x},{y})\\fn{cue_style.font_family}\\fsp{cue_style.letter_spacing}"
+                f"{{\\an{alignment_tag}\\pos({x},{y})\\fn{ass_font_family(cue_style.font_family)}\\fsp{cue_style.letter_spacing}"
                 f"\\bord{cue_outline}\\shad{cue_style.shadow}}}{karaoke}"
             )
     with open(ass_path, "w", encoding="utf-8-sig") as file:

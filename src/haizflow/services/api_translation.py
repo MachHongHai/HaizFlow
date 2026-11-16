@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 from http.client import HTTPException
 from urllib import error, request
 
@@ -31,7 +32,8 @@ class _ResponseError(ValueError):
 def _json_request(url, key, payload=None, *, timeout=90):
     outgoing = request.Request(url, data=None if payload is None else json.dumps(
         payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
-        headers={**({"Authorization": "Bearer " + key} if key else {}), "Content-Type": "application/json"},
+        headers={**({"Authorization": "Bearer " + key} if key else {}), "Content-Type": "application/json",
+                 **({"Cache-Control": "no-cache"} if payload is None else {})},
         method="GET" if payload is None else "POST")
     with request.build_opener(_NoRedirect()).open(outgoing, timeout=timeout) as response:
         raw = response.read(_MAX_RESPONSE + 1)
@@ -221,8 +223,10 @@ def _request_chunk(profile, chunk, *, key, model, source_language, target_langua
     if profile["provider"] == "openrouter":
         from haizflow.services import translation_privacy
         from haizflow.services.translation_model_catalog import (
-            _INCOMPATIBLE_OPENROUTER_MODELS, _RETIRED_OPENROUTER_MODELS,
-            _UNAVAILABLE_OPENROUTER_MODELS, supports_chat,
+            _INCOMPATIBLE_OPENROUTER_MODELS,
+            _RETIRED_OPENROUTER_MODELS,
+            _UNAVAILABLE_OPENROUTER_MODELS,
+            supports_chat,
         )
 
         if profile["model"] in _RETIRED_OPENROUTER_MODELS:
@@ -235,7 +239,8 @@ def _request_chunk(profile, chunk, *, key, model, source_language, target_langua
             raise RuntimeError("OpenRouter: model này không hỗ trợ endpoint dịch đang dùng. "
                                "Hãy chọn bản Chat thay vì bản Batch API; app chưa gửi yêu cầu API.")
         if profile["model"] in _UNAVAILABLE_OPENROUTER_MODELS:
-            raise RuntimeError("OpenRouter: model miễn phí đang lưu hiện không ổn định hoặc bị giới hạn phía nhà cung cấp. "
+            raise RuntimeError("OpenRouter: model miễn phí đang lưu hiện không ổn định "
+                               "hoặc bị giới hạn phía nhà cung cấp. "
                                "Hãy chọn model khác trong Model dịch; app chưa gửi yêu cầu API.")
         if translation_privacy.required(profile) and not translation_privacy.allowed(profile):
             raise RuntimeError("OpenRouter: model này yêu cầu quyền thu thập dữ liệu. "
@@ -422,19 +427,34 @@ def translate_texts(texts, *, model, **kwargs):
 
 
 def check_connection(model_choice, *, model_required=True):
-    """Read-only model-list check, never a billable sample translation."""
+    """Verify credentials on authenticated endpoints, without inference or cached results."""
     if model_required:
         profile, key = translation_connections.resolve(model_choice, with_key=True)
     else:
-        profile, key = translation_connections.get_connection(model_choice[4:], with_key=True)
+        profile, key = translation_connections.get_connection(model_choice[4:].partition(":")[0], with_key=True)
     try:
-        answer = _json_request(profile["base_url"] + "/models", key, timeout=15)
+        router = profile["provider"] == "openrouter"
+        endpoint = profile["base_url"] + ("/key" if router else "/models")
+        answer = _json_request(endpoint, key, timeout=15)
         fault = _response_error_status(answer)
         if fault is not None:
-            return "invalid" if fault in {401, 403} else "unavailable"
+            return _connection_failure(fault)
+        if router:
+            data = answer.get("data") if isinstance(answer, dict) else None
+            if not isinstance(data, dict) or not isinstance(data.get("label"), str):
+                return "unsupported-check"
+            if not model_required:
+                return "verified"
+            answer = _json_request(profile["base_url"] + "/models", "", timeout=15)
+            fault = _response_error_status(answer)
+            if fault is not None:
+                return _connection_failure(fault)
         rows = answer.get("data") if isinstance(answer, dict) else None
-        if not isinstance(rows, list):
+        if not isinstance(rows, list) or any(not isinstance(row, dict) or not isinstance(row.get("id"), str)
+                                             or not row["id"] for row in rows):
             return "unsupported-check"
+        if profile["provider"] == "custom" and not _custom_endpoint_checks_keys(endpoint):
+            return "reachable-unverified"
         if not model_required:
             return "verified"
         return "verified" if any(isinstance(row, dict) and row.get("id") == profile["model"] for row in rows) \
@@ -442,6 +462,29 @@ def check_connection(model_choice, *, model_required=True):
     except error.HTTPError as exc:
         status = exc.code
         exc.close()
-        return "invalid" if status in {401, 403} else "unsupported-check" if status in {404, 405} else "unavailable"
+        return _connection_failure(status)
     except (ValueError, TypeError, error.URLError, TimeoutError, OSError, HTTPException):
         return "unavailable"
+
+
+def _connection_failure(status):
+    if status in {401, 403}:
+        return "invalid"
+    if status == 402:
+        return "billing-required"
+    if status == 429:
+        return "rate-limited"
+    return "unsupported-check" if status in {404, 405} else "unavailable"
+
+
+def _custom_endpoint_checks_keys(endpoint):
+    """A public catalogue (e.g. Ollama) proves reachability, not key validity."""
+    try:
+        answer = _json_request(endpoint, "haizflow-invalid-" + secrets.token_hex(24), timeout=15)
+        return _response_error_status(answer) in {401, 403}
+    except error.HTTPError as exc:
+        status = exc.code
+        exc.close()
+        return status in {401, 403}
+    except (ValueError, TypeError, error.URLError, TimeoutError, OSError, HTTPException):
+        return False

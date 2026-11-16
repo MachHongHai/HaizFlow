@@ -6,12 +6,17 @@ import "."
 
 Rectangle {
     id: root
+    objectName: "translationApiCredentialRow"
     required property var credential
     signal removeRequested(string id, string label)
     readonly property string checkResult: String(credential.check_result || "")
     readonly property string statusText: checkResult === "checking" ? qsTr("Đang kiểm tra…")
-        : checkResult === "verified" || checkResult === "model-not-found" ? qsTr("Kết nối thành công")
+        : checkResult === "verified" ? qsTr("API key hợp lệ")
+        : checkResult === "model-not-found" ? qsTr("Key hợp lệ, không tìm thấy model đã chọn")
         : checkResult === "invalid" ? qsTr("API key không hợp lệ hoặc thiếu quyền")
+        : checkResult === "reachable-unverified" ? qsTr("Dịch vụ phản hồi, chưa xác minh được API key")
+        : checkResult === "billing-required" ? qsTr("Cần kiểm tra số dư hoặc thanh toán")
+        : checkResult === "rate-limited" ? qsTr("Dịch vụ đang giới hạn yêu cầu. Thử lại sau.")
         : checkResult === "unsupported-check" ? qsTr("API không hỗ trợ kiểm tra kết nối")
         : checkResult === "unavailable" ? qsTr("Chưa kết nối được dịch vụ") : ""
     implicitHeight: Math.max(72, content.implicitHeight + Theme.space24)

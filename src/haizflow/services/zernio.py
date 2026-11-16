@@ -13,12 +13,23 @@ from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 DEFAULT_BASE_URL = "https://zernio.com/api/v1"
 DEFAULT_TIMEOUT_SECONDS = 30.0
 UPLOAD_CHUNK_BYTES = 1024 * 1024
+_MAX_JSON_BYTES = 8 * 1024 * 1024
+
+
+class _NoCredentialRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def urlopen(outgoing, *, timeout):
+    """Authenticated API requests must not forward keys through redirects."""
+    return build_opener(_NoCredentialRedirect()).open(outgoing, timeout=timeout)
 
 
 class ZernioError(RuntimeError):
@@ -58,7 +69,7 @@ class ZernioClient:
     def list_profiles(self, *, include_over_limit: bool = True) -> list[dict[str, Any]]:
         query = {"includeOverLimit": "true"} if include_over_limit else None
         payload = self._request("GET", "/profiles", query=query)
-        return _object_list(payload, "profiles")
+        return _object_list(payload, "profiles", strict=True)
 
     def create_profile(self, name: str, description: str = "HaizFlow social publishing") -> dict[str, Any]:
         payload = self._request("POST", "/profiles", {"name": name, "description": description})
@@ -98,7 +109,7 @@ class ZernioClient:
             query["profileId"] = profile_id
         payload = self._request("GET", "/accounts", query=query)
         allowed = set(normalized_platforms)
-        accounts = _object_list(payload, "accounts")
+        accounts = _object_list(payload, "accounts", strict=True)
         if not allowed:
             return accounts
         return [item for item in accounts if str(item.get("platform") or "").strip().casefold() in allowed]
@@ -299,6 +310,7 @@ class ZernioClient:
             "Authorization": f"Bearer {self.api_key}",
             "Accept": "application/json",
             "User-Agent": "HaizFlow/0.1 ZernioClient",
+            **({"Cache-Control": "no-cache"} if method.upper() == "GET" else {}),
         }
         if data is not None:
             request_headers["Content-Type"] = "application/json"
@@ -306,14 +318,18 @@ class ZernioClient:
         request = Request(url, data=data, headers=request_headers, method=method.upper())
         try:
             with urlopen(request, timeout=self.timeout) as response:
-                raw = response.read()
+                raw = response.read(_MAX_JSON_BYTES + 1)
         except HTTPError as exc:
-            raw = exc.read()
+            raw = exc.read(64 * 1024)
             payload = _error_payload(raw)
-            raise ZernioError(_error_message(raw, exc.code), status=exc.code, payload=payload) from exc
+            status = exc.code
+            exc.close()
+            raise ZernioError(_error_message(raw, status), status=status, payload=payload) from exc
         except (URLError, OSError, TimeoutError) as exc:
             reason = getattr(exc, "reason", exc)
             raise ZernioError(f"Could not reach Zernio: {reason}") from exc
+        if len(raw) > _MAX_JSON_BYTES:
+            raise ZernioError("Zernio returned an oversized response.")
         if not raw:
             return {}
         try:
@@ -323,8 +339,11 @@ class ZernioClient:
         if not isinstance(payload, (dict, list)):
             raise ZernioError("Zernio returned an unexpected response.")
         if isinstance(payload, dict):
+            _check_embedded_error(payload)
             data_payload = payload.get("data")
             if isinstance(data_payload, (dict, list)):
+                if isinstance(data_payload, dict):
+                    _check_embedded_error(data_payload)
                 return data_payload
         return payload
 
@@ -367,16 +386,38 @@ def _object(payload: Any, key: str) -> dict[str, Any]:
     return payload
 
 
-def _object_list(payload: Any, key: str) -> list[dict[str, Any]]:
+def _check_embedded_error(payload):
+    if payload.get("error") is None and payload.get("success") is not False:
+        return
+    fault = payload.get("error")
+    raw_status = fault.get("code") if isinstance(fault, dict) else payload.get("statusCode")
+    kind = payload.get("type")
+    try:
+        status = int(raw_status)
+    except (TypeError, ValueError, OverflowError):
+        status = {"authentication_error": 401, "permission_error": 403, "rate_limit_error": 429}.get(
+            kind if isinstance(kind, str) else "", 0)
+    raise ZernioError("Zernio returned an error response.", status=status, payload=payload)
+
+
+def _object_list(payload: Any, key: str, *, strict: bool = False) -> list[dict[str, Any]]:
     if isinstance(payload, list):
         value = payload
     elif isinstance(payload, dict):
         value = payload.get(key)
         if not isinstance(value, list):
             nested = payload.get("data")
-            return _object_list(nested, key) if isinstance(nested, (dict, list)) else []
+            if isinstance(nested, (dict, list)):
+                return _object_list(nested, key, strict=strict)
+            if strict:
+                raise ZernioError("Zernio returned an unexpected response.")
+            return []
     else:
+        if strict:
+            raise ZernioError("Zernio returned an unexpected response.")
         return []
+    if strict and any(not isinstance(item, dict) for item in value):
+        raise ZernioError("Zernio returned an unexpected response.")
     return [item for item in value if isinstance(item, dict)]
 
 

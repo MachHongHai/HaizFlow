@@ -150,6 +150,21 @@ def exercise(width, large):
             identifiers[provider] = row["id"]
             assert fields["Secret"].property("text") == ""
         assert not host._show_app_alert.called
+        def visual_items(item):
+            yield item
+            for child in item.childItems():
+                yield from visual_items(child)
+
+        page.setProperty("provider", "openai")
+        for state, expected in (("verified", "API key hợp lệ"), ("invalid", "API key không hợp lệ hoặc thiếu quyền"),
+                                ("reachable-unverified", "Dịch vụ phản hồi, chưa xác minh được API key"),
+                                ("rate-limited", "Dịch vụ đang giới hạn yêu cầu. Thử lại sau.")):
+            host.api._results[identifiers["openai"]] = state
+            host.api.changed.emit()
+            QTest.qWait(25)
+            credential_row = next(item for item in visual_items(window.contentItem())
+                                  if item.objectName() == "translationApiCredentialRow")
+            assert credential_row.property("statusText") == expected
         combo = window.findChild(QQuickItem, "apiModelCombo")
         page.setVisible(False)
         combo.setVisible(True)
@@ -172,11 +187,6 @@ def exercise(width, large):
             result, _ = qml_expression.evaluate()
             assert not qml_expression.hasError(), qml_expression.error().toString()
             return result.toVariant() if hasattr(result, "toVariant") else result
-
-        def visual_items(item):
-            yield item
-            for child in item.childItems():
-                yield from visual_items(child)
 
         for provider in ("openai", "deepseek", "openai", "deepseek", "openai"):
             evaluate(f'openProvider("{provider}")')
@@ -230,6 +240,31 @@ def exercise(width, large):
         choice = "api:" + identifiers["openai"] + ":gpt-6-luna"
         assert window.property("selectedModel") == choice
         assert connections.get_connection(identifiers["openai"])["model"] == ""
+        QTest.qWait(30)
+        active_key = window.findChild(QQuickItem, "projectTranslationActiveConnectionPicker")
+        assert active_key.isVisible() and active_key.property("currentValue") == identifiers["openai"]
+        assert host.api.addCredential("openai", "OpenAI dự phòng", "second-private-key", "")
+        second_id = host.api.profiles[-1]["id"]
+        QTest.qWait(30)
+        active_key.setProperty("currentIndex", 1)
+        active_key.activated.emit(1)
+        QTest.qWait(40)
+        second_choice = "api:" + second_id + ":gpt-6-luna"
+        assert window.property("selectedModel") == second_choice
+        assert active_key.property("currentValue") == second_id
+        assert "OpenAI dự phòng" in host.api.choiceLabel(second_choice)
+        window.setProperty("selectedModel", "q4")
+        QTest.qWait(20)
+        window.setProperty("selectedModel", second_choice)
+        QTest.qWait(20)
+        assert active_key.property("currentValue") == second_id
+        snapshot = Path(__file__).parents[1] / "build" / f"translation-project-api-selection-{width}.png"
+        assert window.grabWindow().save(str(snapshot))
+        active_key.setProperty("currentIndex", 0)
+        active_key.activated.emit(0)
+        QTest.qWait(30)
+        assert window.property("selectedModel") == choice
+        assert host.api.remove(second_id)
         project_button.clicked.emit()
         QTest.qWait(20)
         evaluate('openProvider("openai")')

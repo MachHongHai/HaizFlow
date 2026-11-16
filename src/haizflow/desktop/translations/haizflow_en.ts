@@ -89,6 +89,11 @@
 </context>
 <context>
     <name>TranslationApiListRow</name>
+    <message><source>API key hợp lệ</source><translation>API key verified</translation></message>
+    <message><source>Key hợp lệ, không tìm thấy model đã chọn</source><translation>Key verified; selected model not found</translation></message>
+    <message><source>Dịch vụ phản hồi, chưa xác minh được API key</source><translation>Service reachable; API key not verified</translation></message>
+    <message><source>Cần kiểm tra số dư hoặc thanh toán</source><translation>Check your balance or billing</translation></message>
+    <message><source>Dịch vụ đang giới hạn yêu cầu. Thử lại sau.</source><translation>Service rate limit reached. Try again later.</translation></message>
     <message><source>Kết nối thành công</source><translation>Connected</translation></message>
     <message><source>API không hỗ trợ kiểm tra kết nối</source><translation>The API does not support connection checks</translation></message>
     <message><source>Đang kiểm tra…</source><translation>Checking…</translation></message>
@@ -4659,6 +4664,8 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>TranslationModelCombo</name>
+    <message><source>API sử dụng</source><translation>API connection</translation></message>
+    <message><source>Chọn API cho model dịch</source><translation>Choose API for translation model</translation></message>
     <message><source>Có hạn mức miễn phí. Có thể tính phí nếu key đã bật thanh toán.</source><translation>A free tier is available. Billing-enabled keys may incur charges.</translation></message>
     <message><source>Tìm model OpenRouter</source><translation>Find an OpenRouter model</translation></message>
     <message><source>Không tìm thấy model</source><translation>No models found</translation></message>
@@ -5514,6 +5521,14 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ApiKeyListRow</name>
+    <message><source>API key hợp lệ</source><translation>API key verified</translation></message>
+    <message><source>Đang kiểm tra…</source><translation>Checking…</translation></message>
+    <message><source>API key không hợp lệ hoặc đã bị thu hồi</source><translation>API key is invalid or revoked</translation></message>
+    <message><source>API key thiếu quyền truy cập</source><translation>API key has insufficient permissions</translation></message>
+    <message><source>Dịch vụ đang giới hạn yêu cầu. Thử lại sau.</source><translation>Service rate limit reached. Try again later.</translation></message>
+    <message><source>Cần kiểm tra số dư hoặc thanh toán</source><translation>Check your balance or billing</translation></message>
+    <message><source>Chưa xác minh được API key</source><translation>API key could not be verified</translation></message>
+    <message><source>Kiểm tra</source><translation>Check</translation></message>
     <message><source>Mặc định</source><translation>Default</translation></message>
     <message><source>Sử dụng</source><translation>Use</translation></message>
     <message><source>Xóa</source><translation>Remove</translation></message>
@@ -5690,6 +5705,9 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>McpBridge</name>
+    <message><source>Thêm MCP cục bộ haizflow cho Claude Code ở phạm vi user bằng cấu hình bên dưới.</source><translation>Add the local haizflow MCP server to Claude Code at user scope using the configuration below.</translation></message>
+    <message><source>Thêm MCP cục bộ haizflow vào tệp cấu hình MCP đang dùng của %1 bằng cấu hình bên dưới.</source><translation>Add the local haizflow MCP server to the active MCP configuration of %1 using the configuration below.</translation></message>
+    <message><source>Giữ nguyên các server khác và các thiết lập quyền. Nếu đã có kết nối tới cùng HaizFlow (kể cả tên khác), cập nhật mục đó, không tạo thêm bản trùng. Giữ command đúng đường dẫn và args là mảng các đối số riêng biệt; không gộp args thành một chuỗi, không chạy command để mở giao diện HaizFlow. Sau khi lưu, hướng dẫn tôi nạp lại kết nối. Khi MCP đã kết nối, chỉ gọi haizflow_status để kiểm tra.&#10;&#10;</source><translation>Preserve other servers and permission settings. If a connection to the same HaizFlow already exists (even under a different name), update that entry instead of adding a duplicate. Keep the command path exact and args as an array of separate arguments; do not combine args into one string or run command to open the HaizFlow desktop. After saving, explain how to reload the connection. Once MCP is connected, only call haizflow_status to verify.&#10;&#10;</translation></message>
     <message><source>Hãy kết nối HaizFlow với ứng dụng này bằng cấu hình bên dưới. Giữ nguyên các server khác; nếu đã có haizflow thì cập nhật mục đó. Sau đó chỉ gọi haizflow_status để kiểm tra kết nối.&#10;&#10;</source><translation>Connect HaizFlow to this app using the configuration below. Keep other servers; if haizflow already exists, update that entry. Then only call haizflow_status to check the connection.&#10;&#10;</translation></message>
     <message><source>Gọi haizflow_status để kiểm tra kết nối HaizFlow.</source><translation>Call haizflow_status to check the HaizFlow connection.</translation></message>
     <message><source>HaizFlow sẵn sàng. Gửi câu thử trong agent để hoàn tất.</source><translation>HaizFlow is ready. Send the test prompt in your agent to finish.</translation></message>
@@ -5711,6 +5729,23 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>McpConnectionGuide</name>
+    <message><source>Mở Claude Desktop trên máy → Settings → Developer → Edit Config (một số bản ghi Local MCP servers). Không dùng trang Connectors trên web.</source><translation>Open Claude Desktop on this computer → Settings → Developer → Edit Config (some versions call it Local MCP servers). Do not use the web Connectors page.</translation></message>
+    <message><source>Mở một cuộc trò chuyện trong khung agent của Antigravity IDE trên máy này.</source><translation>Open a conversation in the agent panel of Antigravity IDE on this computer.</translation></message>
+    <message><source>Mở Antigravity App trên máy này và bắt đầu một cuộc trò chuyện với agent.</source><translation>Open Antigravity App on this computer and start a conversation with the agent.</translation></message>
+    <message><source>Bấm Save → Restart cho server haizflow, rồi mở chat mới và gửi câu thử bên dưới. Kết nối đúng sẽ không mở thêm cửa sổ HaizFlow.</source><translation>Click Save → Restart for haizflow, then open a new chat and send the test prompt below. A correct connection will not open another HaizFlow window.</translation></message>
+    <message><source>Sau khi agent lưu xong: … ở khung agent → MCP Servers → Manage MCP Servers → làm mới. Mở chat mới và gửi câu thử bên dưới.</source><translation>After the agent saves: … in the agent panel → MCP Servers → Manage MCP Servers → refresh. Open a new chat and send the test prompt below.</translation></message>
+    <message><source>Antigravity IDE: … ở khung agent → MCP Servers → Manage MCP Servers → View raw config.</source><translation>Antigravity IDE: … in the agent panel → MCP Servers → Manage MCP Servers → View raw config.</translation></message>
+    <message><source>Antigravity App: Customizations → Installed → MCP Servers → Copy Config File Path; mở tệp vừa sao chép đường dẫn.</source><translation>Antigravity App: Customizations → Installed → MCP Servers → Copy Config File Path; open the file at the copied path.</translation></message>
+    <message><source>Claude Code: mở .mcp.json trong thư mục dự án và thêm haizflow vào mcpServers. Khi mở lại dự án, cho phép server nếu Claude hỏi.</source><translation>Claude Code: open .mcp.json in the project folder and add haizflow under mcpServers. When reopening the project, approve the server if Claude asks.</translation></message>
+    <message><source>Dùng cấu hình bên dưới trong tệp cấu hình MCP, không dán vào ô Command hay Arguments.</source><translation>Use the configuration below in the MCP configuration file, not in the Command or Arguments fields.</translation></message>
+    <message><source>Điền Command và từng Argument</source><translation>Enter Command and each Argument</translation></message>
+    <message><source>Gửi yêu cầu kết nối cho agent</source><translation>Send the setup request to your agent</translation></message>
+    <message><source>Dán Command vào ô Command. Trong Arguments, thêm từng mục theo đúng thứ tự bên dưới (bấm + hoặc Add nếu có). Mỗi mục chỉ dán một giá trị; không gộp tất cả vào một ô.</source><translation>Paste Command into the Command field. Under Arguments, add each item below in order (click + or Add if available). Paste one value per item; do not combine them in one field.</translation></message>
+    <message><source>Bấm sao chép rồi dán vào cuộc trò chuyện. Cho phép agent cập nhật cấu hình MCP khi được hỏi; chờ lưu xong rồi làm bước 3.</source><translation>Click copy and paste into the conversation. Allow the agent to update the MCP configuration when asked; wait for it to save before step 3.</translation></message>
+    <message><source>Tệp mới: dán toàn bộ cấu hình bên dưới. Nếu đã có mcpServers, chỉ thêm hoặc thay mục haizflow bên trong đó; giữ nguyên các mục khác và mảng args, không tạo mcpServers thứ hai.</source><translation>New file: paste the entire configuration below. If mcpServers already exists, only add or replace haizflow inside it; keep other entries and the args array intact. Do not create a second mcpServers block.</translation></message>
+    <message><source>Cấu hình thủ công</source><translation>Manual configuration</translation></message>
+    <message><source>Giữ nguyên các server khác. Mỗi phần tử trong args là một đối số riêng.</source><translation>Keep other servers unchanged. Each item in args is a separate argument.</translation></message>
+    <message><source>HaizFlow tự mở thêm cửa sổ: kiểm tra Arguments, mỗi mục phải là một giá trị riêng.&#10;&#10;Không thấy haizflow: lưu cấu hình rồi Restart server hoặc mở chat mới.&#10;&#10;Không kết nối được: giữ HaizFlow mở và bật MCP.&#10;&#10;Lỗi sau khi cập nhật app: sao chép lại thông tin kết nối từ đây.&#10;&#10;Thiếu quyền: mở Quyền của agent ở trên và bật quyền cần dùng.</source><translation>HaizFlow opens extra windows: check Arguments; each item must contain one separate value.&#10;&#10;Server missing: save, then restart the server or open a new chat.&#10;&#10;Cannot connect: keep HaizFlow open and enable MCP.&#10;&#10;Error after updating the app: copy connection details again from here.&#10;&#10;Missing permission: open Agent permissions above and enable the required access.</translation></message>
     <message><source>Lưu và kết nối lại haizflow, rồi gửi câu thử.</source><translation>Save and reconnect haizflow, then send the test prompt.</translation></message>
     <message><source>Sao chép Command và Arguments vào các ô tương ứng trong ứng dụng.</source><translation>Copy Command and Arguments into the matching fields in the app.</translation></message>
     <message><source>Bấm sao chép rồi dán vào cuộc trò chuyện Claude Code.</source><translation>Click copy, then paste into your Claude Code conversation.</translation></message>
@@ -5807,6 +5842,11 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>McpLaunchFields</name>
+    <message><source>Arguments · %1 mục riêng biệt</source><translation>Arguments · %1 separate items</translation></message>
+    <message><source>Mục %1</source><translation>Item %1</translation></message>
+    <message><source>Argument %1</source><translation>Argument %1</translation></message>
+    <message><source>Sao chép Argument %1</source><translation>Copy Argument %1</translation></message>
+    <message><source>Sao chép</source><translation>Copy</translation></message>
     <message><source>Arguments · mỗi dòng một đối số</source><translation>Arguments · one argument per line</translation></message>
     <message><source>Đã sao chép</source><translation>Copied</translation></message>
     <message><source>Tên server: haizflow · Loại kết nối: STDIO</source><translation>Server name: haizflow · Connection type: STDIO</translation></message>
@@ -5834,5 +5874,23 @@ Author and owner of HaizFlow.</translation>
     <message><source>Chọn tất cả</source><translation>Select all</translation></message>
     <message><source>Bỏ chọn</source><translation>Clear selection</translation></message>
     <message><source>Câu %1: %2</source><translation>Sentence %1: %2</translation></message>
+</context>
+<context>
+    <name>SubtitleFontPicker</name>
+    <message><source>Phông chữ</source><translation>Font</translation></message>
+    <message><source>Chọn phông chữ: %1</source><translation>Choose font: %1</translation></message>
+    <message><source>Tìm phông chữ</source><translation>Find a font</translation></message>
+    <message><source>Tất cả</source><translation>All styles</translation></message>
+    <message><source>Không chân</source><translation>Sans serif</translation></message>
+    <message><source>Có chân</source><translation>Serif</translation></message>
+    <message><source>Trang trí</source><translation>Display</translation></message>
+    <message><source>Kiểu phông chữ</source><translation>Font style</translation></message>
+    <message><source>Bangers · Mặc định</source><translation>Bangers · Default</translation></message>
+    <message><source>Không tìm thấy phông chữ</source><translation>No fonts found</translation></message>
+</context>
+<context>
+    <name>TranslationConnectionPicker</name>
+    <message><source>API sử dụng</source><translation>API connection</translation></message>
+    <message><source>API sử dụng cho dự án</source><translation>API connection for this project</translation></message>
 </context>
 </TS>

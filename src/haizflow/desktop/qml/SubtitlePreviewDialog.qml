@@ -14,8 +14,9 @@ FloatingToolDialog {
     property var appearance: AppController.subtitleAppearance
     property var draftAppearance: ({})
     readonly property var sampleRenderer: AppController.subtitleSampleOverlayRenderer
-    readonly property string longSampleText: AppController.subtitleSamplePhrase
-    readonly property var sampleFontSpec: AppController.subtitleFontSpecForText(longSampleText, AppController.targetLanguage)
+    property string fontLanguage: AppController.targetLanguage
+    readonly property string longSampleText: AppController.subtitleSamplePhraseForLanguage(fontLanguage)
+    readonly property var sampleFontSpec: AppController.subtitleFontSpecForStyle(longSampleText, fontLanguage, String(draftAppearance.font_family || "Bangers"))
     property bool coverEnabled: false
     property bool autoAlignToCover: false
     property var coverLayout: ({})
@@ -75,7 +76,7 @@ FloatingToolDialog {
             positionXPercent: transform.positionXPercent,
             positionYPercent: transform.positionYPercent,
             fontFamily: style.font_family || "Bangers",
-            fontLanguage: AppController.targetLanguage,
+            fontLanguage: root.fontLanguage,
             textColor: style.text_color || "#FFFFFF",
             karaokeColor: style.karaoke_color || "#FFEF00",
             outlineColor: style.outline_color || "#000000",
@@ -232,6 +233,7 @@ FloatingToolDialog {
                 }
                 SubtitleAppearanceControls {
                     id: appearanceControls
+                    fontLanguage: root.fontLanguage
                     width: parent.width - Theme.space12
                     style: Object.assign({}, root.draftAppearance, {
                         font_size: root.draftFontSize

@@ -57,7 +57,7 @@ class AudioPreviewControllerTests(unittest.TestCase):
         preview = AudioPreviewController(_host())
         languages = [code for code, _english, _native in POPULAR_TARGET_LANGUAGES]
         self.assertEqual(languages, ["vi", "en", "zh", "ko", "ja", "es"])
-        sample_languages = ("vi", "en", "zh")
+        sample_languages = tuple(languages)
         missing = []
         for language in sample_languages:
             missing.extend(
@@ -92,15 +92,10 @@ class AudioPreviewControllerTests(unittest.TestCase):
         manifest = json.loads((preview._PACKAGED_SAMPLE_DIR / "samples.json").read_text(encoding="utf-8"))
         edge_entries = {(item["voice"], item["language"]): item
                         for item in manifest["samples"] if item["provider"] == "edge"}
-        self.assertEqual(len(edge_entries), sum(len(EDGE_VOICES[code]) for code in ("vi", "en", "zh")))
+        self.assertEqual(len(edge_entries), sum(map(len, EDGE_VOICES.values())))
         with patch("haizflow.pipeline.edge_tts_backend.synthesize_to_mp3") as synthesize:
             for language, voices in EDGE_VOICES.items():
                 for voice, *_labels in voices:
-                    if language in {"ko", "ja", "es"}:
-                        # Adding a processing language must never play an old
-                        # English/Vietnamese sample under the new label.
-                        self.assertFalse(preview.has_voice_sample("edge", voice, language))
-                        continue
                     with self.subTest(voice=voice, language=language):
                         self.assertTrue(preview.has_voice_sample("edge", voice, language))
                         path = Path(preview.voice_sample_path("edge", voice, language))
@@ -117,6 +112,27 @@ class AudioPreviewControllerTests(unittest.TestCase):
                         )
                         self.assertEqual(decoded.returncode, 0, decoded.stderr.decode(errors="replace"))
             synthesize.assert_not_called()
+
+    def test_all_omnivoice_previews_decode_to_nonempty_finite_speech(self):
+        import numpy as np
+
+        root = AudioPreviewController._PACKAGED_SAMPLE_DIR
+        manifest = json.loads((root / "samples.json").read_text(encoding="utf-8"))
+        entries = [row for row in manifest["samples"] if row["provider"] == "omnivoice"]
+        self.assertEqual(len(entries), len(POPULAR_TARGET_LANGUAGES) * len(OMNIVOICE_TTS_VOICES))
+        for entry in entries:
+            with self.subTest(voice=entry["voice"], language=entry["language"]):
+                decoded = subprocess.run(
+                    [_binary("ffmpeg"), "-v", "error", "-xerror", "-i", str(root / entry["path"]),
+                     "-ac", "1", "-ar", "24000", "-f", "f32le", "-"],
+                    capture_output=True, timeout=25,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                self.assertEqual(decoded.returncode, 0, decoded.stderr.decode(errors="replace"))
+                wave = np.frombuffer(decoded.stdout, dtype="<f4")
+                self.assertGreater(wave.size, 24000 * 2)
+                self.assertTrue(np.isfinite(wave).all())
+                self.assertGreater(float(np.sqrt(np.mean(wave ** 2))), .002)
 
     def test_all_vieneu_voices_have_exact_offline_cpu_gpu_samples_and_decode_completely(self):
         host = _host()

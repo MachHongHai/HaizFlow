@@ -17,8 +17,9 @@ Item {
             return row.provider === root.provider;
         }) : zernio ? AppController.zernioApiKeys : AppController.geminiApiKeys
     readonly property bool configured: apiKeys.length > 0
-    readonly property bool credentialLocked: zernio && (AppController.zernioCredentialBusy
+    readonly property bool credentialLocked: zernio ? (AppController.zernioCredentialBusy
         || AppController.tiktokPublishBusy || AppController.zernioAccountSyncing)
+        : provider === "gemini" && AppController.translationApi.geminiBusy
     readonly property string checkResult: String(AppController.zernioCredentialResult || "")
     readonly property bool checkFinished: zernio && !AppController.zernioCredentialBusy
         && checkResult.length > 0
@@ -176,13 +177,6 @@ Item {
                 text: qsTr("Thêm key")
                 enabled: !root.credentialLocked
                 onClicked: root.editingKey = true
-            }
-            StudioButton {
-                objectName: "checkAllZernioKeysButton"
-                visible: root.zernio
-                text: AppController.zernioCredentialBusy ? qsTr("Đang kiểm tra…") : qsTr("Kiểm tra kết nối")
-                enabled: !root.credentialLocked
-                onClicked: AppController.verifyZernioApiKey()
             }
         }
         }

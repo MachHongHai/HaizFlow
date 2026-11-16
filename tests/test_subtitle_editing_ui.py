@@ -337,6 +337,19 @@ CopyrightDialog { id: dialog; Component.onCompleted: open(); }
             verified = False
             result = ""
             submitted = None
+            checked_key = None
+            @Property(QObject, constant=True)
+            def translationApi(self):
+                return self
+            geminiBusy = Property(bool, lambda self: self.checking, notify=changed)
+
+            @Slot(str)
+            def verifyGeminiApiKey(self, key_id):
+                self.checked_key = ("gemini", key_id)
+
+            @Slot(str)
+            def verifyZernioApiKey(self, key_id):
+                self.checked_key = ("zernio", key_id)
             geminiApiKeys = Property("QVariantList", lambda self: self.keys, notify=changed)
             zernioApiKeys = Property("QVariantList", lambda self: self.social_keys, notify=changed)
             zernioCredentialBusy = Property(bool, lambda self: self.checking, notify=changed)
@@ -430,6 +443,8 @@ CopyrightDialog { id: dialog; Component.onCompleted: open(); }
         self.assertTrue(failed_dot.isVisible())
         success_color = dot.property("color")
         self.assertNotEqual(success_color, failed_dot.property("color"))
+        visual_find(window.contentItem(), "verifyApiKeyButton_second").clicked.emit()
+        self.assertEqual(controller.checked_key, ("zernio", "second"))
         self.assertLess(save.mapToScene(QPointF()).y() + save.height(), window.height())
         preview_directory = os.environ.get("HAIZFLOW_UI_PREVIEWS")
         if preview_directory:
@@ -465,6 +480,17 @@ CopyrightDialog { id: dialog; Component.onCompleted: open(); }
         window.findChild(QQuickItem, "editApiKeyButton").clicked.emit()
         QTest.qWait(30)
         self.assertTrue(name.isVisible())
+        controller.keys = [dict(id="one", label="Dịch", active=True, check_result="invalid")]
+        controller.changed.emit()
+        QTest.qWait(30)
+        verify = visual_find(window.contentItem(), "verifyApiKeyButton_one")
+        self.assertTrue(verify.isVisible() and verify.isEnabled())
+        verify.clicked.emit()
+        self.assertEqual(controller.checked_key, ("gemini", "one"))
+        controller.checking = True
+        controller.changed.emit()
+        QTest.qWait(30)
+        self.assertFalse(verify.isEnabled())
 
     def test_batch_subtitle_draft_serializes_every_appearance_field_without_editor_writes(self):
         from haizflow.schemas.video import SubtitleStyle
@@ -743,6 +769,15 @@ function failMusic() {
             def subtitleFontSpecForText(self, text, language):
                 from haizflow.desktop.subtitle_fonts import qt_subtitle_font
                 return qt_subtitle_font(text, language)
+
+            @Slot(str, str, str, result="QVariantMap")
+            def subtitleFontSpecForStyle(self, text, language, family):
+                from haizflow.desktop.subtitle_fonts import qt_subtitle_font
+                return qt_subtitle_font(text, language, family)
+
+            @Slot(str, result=str)
+            def subtitleSamplePhraseForLanguage(self, language):
+                return self.subtitleSamplePhrase
 
             @Slot(str, int, int, int, int, int, "QVariantMap", result=str)
             def subtitleSampleText(self, text, font, width, height, source_width, source_height, appearance):

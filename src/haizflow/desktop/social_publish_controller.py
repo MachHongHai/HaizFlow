@@ -623,10 +623,10 @@ class SocialPublishController:
         self._emit_changed()
         return True
 
-    def verify_api_key(self) -> bool:
+    def verify_api_key(self, key_id: str = "") -> bool:
         if self.busy or self._account_syncing or self._creator_syncing or self._credential_busy:
             return False
-        key_ids = [item["id"] for item in self.api_keys]
+        key_ids = [item["id"] for item in self.api_keys if not key_id or item["id"] == key_id]
         if not key_ids:
             return False
         self._credential_generation += 1
@@ -696,7 +696,7 @@ class SocialPublishController:
             event["accounts"] = client.list_accounts(platforms=SUPPORTED_PLATFORMS)
             event["key"] = key
             event["result"] = "verified"
-        except (OSError, ValueError, zernio.ZernioError) as exc:
+        except Exception as exc:
             # Never echo server responses here: they may include credential material.
             status = getattr(exc, "status", 0)
             event["result"] = (

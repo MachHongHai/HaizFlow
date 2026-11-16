@@ -76,6 +76,18 @@ def active_key() -> str:
         return secure_credentials.read_secret(_credential_target(index["active"])).strip()
 
 
+def key_value(key_id: str) -> str:
+    """Resolve exactly the requested key; a check must not select or rotate it."""
+    with _KEYS_LOCK:
+        known = {entry["id"] for entry in _key_index()["keys"]}
+        if key_id != "legacy" and key_id not in known:
+            raise ValueError("Không tìm thấy API key đã chọn.")
+        value = secure_credentials.read_secret(_credential_target(key_id)).strip()
+        if not value:
+            raise ValueError("Không tìm thấy API key trong Windows Credential Manager.")
+        return value
+
+
 def add_named_key(label: str, value: str) -> str:
     name = str(label or "").strip()
     if not name or len(name) > 64:

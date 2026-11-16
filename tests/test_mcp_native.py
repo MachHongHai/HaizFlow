@@ -20,6 +20,16 @@ def check_native():
     from haizflow.services import api_translation, desktop_settings, project_store, translation_connections
 
     app = QGuiApplication.instance() or QGuiApplication([])
+
+    def find_visual(item, name):
+        if item.objectName() == name:
+            return item
+        for child in item.childItems():
+            found = find_visual(child, name)
+            if found is not None:
+                return found
+        return None
+
     for font_name in ("SegUIVar.ttf", "segoeui.ttf", "segmdl2.ttf"):
         font_path = Path("C:/Windows/Fonts") / font_name
         if font_path.is_file():
@@ -31,8 +41,10 @@ def check_native():
     connection_id = translation_connections.add("custom", "MCP fixture", "synthetic-private", base_url="https://metadata.invalid/v1")
     metadata_calls = []
     def metadata_only(url, key, payload=None, **kwargs):
-        assert url == "https://metadata.invalid/v1/models" and key == "synthetic-private" and payload is None
+        assert url == "https://metadata.invalid/v1/models" and payload is None
         metadata_calls.append(url)
+        if key != "synthetic-private":
+            return {"error": {"code": 401, "message": "invalid key"}}
         return {"data": [{"id": "Vendor/MixedCase"}]}
     api_translation._json_request = metadata_only
     desktop_settings.save_settings({"keep_models_warm": False})
@@ -128,7 +140,7 @@ def check_native():
             worker.join(.005)
         assert not worker.is_alive(), "Native MCP client did not finish"
         assert not failures, failures
-        assert len(metadata_calls) == 2  # Verify + refresh only; no inference or discovery POSTs.
+        assert len(metadata_calls) == 3  # Verify + negative auth control + refresh; no inference POSTs.
 
         engine = QQmlEngine()
         qml_warnings = []
@@ -182,8 +194,13 @@ def check_native():
         assert "HaizFlow sẵn sàng" in bridge.connectionMessage
         assert window.findChild(object, "mcpLaunchCommand").property("text") == bridge.launchDetails["command"]
         assert not guide.property("troubleshootingExpanded")
-        arguments = window.findChild(object, "mcpLaunchArguments")
-        assert arguments.property("height") >= arguments.property("contentHeight") + 20
+        assert window.findChild(object, "mcpCopyArgumentsButton") is None
+        for index, value in enumerate(bridge.launchDetails["argumentItems"]):
+            argument = find_visual(guide, f"mcpLaunchArgument{index}")
+            assert argument is not None and argument.property("text") == value, (
+                index, value, argument, qml_warnings)
+            assert argument.property("readOnly")
+        arguments = find_visual(guide, "mcpLaunchArgument0")
         troubleshoot = window.findChild(object, "mcpGuideTroubleshootingToggle")
         assert QMetaObject.invokeMethod(troubleshoot, "clicked")
         app.processEvents()
@@ -199,16 +216,21 @@ def check_native():
             QMetaObject.invokeMethod(client, "activated", Q_ARG(int, index))
             app.processEvents()
             advanced = window.findChild(object, "mcpGuideAdvancedToggle")
-            if index in (0, 1, 5):
+            if index in (1, 3, 4):
+                assert not configuration.property("visible")
+                setup_copy = window.findChild(object, "mcpGuideCopySetupButton")
+                assert setup_copy.property("visible") and not copy_button.property("visible")
+                assert QMetaObject.invokeMethod(setup_copy, "clicked")
+                expected = bridge.setupPromptFor(guide.property("clientKey"))
+                assert app.clipboard().text() == expected
+                assert "haizflow" in json.loads(expected[expected.index("{"):])["mcpServers"]
+            if index in (0, 1, 3, 4, 5):
                 assert advanced.property("visible")
                 assert QMetaObject.invokeMethod(advanced, "clicked")
                 app.processEvents()
             text = configuration.property("text")
             if index == 0:
                 assert "haizflow" in tomllib.loads(text)["mcp_servers"]
-            elif index == 1:
-                assert "haizflow" in json.loads(text[text.index("{"):])["mcpServers"]
-                assert "haizflow_status" in text
             else:
                 assert "haizflow" in json.loads(text)["mcpServers"]
             assert QMetaObject.invokeMethod(copy_button, "clicked")
@@ -223,11 +245,17 @@ def check_native():
         client.setProperty("currentIndex", 0)
         QMetaObject.invokeMethod(client, "activated", Q_ARG(int, 0))
         app.processEvents()
-        for name, field in (("mcpCopyCommandButton", "command"), ("mcpCopyArgumentsButton", "arguments")):
+        for name, field in (("mcpCopyCommandButton", "command"),):
             button = window.findChild(object, name)
             assert QMetaObject.invokeMethod(button, "clicked")
             app.processEvents()
             assert app.clipboard().text() == bridge.launchDetails[field]
+            assert button.property("text") == "Đã sao chép"
+        for index, value in enumerate(bridge.launchDetails["argumentItems"]):
+            button = find_visual(guide, f"mcpCopyArgumentButton{index}")
+            assert QMetaObject.invokeMethod(button, "clicked")
+            app.processEvents()
+            assert app.clipboard().text() == value
             assert button.property("text") == "Đã sao chép"
         app.processEvents()
         window.setWidth(760)
@@ -236,6 +264,8 @@ def check_native():
             app.processEvents()
         assert guide.property("width") <= 720
         assert arguments.property("width") <= guide.property("width")
+        for index in range(len(bridge.launchDetails["argumentItems"])):
+            assert find_visual(guide, f"mcpCopyArgumentButton{index}").property("width") >= 44
         window.setWidth(960)
         window.setHeight(900)
         for _ in range(6):
@@ -277,7 +307,7 @@ def check_native():
             client.property("currentIndex"), guide.property("setupInstructions"))
         assert "Server missing" in window.findChild(object, "mcpGuideTroubleshooting").property("text")
         assert bridge.testPrompt.startswith("Call haizflow_status")
-        assert bridge.setupPrompt.startswith("Connect HaizFlow")
+        assert bridge.setupPrompt.startswith("Add the local haizflow MCP server to Claude Code")
         window.setWidth(760)
         for _ in range(6):
             app.processEvents()

@@ -2213,13 +2213,12 @@ class HaizFlowController(QObject):
 
     @Property(str, notify=subtitleSettingsChanged)
     def subtitleFontFamily(self):
-        from haizflow.core.subtitle_fonts import subtitle_font_for_text
-        return subtitle_font_for_text(language=HaizFlowController._selected_voice_language(self))
+        return self._subtitle_style.font_family
 
     @subtitleFontFamily.setter
     def subtitleFontFamily(self, value):
-        from haizflow.schemas.video import SUBTITLE_FONT_FAMILY
-        self._set_subtitle_style_option("font_family", SUBTITLE_FONT_FAMILY)
+        from haizflow.core.subtitle_fonts import normalise_subtitle_font
+        self._set_subtitle_style_option("font_family", normalise_subtitle_font(value))
 
     @Property(str, notify=subtitleSettingsChanged)
     def subtitleTextColor(self):
@@ -2337,17 +2336,36 @@ class HaizFlowController(QObject):
     @Slot(str, str, result="QVariantMap")
     def subtitleFontSpecForText(self, text, language):
         from haizflow.desktop.subtitle_fonts import qt_subtitle_font
-        return qt_subtitle_font(str(text or ""), str(language or ""))
+        return qt_subtitle_font(str(text or ""), str(language or ""), self._subtitle_style.font_family)
+
+    @Slot(str, str, str, result="QVariantMap")
+    def subtitleFontSpecForStyle(self, text, language, family):
+        from haizflow.desktop.subtitle_fonts import qt_subtitle_font
+        return qt_subtitle_font(str(text or ""), str(language or ""), str(family or "Bangers"))
+
+    @Slot(str, str, result="QVariantList")
+    def subtitleFontChoices(self, language, sample):
+        from haizflow.core.subtitle_fonts import font_choices
+        from haizflow.desktop.subtitle_fonts import qt_subtitle_font
+        rows = []
+        for row in font_choices(language, sample):
+            spec = qt_subtitle_font(row["sample"], language, row["family"])
+            rows.append({**row, "qtFamily": spec["family"], "weight": spec["weight"]})
+        return rows
 
     @Property(str, notify=targetLanguageChanged)
     def subtitleSamplePhrase(self):
+        return self.subtitleSamplePhraseForLanguage(self._target_language)
+
+    @Slot(str, result=str)
+    def subtitleSamplePhraseForLanguage(self, language):
         return {
             "zh": "今天的天气很好，我们一起开始新的故事吧。每一句话都应该清晰自然，让我们继续前进。",
             "ja": "今日はいい天気ですね。一緒に新しい物語を始めましょう。一つ一つの言葉を大切にしてください。",
             "ko": "오늘은 날씨가 참 좋아요. 함께 새로운 이야기를 시작해 봐요. 모든 문장이 선명하게 보여야 합니다.",
             "en": "It is a beautiful day. Let us begin a new story together and discover what happens next.",
             "es": "Hoy hace un día precioso. Vamos a comenzar una nueva historia juntos y descubrir qué sucede después.",
-        }.get(self._target_language, "Một buổi sáng, chúng tôi cùng nhau đi qua con phố nhỏ để khám phá những câu chuyện thú vị.")
+        }.get(language, "Một buổi sáng, chúng tôi cùng nhau đi qua con phố nhỏ để khám phá những câu chuyện thú vị.")
 
     @Slot(str, int, int, int, int, int, result=str)
     @Slot(str, int, int, int, int, int, "QVariantMap", result=str)
@@ -3293,6 +3311,7 @@ class HaizFlowController(QObject):
             from haizflow.desktop.translation_api_controller import TranslationApiController
 
             self._translation_api = TranslationApiController(self)
+            self._translation_api.geminiChanged.connect(self.geminiKeyChanged.emit)
         return self._translation_api
 
     @Property(bool, notify=geminiKeyChanged)
@@ -3305,9 +3324,15 @@ class HaizFlowController(QObject):
     @Property("QVariantList", notify=geminiKeyChanged)
     def geminiApiKeys(self):
         try:
-            return gemini_translation.list_keys()
+            controller = getattr(self, "_translation_api", None)
+            return controller.geminiProfiles if controller else gemini_translation.list_keys()
         except OSError:
             return []
+
+    @Slot(result=bool)
+    @Slot(str, result=bool)
+    def verifyGeminiApiKey(self, key_id=""):
+        return self.translationApi.verifyGemini(key_id)
 
     @Slot(str, str, result=bool)
     def addGeminiApiKey(self, label, value):
@@ -3336,6 +3361,8 @@ class HaizFlowController(QObject):
         except OSError as exc:
             self._show_app_alert("Gemini API key", str(exc), "warning")
             return False
+        if hasattr(self, "_translation_api"):
+            self._translation_api.invalidateGemini(key_id)
         self.geminiKeyChanged.emit()
         return True
 
@@ -3346,6 +3373,8 @@ class HaizFlowController(QObject):
         except (OSError, ValueError) as exc:
             self._show_app_alert("Gemini API key", str(exc), "warning")
             return False
+        if hasattr(self, "_translation_api"):
+            self._translation_api.invalidateGemini("legacy")
         self.geminiKeyChanged.emit()
         return True
 
@@ -3356,6 +3385,8 @@ class HaizFlowController(QObject):
         except OSError as exc:
             self._show_app_alert("Gemini API key", str(exc), "warning")
             return False
+        if hasattr(self, "_translation_api"):
+            self._translation_api.invalidateGemini("legacy")
         self.geminiKeyChanged.emit()
         return True
 
@@ -6735,8 +6766,8 @@ class HaizFlowController(QObject):
         patch = dict(style or {})
         scope = str(scope or "project")
         if "font_family" in patch:
-            from haizflow.schemas.video import SUBTITLE_FONT_FAMILY
-            patch["font_family"] = SUBTITLE_FONT_FAMILY
+            from haizflow.core.subtitle_fonts import normalise_subtitle_font
+            patch["font_family"] = normalise_subtitle_font(patch["font_family"])
 
         def with_font_fingerprint(payload: dict) -> dict:
             if "font_family" not in patch:
@@ -7254,8 +7285,9 @@ class HaizFlowController(QObject):
         return self._tiktok_publisher.remove_api_key(key_id)
 
     @Slot(result=bool)
-    def verifyZernioApiKey(self):
-        return self._tiktok_publisher.verify_api_key()
+    @Slot(str, result=bool)
+    def verifyZernioApiKey(self, key_id=""):
+        return self._tiktok_publisher.verify_api_key(key_id) if key_id else self._tiktok_publisher.verify_api_key()
 
     @Slot(result=bool)
     def clearZernioApiKey(self):

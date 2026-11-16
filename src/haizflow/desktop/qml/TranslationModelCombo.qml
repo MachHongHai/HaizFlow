@@ -68,7 +68,8 @@ Item {
     }
     signal edited(string value)
     signal setupRequested(string provider)
-    implicitHeight: UiMetrics.controlHeight
+    implicitHeight: UiMetrics.controlHeight + (connectionPicker.visible
+        ? Theme.space12 + connectionPicker.implicitHeight : 0)
 
     function providerIndex(connectionId) {
         for (const row of profiles) {
@@ -166,7 +167,10 @@ Item {
     Button {
         id: displayButton
         objectName: "projectTranslationModelButton"
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: UiMetrics.controlHeight
         leftPadding: 12
         rightPadding: 38
         Accessible.name: qsTr("Model dịch") + ": " + root.displayText
@@ -198,10 +202,21 @@ Item {
         onClicked: popup.visible ? popup.close() : popup.open()
         Keys.onDownPressed: popup.open()
     }
+    TranslationConnectionPicker {
+        id: connectionPicker
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: displayButton.bottom
+        anchors.topMargin: Theme.space12
+        api: root.api
+        selectedModel: root.selectedModel
+        modelId: root.selectedApiModel
+        onChoiceEdited: function(value) { root.commit(value); }
+    }
     Popup {
         id: popup
         objectName: "projectTranslationModelPopup"
-        y: root.height + 6
+        y: displayButton.height + 6
         width: Math.max(root.width, Math.min(360, Overlay.overlay ? Overlay.overlay.width - 24 : 360))
         x: root.width - width
         margins: 8
@@ -277,13 +292,18 @@ Item {
                         onClicked: root.configureApi()
                     }
                 }
+                SettingLabel {
+                    visible: root.externalProvider && root.connectionExists
+                    text: qsTr("API sử dụng")
+                }
                 AppComboBox {
                     objectName: "projectTranslationConnectionPicker"
                     Layout.fillWidth: true
-                    visible: root.externalProvider && root.connections.length > 1
+                    visible: root.externalProvider && root.connectionExists
                     model: root.connections
                     textRole: "label"
                     valueRole: "id"
+                    Accessible.name: qsTr("Chọn API cho model dịch")
                     currentIndex: root.connections.findIndex(function(row) { return row.id === root.activeConnection; })
                     onActivated: { root.activeConnection = String(currentValue); modelSearch.text = ""; list.currentIndex = 0; }
                 }

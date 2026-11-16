@@ -38,29 +38,47 @@ ColumnLayout {
         }
     }
     Text {
+        objectName: "mcpArgumentsInstruction"
         Layout.fillWidth: true
-        text: qsTr("Arguments · mỗi dòng một đối số")
+        text: qsTr("Arguments · %1 mục riêng biệt").arg((root.details.argumentItems || []).length)
         color: Theme.textMuted
         font.family: Theme.fontFamily
         font.pixelSize: TypeScale.label
         wrapMode: Text.WordWrap
     }
-    AppTextArea {
-        objectName: "mcpLaunchArguments"
-        Layout.fillWidth: true
-        Layout.preferredHeight: Math.max(110, contentHeight + topPadding + bottomPadding)
-        readOnly: true
-        text: root.details.arguments || ""
-        accessibleName: qsTr("Arguments của máy chủ MCP")
-        font.family: "Consolas"
-    }
-    StudioButton {
-        objectName: "mcpCopyArgumentsButton"
-        text: root.copiedField === "arguments" ? qsTr("Đã sao chép") : qsTr("Sao chép arguments")
-        onClicked: {
-            root.bridge.copyLaunchField("arguments");
-            root.copiedField = "arguments";
-            copiedFeedback.restart();
+    Repeater {
+        model: root.details.argumentItems || []
+        delegate: RowLayout {
+            id: argumentRow
+            required property int index
+            required property string modelData
+            Layout.fillWidth: true
+            spacing: Theme.space8
+            Text {
+                text: qsTr("Mục %1").arg(argumentRow.index + 1)
+                color: Theme.textMuted
+                font.family: Theme.fontFamily
+                font.pixelSize: TypeScale.label
+            }
+            AppTextField {
+                objectName: "mcpLaunchArgument" + argumentRow.index
+                Layout.fillWidth: true
+                readOnly: true
+                text: argumentRow.modelData
+                font.family: "Consolas"
+                accessibleName: qsTr("Argument %1").arg(argumentRow.index + 1)
+            }
+            StudioButton {
+                objectName: "mcpCopyArgumentButton" + argumentRow.index
+                Layout.minimumWidth: Theme.space32 * 3
+                text: root.copiedField === "argument:" + argumentRow.index ? qsTr("Đã sao chép") : qsTr("Sao chép")
+                Accessible.name: qsTr("Sao chép Argument %1").arg(argumentRow.index + 1)
+                onClicked: {
+                    root.bridge.copyLaunchArgument(argumentRow.index);
+                    root.copiedField = "argument:" + argumentRow.index;
+                    copiedFeedback.restart();
+                }
+            }
         }
     }
     Timer {

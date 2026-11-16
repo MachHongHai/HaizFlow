@@ -1,6 +1,7 @@
 """Generate verified, prerecorded Edge voice-library samples (explicit opt-in)."""
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -29,6 +30,7 @@ def main():
 
         samples = ROOT / "src/haizflow/desktop/assets/voice_samples"
         manifest = json.loads((samples / "samples.json").read_text(encoding="utf-8"))
+        entries = []
         for language, voices in EDGE_VOICES.items():
             for voice, *_labels in voices:
                 path = samples / "edge" / voice / f"{language}.mp3"
@@ -40,6 +42,16 @@ def main():
                 print(json.dumps({"voice": voice, "language": language,
                                   "bytes": path.stat().st_size,
                                   "duration": round(get_video_duration(str(path)), 3)}), flush=True)
+                entries.append({"provider": "edge", "voice": voice, "language": language,
+                                "path": path.relative_to(samples).as_posix(),
+                                "bytes": path.stat().st_size,
+                                "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
+        # Read again after synthesis; another developer task may have added
+        # unrelated providers while Edge requests were running.
+        manifest = json.loads((samples / "samples.json").read_text(encoding="utf-8"))
+        manifest["samples"] = [row for row in manifest["samples"] if row["provider"] != "edge"] + entries
+        (samples / "samples.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

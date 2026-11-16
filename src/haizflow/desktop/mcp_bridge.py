@@ -75,14 +75,29 @@ class McpBridge(QObject):
     def launchDetails(self):
         entry = json.loads(self.configuration("generic"))["mcpServers"]["haizflow"]
         return {"name": "haizflow", "transport": "STDIO", "command": entry["command"],
-                "arguments": "\n".join(entry["args"])}
+                "arguments": "\n".join(entry["args"]), "argumentItems": list(entry["args"])}
 
     @Property(str, notify=changed)
     def setupPrompt(self):
-        return self.tr(
-            "Hãy kết nối HaizFlow với ứng dụng này bằng cấu hình bên dưới. "
-            "Giữ nguyên các server khác; nếu đã có haizflow thì cập nhật mục đó. "
-            "Sau đó chỉ gọi haizflow_status để kiểm tra kết nối.\n\n"
+        return self.setupPromptFor("claude-code")
+
+    @Slot(str, result=str)
+    def setupPromptFor(self, client):
+        if client == "claude-code":
+            introduction = self.tr("Thêm MCP cục bộ haizflow cho Claude Code ở phạm vi user bằng cấu hình bên dưới.")
+        else:
+            application = {"antigravity-ide": "Antigravity IDE", "antigravity-app": "Antigravity App"}.get(client)
+            if application is None:
+                return ""
+            introduction = "/agy-customizations\n\n" + self.tr(
+                "Thêm MCP cục bộ haizflow vào tệp cấu hình MCP đang dùng của %1 bằng cấu hình bên dưới."
+            ).replace("%1", application)
+        return introduction + "\n\n" + self.tr(
+            "Giữ nguyên các server khác và các thiết lập quyền. Nếu đã có kết nối tới cùng HaizFlow "
+            "(kể cả tên khác), cập nhật mục đó, không tạo thêm bản trùng. "
+            "Giữ command đúng đường dẫn và args là mảng các đối số riêng biệt; "
+            "không gộp args thành một chuỗi, không chạy command để mở giao diện HaizFlow. "
+            "Sau khi lưu, hướng dẫn tôi nạp lại kết nối. Khi MCP đã kết nối, chỉ gọi haizflow_status để kiểm tra.\n\n"
         ) + self.configuration("generic")
 
     @Property(str, notify=changed)
@@ -170,12 +185,24 @@ class McpBridge(QObject):
 
     @Slot(str)
     def copyLaunchField(self, field):
-        if field in {"name", "command", "arguments"}:
+        if field in {"name", "command"}:
             QGuiApplication.clipboard().setText(self.launchDetails[field])
+
+    @Slot(int)
+    def copyLaunchArgument(self, index):
+        arguments = self.launchDetails["argumentItems"]
+        if 0 <= index < len(arguments):
+            QGuiApplication.clipboard().setText(arguments[index])
 
     @Slot()
     def copySetupPrompt(self):
         QGuiApplication.clipboard().setText(self.setupPrompt)
+
+    @Slot(str)
+    def copySetupPromptFor(self, client):
+        prompt = self.setupPromptFor(client)
+        if prompt:
+            QGuiApplication.clipboard().setText(prompt)
 
     @Slot()
     def copyTestPrompt(self):

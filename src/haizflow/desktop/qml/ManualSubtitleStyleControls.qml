@@ -9,9 +9,10 @@ ColumnLayout {
     objectName: "manualSubtitleStyleControls"
 
     property bool editable: true
+    property var controller: AppController
     signal styleCommitted()
 
-    readonly property var projectStyle: AppController.manualEditorDocumentModel.defaultSubtitleStyle || ({})
+    readonly property var projectStyle: controller.manualEditorDocumentModel.defaultSubtitleStyle || ({})
 
     spacing: Theme.space8
 
@@ -19,9 +20,10 @@ ColumnLayout {
         Layout.fillWidth: true
         style: root.projectStyle
         karaokeEnabled: true
+        fontLanguage: String(root.controller.manualVoiceLanguage || "vi")
         enabled: root.editable
         onChangeRequested: function(patch) {
-            if (AppController.applyTextStyle([], patch, "project"))
+            if (root.controller.applyTextStyle([], patch, "project"))
                 root.styleCommitted();
         }
     }

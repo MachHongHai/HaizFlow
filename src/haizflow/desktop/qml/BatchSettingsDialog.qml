@@ -624,6 +624,7 @@ FloatingToolDialog {
         id: batchSubtitlePreviewDialogLoader
         sourceComponent: Component {
             SubtitlePreviewDialog {
+                fontLanguage: root.draftTargetLanguage
                 toolSubtitle: root.previewSource.fileName || ""
                 previewMedia: root.previewMedia
                 previewSource: root.previewSource.thumbnailSource || ""

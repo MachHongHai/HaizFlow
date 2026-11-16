@@ -1,10 +1,14 @@
 """All pages use fresh Windows pickers without host profile races."""
 import inspect
+import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
 from haizflow.desktop import localization, native_file_picker
 
 
@@ -80,12 +84,44 @@ def test_frozen_picker_reuses_core_not_launcher(monkeypatch, tmp_path):
         "D:/App/versions/1.0.5/HaizFlowCore.exe", "--native-file-dialog", str(tmp_path / "request.json")]
 
 
+def test_dev_picker_skips_profile_redirecting_python_startup(monkeypatch, tmp_path):
+    monkeypatch.setattr(native_file_picker.sys, "frozen", False, raising=False)
+    request = tmp_path / "request.json"
+    argv = native_file_picker.command(request)
+    assert argv[1:3] == ["-I", "-S"]
+    assert Path(argv[3]) == Path(native_file_picker.__file__).resolve()
+    assert argv[4] == str(request)
+    startup = tmp_path / "startup"
+    startup.mkdir()
+    (startup / "sitecustomize.py").write_text(
+        "import os\nos.environ['APPDATA']='wrong-portable-profile'\n", encoding="utf-8")
+    environment = dict(os.environ, APPDATA="real-shell-profile", PYTHONPATH=str(startup))
+    probe = "import os, json, sys; print(json.dumps([os.environ['APPDATA'], 'site' in sys.modules]))"
+    standard = subprocess.run([sys.executable, "-c", probe], env=environment,
+                              capture_output=True, text=True, timeout=15, check=True)
+    assert json.loads(standard.stdout) == ["wrong-portable-profile", True]
+    isolated = subprocess.run([*argv[:3], "-c", probe], env=environment,
+                              capture_output=True, text=True, timeout=15, check=True)
+    assert json.loads(isolated.stdout) == ["real-shell-profile", False]
+
+
+def test_isolated_script_dispatch_needs_no_qt_or_editable_site_hook(tmp_path):
+    request, response = tmp_path / "request.json", tmp_path / "response.json"
+    request.write_text(json.dumps(dict(kind="unsupported", result=str(response))), encoding="utf-8")
+    result = subprocess.run(native_file_picker.command(request), capture_output=True,
+                            text=True, timeout=15, check=True)
+    assert not result.stderr
+    assert json.loads(response.read_text("utf-8"))["error"] == "Unsupported native picker operation"
+
+
 def test_helper_dispatch_precedes_profile_and_splash():
     entry = (Path(__file__).parents[1] / "haizflow_desktop.py").read_text("utf-8")
     assert entry.index('sys.argv[1] == "--native-file-dialog"') < entry.index("import haizflow.config")
     source = inspect.getsource(native_file_picker.main)
-    assert "QFileDialog.getExistingDirectory" in source
-    assert "QFileDialog.getOpenFileNames" in source
-    assert "QFileDialog.getSaveFileName" in source
-    assert "AddPlace" not in source
-    assert "DontUseNativeDialog" in source
+    assert "windows_file_dialog import show" in source
+    assert "QWidget" not in source and "QApplication" not in source
+    from haizflow.desktop import windows_file_dialog
+    native = inspect.getsource(windows_file_dialog._show_dialog)
+    assert "CoCreateInstance" in native and "SHGetKnownFolderPath" in native
+    assert "_call(dialog, 21," not in native  # No application-specific places group.
+    assert "_call(dialog, 24," not in native  # Keep ordinary Windows dialog state.

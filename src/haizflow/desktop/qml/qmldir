@@ -1,4 +1,6 @@
 module HaizFlow
+TranslationConnectionPicker 1.0 TranslationConnectionPicker.qml
+SubtitleFontPicker 1.0 SubtitleFontPicker.qml
 ManualVoiceScope 1.0 ManualVoiceScope.qml
 SettingsPageLoader 1.0 SettingsPageLoader.qml
 UserErrorNotice 1.0 UserErrorNotice.qml

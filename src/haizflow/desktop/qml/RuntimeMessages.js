@@ -48,6 +48,7 @@ var vietnamese = {
         "Creating Douyin session": "Đang tạo phiên Douyin…",
         "Complete verification in the Douyin window.": "Hoàn tất xác minh trong cửa sổ Douyin. HaizFlow sẽ chờ bạn.",
         "Checking the Douyin session": "Đang kiểm tra phiên Douyin…",
+        "Close the login popup in the Douyin window to continue.": "Đóng cửa sổ mời đăng nhập trong Douyin để tiếp tục. HaizFlow sẽ chờ bạn.",
         "The Douyin browser component version is not supported.": "Thành phần trình duyệt Douyin chưa đúng phiên bản.",
         "The Douyin browser session is closed. Create a new session.": "Phiên Douyin đã đóng. Bấm Tạo phiên Douyin để thử lại.",
         "The Douyin browser session could not complete the request.": "Chưa kiểm tra được liên kết Douyin. Thử lại hoặc làm mới phiên.",
