@@ -76,7 +76,7 @@ def test_other_providers_do_not_receive_router_specific_preflight(monkeypatch, p
 
 @pytest.mark.parametrize("changes", [
     {"endpoints": ["/api/v1/batches"]}, {"endpoints": ["/api/v1/responses"]}, {"endpoints": None},
-    {"endpoints": []}, {"supported_parameters": []}, {"supported_parameters": ["structured_outputs"]},
+    {"endpoints": []}, {"supported_parameters": []},
     {"supported_parameters": ["max_tokens"]}, {"architecture": {"input_modalities": ["image"], "output_modalities": ["text"]}},
     {"architecture": {"input_modalities": ["text"], "output_modalities": ["audio"]}},
     {"expiration_date": "2020-01-01"}, {"pricing": {"prompt": "0.01", "completion": "0.01"}},
@@ -160,7 +160,7 @@ def test_translation_pins_live_protocol_for_all_chunks_despite_background_cache_
         assert key == "SYNTHETIC-PRIVATE-KEY" and payload["model"] == model
         assert "reasoning" not in payload  # No stale OpenRouter or OpenAI fallback knobs.
         assert payload["response_format"] == {"type": "json_object"}
-        assert 2048 <= payload["max_tokens"] <= 4096
+        assert "max_tokens" not in payload
         assert payload["provider"]["max_price"] == {"prompt": 0, "completion": 0, "request": 0}
         assert len(payload["messages"]) == 2  # Do not inherit a stale Gemma-only prompt layout.
         entries, _end = json.JSONDecoder().raw_decode(payload["messages"][1]["content"])
@@ -178,7 +178,7 @@ def test_translation_pins_live_protocol_for_all_chunks_despite_background_cache_
 
 @pytest.mark.parametrize("endpoints", [
     [], None, "invalid", [None], [endpoint(model_id="vendor/wrong")], [endpoint(model_id=[])], [endpoint(status=-1)],
-    [endpoint(supported_parameters=["max_tokens"])], [endpoint(supported_parameters=["response_format"])],
+    [endpoint(supported_parameters=["max_tokens"])],
     [endpoint(pricing={"prompt": "0.01", "completion": "0"})], [endpoint(pricing={})],
 ])
 def test_no_matching_serving_endpoint_stops_before_inference(monkeypatch, endpoints):
@@ -204,7 +204,24 @@ def test_endpoint_validation_includes_selected_reasoning_parameters(monkeypatch)
     assert send.call_count == 1
 
 
-def test_budget_is_safe_for_every_matching_serving_provider(monkeypatch):
+@pytest.mark.parametrize("paid", [False, True])
+def test_provider_default_needs_json_support_but_not_output_cap_support(monkeypatch, paid):
+    model = "vendor/new" if paid else "vendor/new:free"
+    pricing = {"prompt": "0.01" if paid else "0", "completion": "0"}
+    parameters = ["structured_outputs"] if paid else ["response_format"]
+    monkeypatch.setattr(guard, "_check_endpoints", _real_check_endpoints)
+    send = Mock(side_effect=[{"data": row(model, supported_parameters=parameters, pricing=pricing)},
+                            {"data": {"endpoints": [endpoint(model_id=model,
+                                supported_parameters=parameters, pricing=pricing)]}}])
+    monkeypatch.setattr(api, "_json_request", send)
+    protocol = guard.prepare(profile(model))
+    assert protocol["parameters"] == parameters
+    assert protocol["max_completion_tokens"] == 4096
+    assert send.call_count == 2
+    assert all(call.args[1] == "" and len(call.args) == 2 for call in send.call_args_list)
+
+
+def test_capacity_metadata_is_safe_for_every_matching_serving_provider(monkeypatch):
     from haizflow.services.translation_model_catalog import _option
 
     send = Mock(return_value={"data": {"endpoints": [endpoint(), endpoint(context_length=8192,
@@ -245,7 +262,7 @@ def test_mandatory_internal_reasoning_without_a_supported_control_is_not_sent_as
     assert capabilities("openrouter", "vendor/new:free", protocol=protocol)["mandatory"]
     assert request_options("openrouter", "vendor/new:free", protocol=protocol) == {}
     limits = request_limits("openrouter", "vendor/new:free", 2048, protocol=protocol)
-    assert limits["reasoning_active"] and limits["timeout"] == 240 and limits["max_tokens"] == 4096
+    assert limits["reasoning_active"] and limits["timeout"] == 240 and limits["max_tokens"] is None
     with pytest.raises(ValueError):
         request_options("openrouter", "vendor/new:free", "high", protocol=protocol)
 

@@ -76,7 +76,7 @@ def test_invalid_answers_recover_only_the_failed_batch_with_bounded_retry(bad):
         assert entries[0]["speech_seconds"] == 1
 
 
-def test_token_exhaustion_grows_cap_without_changing_source_or_duration():
+def test_provider_default_token_exhaustion_does_not_resubmit_or_reintroduce_cap():
     bad = {"candidates": [{"finishReason": "MAX_TOKENS"}], "usageMetadata": {
         "thoughtsTokenCount": 1600, "candidatesTokenCount": 448, "totalTokenCount": 2500,
     }}
@@ -85,12 +85,14 @@ def test_token_exhaustion_grows_cap_without_changing_source_or_duration():
         patch.object(gemini.request, "urlopen", side_effect=[Response(bad), Response(good)]) as send,
         patch.object(gemini, "log_to_video") as log,
     ):
-        assert call(speech_durations=[1]) == ["Đi thôi"]
+        with pytest.raises(RuntimeError, match="dừng trước khi dịch đủ câu"):
+            call(speech_durations=[1])
     payloads = [json.loads(invocation.args[0].data) for invocation in send.call_args_list]
-    assert payloads[0]["generationConfig"]["maxOutputTokens"] >= 2048
-    assert payloads[1]["generationConfig"]["maxOutputTokens"] == 8192
-    assert payloads[0]["contents"] == payloads[1]["contents"]
+    assert send.call_count == 1
+    assert "maxOutputTokens" not in payloads[0]["generationConfig"]
+    assert json.loads(payloads[0]["contents"][0]["parts"][0]["text"])[0]["speech_seconds"] == 1
     assert "response=token_limit" in str(log.call_args_list)
+    assert "token_limit=provider_default" in str(log.call_args_list)
     assert "thoughtsTokenCount=1600" in str(log.call_args_list)
 
 

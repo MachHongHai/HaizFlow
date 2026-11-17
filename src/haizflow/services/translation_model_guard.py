@@ -42,7 +42,7 @@ def _check_endpoints(option, *, reasoning_effort="", video_id=""):
     except ValueError:
         raise RuntimeError("OpenRouter: mức reasoning đã chọn không còn được model hỗ trợ. "
                            "Hãy tải lại danh sách và chọn lại Mức; app chưa gửi nội dung dịch.") from None
-    required = {"max_tokens", "structured_outputs" if option["output_format"] == "json_schema" else "response_format"}
+    required = {"structured_outputs" if option["output_format"] == "json_schema" else "response_format"}
     if "reasoning" in knobs:
         required.add("reasoning")
     data = _read_public("https://openrouter.ai/api/v1/models/" + parse.quote(model, safe="/") + "/endpoints", video_id)
@@ -98,8 +98,7 @@ def prepare(profile, *, video_id="", reasoning_effort=""):
         raise RuntimeError("OpenRouter: không xác minh được model đã chọn. "
                            "Hãy tải lại danh sách; app chưa gửi nội dung dịch.")
     option = _option("openrouter", row)
-    if (not option or "endpoints" not in option
-            or "max_tokens" not in option.get("parameters", [])):
+    if not option or "endpoints" not in option:
         raise RuntimeError("OpenRouter: model hiện không hỗ trợ cấu hình dịch phụ đề của app. "
                            "Hãy chọn model khác; app chưa gửi nội dung dịch.")
     if model.endswith(":free") and option["pricing_kind"] != "free":

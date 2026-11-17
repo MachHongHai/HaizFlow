@@ -1,4 +1,4 @@
-"""Conservative, model-specific token policy for subtitle translation only."""
+"""Provider-default output budgets and conservative subtitle batching."""
 from __future__ import annotations
 
 import re
@@ -6,18 +6,12 @@ import re
 EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
 
 
-def output_limit(base: int, effort: str = "") -> int:
-    """Only an explicit higher effort increases bounded reasoning/output headroom."""
-    return max(base, {"medium": 8192, "high": 16384, "xhigh": 24576, "max": 32768}.get(effort, base))
-
-
 def request_limits(provider: str, model: str, base: int, effort: str = "", *, protocol=None) -> dict:
-    """Leave visible-output headroom when reasoning may run, without paid retries.
+    """Omit optional output caps; never guess a budget from reasoning effort.
 
-    This is a combined output ceiling, not an enforceable separate reasoning
-    budget. R1 exposes neither effort levels nor reasoning.max_tokens controls.
-    Optional boolean controls default off; enabled or undisablable reasoning
-    receives bounded headroom. Unknown non-reasoning models keep their policy.
+    All supported wire protocols allow omission. Keep base for existing callers,
+    but use advertised capacity only to shrink input batches, not as a sent cap.
+    Reasoning controls, timeouts and durable result validation remain separate.
     """
     info = capabilities(provider, model, protocol=protocol)
     mandatory = info.get("mandatory", False)
@@ -28,9 +22,6 @@ def request_limits(provider: str, model: str, base: int, effort: str = "", *, pr
         from haizflow.services.translation_catalog_cache import protocol_for
 
         active_reasoning = bool((protocol if protocol is not None else protocol_for(model)).get("reasoning_supported"))
-    limit = output_limit(base, effort)
-    if active_reasoning:
-        limit = min(32768, max(limit, base + 8192))
     sentences, characters = (12, 2000) if active_reasoning else (24, 4000)
     if provider == "openrouter":
         from haizflow.services.translation_catalog_cache import protocol_for
@@ -40,13 +31,12 @@ def request_limits(provider: str, model: str, base: int, effort: str = "", *, pr
                     protocol.get("context_length", 0) // 2) if type(value) is int and value > 0]
         if ceilings:
             ceiling = min(ceilings)
-            limit = min(limit, ceiling)
-            # Split before sending, rather than just clamping output and losing
-            # the last subtitles. Match the visible-output estimator's reserve.
+            # A server still has finite capacity when max_tokens is omitted.
+            # Split small endpoints before sending; do not impose our own cap.
             if ceiling < 8192:
                 characters = min(characters, max(32, (ceiling - 1024) // 4))
                 sentences = min(sentences, max(1, (ceiling - 1024) // 64))
-    return {"max_tokens": limit, "sentences": sentences,
+    return {"max_tokens": None, "sentences": sentences,
             "characters": characters, "timeout": 240 if active_reasoning else 90,
             "mandatory": bool(mandatory), "reasoning_active": active_reasoning}
 

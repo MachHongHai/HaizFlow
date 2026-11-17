@@ -111,8 +111,8 @@ def test_invalid_prepared_asset_falls_back_to_own_preset_not_another_speaker(mon
     monkeypatch.setattr(refs, "_verified_wav", lambda *args: False)
     for preset in ("omnivoice:male", "omnivoice:female"):
         path, text = _preset_reference(preset, "ko")
-        assert path.endswith("en.mp3") and preset.replace(":", "_") in path
-        assert "This app" in text
+        assert path.endswith("ko.mp3") and preset.replace(":", "_") in path
+        assert text and any("가" <= character <= "힣" for character in text)
 
 
 def test_packaging_includes_every_approved_reference():

@@ -43,7 +43,7 @@ def test_real_custom_http_format_unicode_and_id_contract_without_model_discovery
             payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             assert payload["model"] == "Vendor/MixedCase:latest"
             assert not {"reasoning", "thinking", "provider", "tools", "audio", "store"} & payload.keys()
-            assert 2048 <= payload["max_tokens"] <= 8192
+            assert "max_tokens" not in payload
             if output_format == "prompt":
                 assert "response_format" not in payload
             else:

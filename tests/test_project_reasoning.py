@@ -109,7 +109,7 @@ def test_pipeline_passes_selected_reasoning_and_reuses_matching_completed_cues(c
         translation.translate_segments(str(source), str(output), "fixture", reasoning_effort=effort, **options)
         assert send.call_count == count
         assert send.call_args.args[2]["reasoning"] == {"effort": effort}
-    assert send.call_args.args[2]["max_output_tokens"] == 10240  # Low effort, bounded reasoning + JSON headroom.
+    assert "max_output_tokens" not in send.call_args.args[2]
 
 
 def test_gemini_explicit_thinking_level_reaches_native_payload():
@@ -118,7 +118,7 @@ def test_gemini_explicit_thinking_level_reaches_native_payload():
     result = _payload_for_chunk([(0, "Hello.")], model="gemini-3.5-flash-lite", source_language="en",
                                 target_language="vi", reasoning_effort="high")
     assert result["generationConfig"]["thinkingConfig"]["thinkingLevel"] == "high"
-    assert result["generationConfig"]["maxOutputTokens"] == 16384
+    assert "maxOutputTokens" not in result["generationConfig"]
     with pytest.raises(ValueError):
         _payload_for_chunk([(0, "Hello.")], model="gemini-3.8-flash", source_language="en",
                            target_language="vi", reasoning_effort="minimal")
@@ -140,7 +140,7 @@ def test_gemini_style_and_guidance_never_change_ui_or_request_reasoning(model, s
         translation_instructions="Modern setting." if guided else "",
         translation_glossary="Keep names consistent." if guided else "")["generationConfig"]
     assert config["thinkingConfig"] == {"thinkingLevel": info["effective"], "includeThoughts": False}
-    assert config["maxOutputTokens"] == policy.output_limit(2048, selected)
+    assert "maxOutputTokens" not in config
 
 
 @pytest.mark.parametrize("effort", ["minimal", "low", "medium", "high"])
@@ -220,5 +220,5 @@ def test_openrouter_mandatory_reasoning_without_efforts_survives_restart(tmp_pat
     assert info == {"values": [], "default": "", "mandatory": True}
     catalog.remember([{"value": "vendor/mandatory-model", "reasoning_capabilities": info}])
     assert catalog.get("vendor/mandatory-model")["mandatory"] is True
-    assert policy.request_limits("openrouter", "vendor/mandatory-model", 2048)["max_tokens"] == 10240
+    assert policy.request_limits("openrouter", "vendor/mandatory-model", 2048)["max_tokens"] is None
     assert policy.request_options("openrouter", "vendor/mandatory-model") == {"reasoning": {"exclude": True}}

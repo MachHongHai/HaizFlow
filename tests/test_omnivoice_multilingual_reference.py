@@ -7,6 +7,7 @@ from unittest.mock import Mock
 
 import numpy as np
 import pytest
+import soundfile as sf
 
 from haizflow.pipeline import omnivoice_tts as voice
 from haizflow.pipeline import tts_quality
@@ -126,7 +127,9 @@ def test_worker_clones_reference_keeps_target_text_language_and_zero_fade(tmp_pa
     assert calls[0]["text"] == text and calls[0]["language"] == language
     assert calls[0]["fade_duration"] == 0 and calls[0]["normalize_text"] is False
     assert not {"duration", "speed", "pad_duration"} & calls[0].keys()
-    assert references[0] == {"ref_audio": reference_path, "ref_text": reference_text}
+    samples, rate = references[0]["ref_audio"]
+    assert samples.ndim == 2 and samples.shape[0] == 1 and samples.size > 0
+    assert rate == 24000 and references[0]["ref_text"] == reference_text
 
 
 @pytest.mark.parametrize("mode", ["single", "multiple"])
@@ -142,8 +145,8 @@ def test_warm_worker_reencodes_changed_reference_but_reuses_unchanged_one(tmp_pa
     runtime = {"modules": (np, SimpleNamespace(write=Mock()), fake_torch(), Mock()),
                "model": model, "model_key": ("model", "cpu")}
     first, second = tmp_path / "first.wav", tmp_path / "second.wav"
-    first.write_bytes(b"first reference")
-    second.write_bytes(b"second reference")
+    sf.write(str(first), np.full(24000, .1, dtype=np.float32), 24000)
+    sf.write(str(second), np.full(24000, .2, dtype=np.float32), 24000)
     item = dict(voice="omnivoice:male", text="Tôi không biết.", wav_path=str(tmp_path / "out.wav"))
     request = dict(model_root="model", site_packages=str(tmp_path), device="cpu", language="vi",
                    speaker_mode=mode, narrator_anchor_text="Stable anchor.", items=[item],
@@ -154,11 +157,34 @@ def test_warm_worker_reencodes_changed_reference_but_reuses_unchanged_one(tmp_pa
         item.update(preset_reference_path=str(reference), preset_reference_text="Reference transcript.")
         path.write_text(json.dumps(request), encoding="utf-8")
         assert voice._worker_main(str(path), runtime) == 0
-    assert [entry["ref_audio"] for entry in encoded] == [str(first), str(second)]
+    assert len(encoded) == 2
+    assert [float(entry["ref_audio"][0].mean()) for entry in encoded] == pytest.approx([.1, .2], abs=.0001)
+
+
+def test_manual_clone_prompt_cache_survives_new_temporary_wav_paths(tmp_path):
+    encode = Mock(return_value=SimpleNamespace(ref_rms=0.0))
+    model = SimpleNamespace(generate=lambda **kwargs: [fake_speech_wave()], sampling_rate=24000,
+                            create_voice_clone_prompt=encode)
+    runtime = {"modules": (np, SimpleNamespace(write=Mock()), fake_torch(), Mock()),
+               "model": model, "model_key": ("model", "cpu")}
+    item = dict(voice="omnivoice:clone", text="Tôi không biết.",
+                wav_path=str(tmp_path / "out.wav"), reference_text="Reference transcript.")
+    request = dict(model_root="model", site_packages=str(tmp_path), device="cpu", language="vi",
+                   speaker_mode="single", items=[item], status_path=str(tmp_path / "status.json"))
+    path = tmp_path / "request.json"
+    for index, identity in enumerate(["source-a", "source-a", "source-b"]):
+        reference = tmp_path / f"normalised-{index}.wav"
+        sf.write(str(reference), np.full(24000, .1, dtype=np.float32), 24000)
+        item.update(reference_path=str(reference), reference_identity=identity)
+        path.write_text(json.dumps(request), encoding="utf-8")
+        assert voice._worker_main(str(path), runtime) == 0
+    assert encode.call_count == 2
 
 
 def test_failed_retry_names_exact_sentence_without_publishing_artifact(tmp_path):
     calls, writes = [], []
+    reference = tmp_path / "reference.wav"
+    sf.write(str(reference), np.full(24000, .1, dtype=np.float32), 24000)
     torch = fake_torch()
 
     def generate(**kwargs):
@@ -183,7 +209,7 @@ def test_failed_retry_names_exact_sentence_without_publishing_artifact(tmp_path)
                 "voice": "omnivoice:female_gentle",
                 "text": "逃げただと？",
                 "wav_path": str(tmp_path / "bad.wav"),
-                "preset_reference_path": "reference.mp3",
+                "preset_reference_path": str(reference),
                 "preset_reference_text": "Reference.",
             }
         ],

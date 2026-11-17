@@ -1,8 +1,8 @@
 """The opt-in audit must never send paid/fallback traffic or save user consent."""
 import io
 import json
-from pathlib import Path
 import runpy
+from pathlib import Path
 from unittest.mock import Mock
 from urllib.error import HTTPError
 
@@ -74,6 +74,40 @@ def test_audit_refuses_nonofficial_post_destination(monkeypatch):
                               "synthetic-key", option())
     assert not result["usable"] and result["requests"] == 0
     send.assert_not_called()
+
+
+def test_audit_distinguishes_valid_protocol_from_mixed_script_translation(monkeypatch):
+    response = answer()
+    response["choices"][0]["message"]["content"] = json.dumps({"translations": [
+        {"id": 0, "text": "Cảm ơn mẹ 别."}, {"id": 1, "text": "Tôi không biết."}]})
+    monkeypatch.setattr(api_translation, "_json_request", Mock(return_value=response))
+    result = audit()["check"](profile(), "synthetic-key", option())
+    assert result["protocol_valid"] and not result["usable"]
+    assert result["quality_warnings"] == ["unexpected_script"]
+    assert result["requests"] == 1 and result["failure_kind"] == "translation_quality"
+
+
+def test_audit_large_batch_with_nonzero_ids_uses_exact_production_mapping(monkeypatch):
+    def send(_url, _key, payload, **kwargs):
+        rows, _ = json.JSONDecoder().raw_decode(payload["messages"][1]["content"])
+        assert [row["id"] for row in rows] == list(range(36, 48))
+        assert payload["provider"]["max_price"] == {"prompt": 0, "completion": 0, "request": 0}
+        return {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps({"translations": [
+            {"id": row["id"], "text": "Cảm ơn mẹ." if row["id"] == 36 else "Tôi không biết."} for row in rows]})}}]}
+    monkeypatch.setattr(api_translation, "_json_request", send)
+    result = audit()["check"](profile(), "synthetic-key", option(), batch_size=12, start_id=36)
+    assert result["usable"] and result["sentences"] == 12 and result["requests"] == 1
+
+
+def test_audit_local_privacy_guard_explains_why_no_request_was_sent(monkeypatch):
+    model = "nvidia/nemotron-3.5-super-vl:free"
+    send, grant = Mock(), Mock()
+    monkeypatch.setattr(api_translation, "_json_request", send)
+    monkeypatch.setattr(translation_privacy, "grant", grant)
+    result = audit()["check"](profile(), "synthetic-key", option(model))
+    assert not result["usable"] and result["requests"] == 0 and result["failure_kind"] == "data_policy"
+    send.assert_not_called()
+    grant.assert_not_called()
 
 
 def test_audit_preflight_uses_two_public_reads_then_one_zero_price_post(monkeypatch):

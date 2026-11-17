@@ -50,11 +50,19 @@ class OmniVoiceBatchTests(unittest.TestCase):
 
         def encode(**kwargs):
             self.assertEqual(events, ["enter"])
-            self.assertEqual(kwargs, {"ref_audio": "voice.wav", "ref_text": "Sample"})
+            samples, rate = kwargs["ref_audio"]
+            self.assertEqual(rate, 24000)
+            np.testing.assert_array_equal(samples, np.ones((1, 24000), dtype=np.float32))
+            self.assertEqual(kwargs["ref_text"], "Sample")
             return "discrete tokens"
 
-        result = voice._encode_voice_reference(SimpleNamespace(create_voice_clone_prompt=encode),
-                                               SimpleNamespace(inference_mode=inference), "voice.wav", "Sample")
+        with tempfile.TemporaryDirectory() as directory, patch("soundfile.read", return_value=(
+                np.ones((24000, 1), dtype=np.float32), 24000)) as read:
+            reference = Path(directory) / "giọng mẫu.wav"
+            reference.write_bytes(b"fixture")
+            result = voice._encode_voice_reference(SimpleNamespace(create_voice_clone_prompt=encode),
+                                                   SimpleNamespace(inference_mode=inference), reference, "Sample")
+            self.assertTrue(hasattr(read.call_args.args[0], "read"))
         self.assertEqual(result, "discrete tokens")
         self.assertEqual(events, ["enter", "exit"])
 

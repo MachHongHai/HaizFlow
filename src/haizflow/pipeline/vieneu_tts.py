@@ -161,7 +161,7 @@ def synthesize_batch_to_mp3(items, video_id, *, device="cpu", language_id="vi",
     with tempfile.TemporaryDirectory(prefix="vieneu-", dir=TMP_DIR) as work:
         work = Path(work)
         entries = [{**item, "wav": str(work / f"{index}.wav")} for index, item in enumerate(items)]
-        from haizflow.utils.ffmpeg import _binary
+        from haizflow.pipeline.clone_audio import prepare_reference
 
         references = {}
         for item in entries:
@@ -170,15 +170,8 @@ def synthesize_batch_to_mp3(items, video_id, *, device="cpu", language_id="vi",
             source = str(Path(item["reference_path"]).resolve())
             if source not in references:
                 target = work / f"reference-{len(references)}.wav"
-                decoder = subprocess.Popen([_binary("ffmpeg"), "-y", "-v", "error", "-i", source,
-                    "-t", "8", "-vn", "-ac", "1", "-ar", "48000", "-c:a", "pcm_s16le", str(target)],
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-                _stdout, error = communicate_process(cancellation_id, decoder, label="VieNeu reference decoding",
-                                                     timeout_seconds=60)
-                if decoder.returncode or not target.is_file() or target.stat().st_size <= 44:
-                    raise ValueError("Không đọc được mẫu nhân bản giọng VieNeu: " + str(error or "audio trống")[-400:])
-                references[source] = str(target)
+                references[source] = prepare_reference(source, target, cancellation_id,
+                                                       sample_rate=48000, max_seconds=8)
             item["reference_path"] = references[source]
         status_path = work / "status.json"
         request = dict(root=str(root), site=str(site), device=device, items=entries, status=str(status_path),

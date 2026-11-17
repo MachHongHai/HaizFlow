@@ -129,9 +129,8 @@ def _option(provider, row):
             return None
         if "endpoints" in row:
             hints = protocol_metadata(row)
-            if ("max_tokens" not in parameters or "context_length" not in hints
-                    or "max_completion_tokens" not in hints):
-                return None  # Do not offer a live model without a verifiable bounded request budget.
+            if "context_length" not in hints or "max_completion_tokens" not in hints:
+                return None  # Retain verifiable capacity for safe input batching.
         # Free text models with JSON mode still pass the same strict post-
         # validation. Never send a JSON Schema to an endpoint advertising only
         # response_format, or silently downgrade an unknown/paid model.

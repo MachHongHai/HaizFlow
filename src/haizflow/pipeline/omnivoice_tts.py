@@ -1009,12 +1009,29 @@ def synthesize_batch_to_mp3(
         temp_root = Path(temp_name)
         request_items: list[dict[str, str]] = []
         output_pairs: list[tuple[Path, Path]] = []
+        decoded_references: dict[str, str] = {}
+        reference_identities: dict[str, str] = {}
         for index, item in enumerate(items, 1):
             output = Path(str(item["output_path"])).resolve()
             output.parent.mkdir(parents=True, exist_ok=True)
             wav = temp_root / f"voice-{index:04d}.wav"
             reference_path = str(item.get("reference_path") or "")
             reference_text = str(item.get("reference_text") or "")
+            reference_identity = ""
+            if reference_path:
+                from haizflow.pipeline.clone_audio import prepare_reference
+
+                source_reference = str(Path(reference_path).resolve())
+                if source_reference not in decoded_references:
+                    source_stat = Path(source_reference).stat()
+                    reference_identities[source_reference] = hashlib.sha256(
+                        f"pcm-v1\0{source_reference}\0{source_stat.st_size}\0{source_stat.st_mtime_ns}".encode()
+                    ).hexdigest()
+                    decoded_references[source_reference] = prepare_reference(
+                        source_reference, temp_root / f"reference-{len(decoded_references)}.wav",
+                        cancellation_id, sample_rate=_SAMPLE_RATE)
+                reference_path = decoded_references[source_reference]
+                reference_identity = reference_identities[source_reference]
             source_audio = str(item.get("source_audio_path") or "")
             source_start = max(0.0, float(item.get("source_start") or 0.0))
             source_end = max(source_start, float(item.get("source_end") or source_start))
@@ -1078,6 +1095,7 @@ def synthesize_batch_to_mp3(
                     "wav_path": str(wav),
                     "reference_path": reference_path,
                     "reference_text": reference_text,
+                    "reference_identity": reference_identity,
                     "preset_reference_path": preset_path,
                     "preset_reference_text": preset_text,
                 }
@@ -1370,11 +1388,20 @@ def _batch_identity(item: dict[str, Any]) -> tuple[str, ...]:
 
 
 def _encode_voice_reference(model, torch, reference, transcript):
+    import numpy as np
+    import soundfile as sf
+
+    # Use Python's Unicode-aware file handle, then the SDK's waveform API.
+    # Never let the SDK fall back to an unbundled librosa path decoder.
+    with Path(reference).open("rb") as stream:
+        waveform, sample_rate = sf.read(stream, dtype="float32", always_2d=True)
+    if not waveform.size or not np.isfinite(waveform).all():
+        raise ValueError("Mẫu giọng không có âm thanh hợp lệ. Hãy chọn lại hoặc thu lại mẫu.")
     # SDK 0.2.1 does not decorate create_voice_clone_prompt with inference_mode.
     # Its acoustic codec otherwise builds autograd activations on GPU/CPU,
     # despite returning only discrete reference tokens for inference.
     with torch.inference_mode():
-        return model.create_voice_clone_prompt(ref_audio=reference, ref_text=transcript)
+        return model.create_voice_clone_prompt(ref_audio=(waveform.T, sample_rate), ref_text=transcript)
 
 
 def _reference_speech_level(runtime, sf, reference, fallback=0.0):
@@ -1808,7 +1835,9 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
             if not reference_text:
                 raise RuntimeError("Mẫu giọng cần có bản chép lời trước khi nạp OmniVoice.")
             stat = Path(reference_path).stat()
-            prompt_key = (model_key, reference_path, stat.st_size, stat.st_mtime_ns, reference_text)
+            identity = str(item.get("reference_identity") or "")
+            prompt_key = (model_key, identity, reference_text) if identity else (
+                model_key, reference_path, stat.st_size, stat.st_mtime_ns, reference_text)
             # Multiple-speaker mode creates a different reference for nearly
             # every subtitle. Retaining all of those GPU prompts caused DAC
             # convolution failures after several segments on 8 GB cards.

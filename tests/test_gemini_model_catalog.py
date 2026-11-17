@@ -52,7 +52,7 @@ def test_documented_efforts_are_exact_and_lowest_is_default(model):
                     target_language="Vietnamese", reasoning_effort=effort)
         settings = payload["generationConfig"]
         assert settings["thinkingConfig"] == {"thinkingLevel": effort, "includeThoughts": False}
-        assert 2048 <= settings["maxOutputTokens"] <= 32768
+        assert "maxOutputTokens" not in settings
         assert not {"temperature", "topP", "topK"} & settings.keys()
     with pytest.raises(ValueError, match="thinkingLevel"):
         gemini_translation._payload_for_chunk([(0, "Hello.")], model=model, source_language="English",

@@ -311,9 +311,8 @@ def _payload_for_chunk(
             # also ignore/deprecate custom sampling controls. Do not send any.
             # https://ai.google.dev/gemini-api/docs/gemini-3#temperature
             "candidateCount": 1,
-            # A cap does not prepay tokens. Leave room for language expansion,
-            # JSON framing and low-level reasoning so the last cue is not cut.
-            "maxOutputTokens": min(8192, max(2048, 1024 + len(chunk) * 64, sum(len(text) for _, text in chunk) * 4)),
+            # maxOutputTokens is optional: use the model/provider default.
+            # Thinking level controls reasoning independently of the output cap.
             "thinkingConfig": {"thinkingLevel": reasoning_effort or reasoning.get("default", "low"),
                                "includeThoughts": False},
             "responseMimeType": "application/json",
@@ -327,10 +326,6 @@ def _payload_for_chunk(
             },
         },
     }
-    if reasoning_effort:
-        from haizflow.services.translation_api_policy import output_limit
-        payload["generationConfig"]["maxOutputTokens"] = output_limit(
-            payload["generationConfig"]["maxOutputTokens"], reasoning_effort)
     if has_guidance:
         # Keep the output contract in system instructions. User-authored plot
         # summaries/rules are separate from both task sentences and examples.
@@ -433,16 +428,16 @@ def _request_chunk(chunk: list[tuple[int, str]], *, key: str, model: str,
             failure = exc if isinstance(exc, _ResponseError) else _ResponseError(
                 "invalid_envelope_json", "Gemini không trả về dữ liệu dịch hợp lệ. Dữ liệu cũ được giữ nguyên.",
             )
-            retry = failure.retryable and attempt < 2
+            # Retrying the same provider-default budget cannot raise it and may
+            # charge again. Preserve the checkpoint and report truncation.
+            retry = failure.retryable and failure.reason != "token_limit" and attempt < 2
             if video_id:
                 log_to_video(video_id, f"Gemini {model}: response={failure.reason}, {_response_diagnostic(answer)}, "
                              f"attempt={attempt + 1}/3, sentences={len(chunk)}, "
-                             f"token_limit={payload['generationConfig']['maxOutputTokens']}, retry={retry}.",
+                             f"token_limit=provider_default, retry={retry}.",
                              component="TRANSLATE", level="WARNING")
             if not retry:
                 raise RuntimeError(str(failure)) from None
-            if failure.reason == "token_limit":
-                payload["generationConfig"]["maxOutputTokens"] = max(8192, payload["generationConfig"]["maxOutputTokens"])
     raise RuntimeError("Gemini không phản hồi sau các lần thử.")
 
 

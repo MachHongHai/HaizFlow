@@ -29,6 +29,18 @@ class _ResponseError(ValueError):
         self.reason = reason
 
 
+class _TransportResponseError(ValueError):
+    """Safe transport metadata only: never retain keys, prompts or raw bodies."""
+
+    def __init__(self, reason, byte_count, content_type):
+        super().__init__(reason)
+        self.reason = reason
+        self.byte_count = min(byte_count, _MAX_RESPONSE + 1)
+        self.content_type = content_type if content_type in {
+            "application/json", "text/event-stream", "text/html", "text/plain",
+        } else "other"
+
+
 def _json_request(url, key, payload=None, *, timeout=90):
     outgoing = request.Request(url, data=None if payload is None else json.dumps(
         payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
@@ -37,9 +49,14 @@ def _json_request(url, key, payload=None, *, timeout=90):
         method="GET" if payload is None else "POST")
     with request.build_opener(_NoRedirect()).open(outgoing, timeout=timeout) as response:
         raw = response.read(_MAX_RESPONSE + 1)
+        content_type = response.headers.get("Content-Type", "").partition(";")[0].strip().lower()
     if len(raw) > _MAX_RESPONSE:
-        raise ValueError("API trả dữ liệu quá lớn; hãy giảm số câu mỗi yêu cầu.")
-    return json.loads(raw)
+        raise _TransportResponseError("response_too_large", len(raw), content_type)
+    try:
+        return json.loads(raw)
+    except (ValueError, UnicodeError):
+        reason = "empty_response" if not raw.strip() else "non_json_response"
+        raise _TransportResponseError(reason, len(raw), content_type) from None
 
 
 def public_error(status: int, label: str) -> str:
@@ -66,7 +83,7 @@ def _messages(gemini_payload):
 
 def _openrouter_rate_limit(answer=None, headers=None):
     """Classify bounded server hints; never echo raw messages, metadata or keys."""
-    fault = answer.get("error") if isinstance(answer, dict) else None
+    fault = _error_object(answer)
     fault = fault if isinstance(fault, dict) else {}
     metadata = fault.get("metadata")
     metadata = metadata if isinstance(metadata, dict) else {}
@@ -116,7 +133,7 @@ def _model_error(status, profile, *, answer=None, headers=None):
 
 
 def _request_failure_kind(answer):
-    fault = answer.get("error") if isinstance(answer, dict) else None
+    fault = _error_object(answer)
     fault = fault if isinstance(fault, dict) else {}
     meta = fault.get("metadata")
     meta = meta if isinstance(meta, dict) else {}
@@ -135,24 +152,44 @@ def _request_failure_kind(answer):
     return "unclassified"
 
 
+def _error_object(answer):
+    """Providers can report post-generation errors inside the only choice."""
+    if not isinstance(answer, dict):
+        return None
+    if answer.get("error") is not None:
+        return answer["error"]
+    choices = answer.get("choices")
+    if isinstance(choices, list) and len(choices) == 1 and isinstance(choices[0], dict):
+        return choices[0].get("error")
+    return None
+
+
 def _response_error_status(answer):
     """Read allowlisted error codes only; never surface raw provider messages."""
-    if not isinstance(answer, dict) or answer.get("error") is None:
+    fault = _error_object(answer)
+    if fault is None:
         return None
-    fault = answer["error"]
     code = fault.get("code") or fault.get("type") if isinstance(fault, dict) else None
     if type(code) is int and 400 <= code <= 599:
         return code
     if isinstance(code, str):
         if re.fullmatch(r"[45][0-9]{2}", code):
             return int(code)
-        return {"invalid_api_key": 401, "authentication_error": 401,
+        matched = {"invalid_api_key": 401, "authentication_error": 401,
                 "permission_denied": 403, "model_not_found": 404,
                 "insufficient_quota": 429, "rate_limit_exceeded": 429,
                 "billing_hard_limit_reached": 402, "credit_balance_exhausted": 402,
                 "context_length_exceeded": 400, "invalid_request_error": 400,
-                "server_error": 500, "server_overloaded": 503}.get(code, 0)
-    return 0
+                "server_error": 500, "server_overloaded": 503}.get(code)
+        if matched is not None:
+            return matched
+    metadata = fault.get("metadata") if isinstance(fault, dict) else None
+    kind = metadata.get("error_type") if isinstance(metadata, dict) else None
+    return {"authentication": 401, "permission_denied": 403, "payment_required": 402,
+            "rate_limit_exceeded": 429, "provider_overloaded": 503, "provider_unavailable": 502,
+            "timeout": 408, "server": 500, "context_length_exceeded": 400,
+            "max_tokens_exceeded": 400, "token_limit_exceeded": 400,
+            "not_found": 404, "invalid_request": 400}.get(kind, 0) if isinstance(kind, str) else 0
 
 
 def _usage_counts(answer):
@@ -256,8 +293,8 @@ def _request_chunk(profile, chunk, *, key, model, source_language, target_langua
     system, user = _messages(source_payload)
     schema = {"name": "subtitle_translation", "strict": True, "schema": _SCHEMA}
     limits = request_limits(profile["provider"], profile["model"],
-                            source_payload["generationConfig"]["maxOutputTokens"], reasoning_effort, protocol=_protocol)
-    token_limit = limits["max_tokens"]
+                            2048, reasoning_effort, protocol=_protocol)
+    token_limit = "provider_default"
     protocol = {}
     if profile["provider"] == "openrouter":
         from haizflow.services.translation_catalog_cache import protocol_for
@@ -267,13 +304,11 @@ def _request_chunk(profile, chunk, *, key, model, source_language, target_langua
         suffix = "/responses"
         payload = {"model": profile["model"], "instructions": system,
                    "input": [{"role": "user", "content": user}], "store": False,
-                   "text": {"format": {"type": "json_schema", **schema}},
-                   "max_output_tokens": token_limit}
+                   "text": {"format": {"type": "json_schema", **schema}}}
     else:
         suffix = "/chat/completions"
         payload = {"model": profile["model"], "messages": [
-            {"role": "system", "content": system}, {"role": "user", "content": user}],
-            "max_tokens": token_limit}
+            {"role": "system", "content": system}, {"role": "user", "content": user}]}
         output_format = profile["format"]
         if profile["provider"] == "openrouter":
             from haizflow.services.translation_catalog_cache import format_for
@@ -343,6 +378,19 @@ def _request_chunk(profile, chunk, *, key, model, source_language, target_langua
             # blindly resubmit it, or silently downgrade/change the chosen model.
             raise RuntimeError(f"{label}: mất kết nối hoặc quá thời gian. "
                                "Các câu đã hoàn thành được giữ lại.") from None
+        except _TransportResponseError as exc:
+            if video_id:
+                try:
+                    log_to_video(video_id, f"{label}: model={profile['model']}, response={exc.reason}, "
+                                 f"body_bytes={exc.byte_count}, content_type={exc.content_type}; "
+                                 "no automatic retry of an uncertain POST.", level="WARNING", component="TRANSLATE")
+                except (OSError, RuntimeError):
+                    pass
+            detail = {"empty_response": "máy chủ trả phản hồi rỗng hoặc ngắt trước khi có kết quả",
+                      "non_json_response": "máy chủ trả phản hồi không đúng định dạng hoặc chưa hoàn chỉnh",
+                      "response_too_large": "phản hồi vượt giới hạn dung lượng an toàn"}[exc.reason]
+            raise RuntimeError(f"{label}: {detail}. Các câu đã lưu được giữ nguyên; "
+                               "app không tự gửi lại yêu cầu.") from None
         except (TypeError, ValueError):
             raise RuntimeError(f"{label}: phản hồi không phải JSON hợp lệ. Dữ liệu cũ được giữ nguyên.") from None
         _log_usage(answer, label, video_id)

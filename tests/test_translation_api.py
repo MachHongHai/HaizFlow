@@ -95,6 +95,69 @@ def _chat(rows):
     return {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps({"translations": rows})}}]}
 
 
+@pytest.mark.parametrize("body,mime,reason", [
+    (b" \n\t", "application/json", "empty_response"),
+    (b'{"choices": PRIVATE', "application/json; PRIVATE", "non_json_response"),
+    (b"<html>PRIVATE</html>", "text/html", "non_json_response"),
+    (b"data: PRIVATE\n\n", "text/event-stream", "non_json_response"),
+    (b"\xffPRIVATE", "text/plain", "non_json_response"),
+    (b"PRIVATE", "PRIVATE/content-type", "non_json_response"),
+    (b"x" * (2 * 1024 * 1024 + 1), "application/json", "response_too_large"),
+], ids=["empty", "truncated-json", "html", "unexpected-sse", "invalid-utf8", "unknown-type", "oversized"])
+def test_transport_failures_are_bounded_and_never_expose_body_or_headers(monkeypatch, body, mime, reason):
+    response = io.BytesIO(body)
+    response.headers = {"Content-Type": mime}
+    opener = Mock()
+    opener.open.return_value = response
+    monkeypatch.setattr(api.request, "build_opener", Mock(return_value=opener))
+    with pytest.raises(api._TransportResponseError) as caught:
+        api._json_request("https://openrouter.ai/api/v1/chat/completions", "PRIVATE-key", {"model": "test"})
+    assert response.closed and opener.open.call_count == 1
+    assert caught.value.reason == reason
+    assert "PRIVATE" not in str(caught.value) + str(caught.value.__dict__)
+
+
+@pytest.mark.parametrize("provider,model", [
+    ("openrouter", "vendor/paid"), ("openrouter", "vendor/free:free"),
+    ("openai", "gpt-6-luna"), ("deepseek", "deepseek-flash"), ("custom", "custom-model"),
+])
+@pytest.mark.parametrize("kind", ["empty_response", "non_json_response", "response_too_large"])
+def test_transport_failure_never_retries_or_publishes_a_paid_or_free_batch(store, monkeypatch, provider, model, kind):
+    choice = "api:" + connections.add(provider, "Fixture", "PRIVATE-key", model, "https://example.com/v1")
+    send = Mock(side_effect=api._TransportResponseError(kind, 123, "text/html"))
+    monkeypatch.setattr(api, "_json_request", send)
+    saved = Mock()
+    with pytest.raises(RuntimeError, match="máy chủ|dung lượng") as caught:
+        api.translate_texts(["Hello."], model=choice, source_language="English", target_language="Vietnamese",
+                            video_id="fixture", result_callback=saved)
+    assert send.call_count == 1 and "PRIVATE" not in str(caught.value)
+    assert "sai ID" not in str(caught.value)
+    saved.assert_not_called()
+    assert "body_bytes=123" in str(api.log_to_video.call_args_list)
+
+
+@pytest.mark.parametrize("fault,expected", [
+    ({"code": 429, "message": "PRIVATE"}, 429),
+    ({"metadata": {"error_type": "provider_unavailable"}}, 502),
+    ({"metadata": {"error_type": "timeout"}}, 408),
+    ({"metadata": {"error_type": "payment_required"}}, 402),
+    ({"code": "unknown", "metadata": {"error_type": "rate_limit_exceeded"}}, 429),
+])
+def test_post_generation_choice_error_is_classified_before_json_or_id_validation(store, monkeypatch, fault, expected):
+    choice = "api:" + connections.add("openrouter", "Paid", "PRIVATE-key", "vendor/paid")
+    send = Mock(return_value={"choices": [{"finish_reason": "error", "error": fault,
+                                          "message": {"content": "PRIVATE incomplete output"}}]})
+    monkeypatch.setattr(api, "_json_request", send)
+    saved = Mock()
+    with pytest.raises(RuntimeError) as caught:
+        api.translate_texts(["Hello."], model=choice, source_language="English", target_language="Vietnamese",
+                            video_id="", result_callback=saved)
+    assert str(expected) in str(caught.value)
+    assert "PRIVATE" not in str(caught.value) and "sai ID" not in str(caught.value)
+    assert send.call_count == 1
+    saved.assert_not_called()
+
+
 def test_router_user_only_prompt_and_low_token_ceiling_keep_all_subtitles_and_guidance(store, monkeypatch):
     from haizflow.services import translation_catalog_cache
 
@@ -105,7 +168,7 @@ def test_router_user_only_prompt_and_low_token_ceiling_keep_all_subtitles_and_gu
     received = []
 
     def send(_url, _key, payload, **_kwargs):
-        assert payload["max_tokens"] <= 2048
+        assert "max_tokens" not in payload
         assert [row["role"] for row in payload["messages"]] == ["user"]
         user = payload["messages"][0]["content"]
         assert "Alice → An" in user and "natural" in user
@@ -310,7 +373,8 @@ def test_r1_batching_keeps_context_and_leaves_room_for_visible_translation(store
         ids = [row["id"] for row in entries]
         received.append(ids)
         contexts.append(payload["messages"][1]["content"])
-        budgets.append(payload["max_tokens"])
+        assert "max_tokens" not in payload
+        budgets.append(payload.get("max_tokens"))
         assert options == {"timeout": 240}
         assert payload["reasoning"] == {"exclude": True}  # Not a fictitious Low/High setting.
         return _chat([{"id": index, "text": f"Bản dịch câu {index}."} for index in ids])
@@ -322,7 +386,7 @@ def test_r1_batching_keeps_context_and_leaves_room_for_visible_translation(store
         translation_glossary="Giữ thống nhất tên nhân vật.", result_callback=saved)
     assert [len(batch) for batch in received] == [12, 12, 12, 4]
     assert [index for batch in received for index in batch] == list(range(40))
-    assert all(10240 <= limit <= 32768 for limit in budgets)
+    assert budgets == [None] * 4
     assert all("Giữ thống nhất tên nhân vật." in context for context in contexts)
     assert "accepted_examples" in contexts[1] and "Bản dịch câu 0." in contexts[1]
     assert len(result) == 40 and saved.call_count == 4
@@ -349,7 +413,7 @@ def test_r1_reasoning_exhaustion_is_precise_safe_and_never_paid_retried(
     saved.assert_not_called()
     logs = str(api.log_to_video.call_args_list)
     assert f"response={expected}" in logs and f"finish={finish}" in logs
-    assert "max_tokens=10240" in logs
+    assert "max_tokens=provider_default" in logs
     assert "PRIVATE REASONING TEXT" not in logs and "PRIVATE REASONING TEXT" not in str(caught.value)
 
 
@@ -595,7 +659,7 @@ def test_reasoning_requests_split_before_sending_and_reserve_visible_output(
     choice = "api:" + connections.add(provider, "A", "private", model)
     def send(url, key, payload, **kwargs):
         assert kwargs["timeout"] == 240
-        assert 10240 <= payload.get("max_output_tokens", payload.get("max_tokens")) <= 32768
+        assert not {"max_output_tokens", "max_completion_tokens", "max_tokens"} & payload.keys()
         user = payload["input"][0]["content"] if provider == "openai" else payload["messages"][1]["content"]
         # Decode the actual subtitle task, not the neighboring/context rows.
         task = json.loads(user.splitlines()[0])
@@ -908,8 +972,7 @@ def test_cost_controls_reach_payload_without_omitting_guidance_or_sentences(
     assert {key: payload[key] for key in ("reasoning", "thinking") if key in payload} == expected
     user = payload["input"][0]["content"] if provider == "openai" else payload["messages"][1]["content"]
     assert "Hello." in user and "Thanks." in user and "vợ chồng" in user and "natural" in user
-    assert payload.get("max_output_tokens", payload.get("max_tokens")) == (
-        10240 if (provider, model) == ("openai", "gpt-6.1-sol") else 2048)
+    assert not {"max_output_tokens", "max_completion_tokens", "max_tokens"} & payload.keys()
 
 
 @pytest.mark.parametrize("provider", ["openai", "deepseek", "openrouter", "custom"])

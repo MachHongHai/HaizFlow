@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
+import soundfile as sf
 
 from haizflow.pipeline import manual_tools, process_video
 from haizflow.pipeline import omnivoice_tts as voice
@@ -176,6 +177,8 @@ def test_number_policy_invalidates_only_numeric_local_cache():
 @pytest.mark.parametrize("permanently_bad", [False, True])
 def test_worker_retries_beeps_once_without_changing_voice_or_publishing_bad_audio(tmp_path, device, permanently_bad):
     torch, calls, writes = fake_torch(), [], []
+    reference = tmp_path / "preset.wav"
+    sf.write(str(reference), np.full(24000, .1, dtype=np.float32), 24000)
     prompt = object()
     def generate(**kwargs):
         calls.append((kwargs, torch.manual_seed.call_args.args[0]))
@@ -186,7 +189,7 @@ def test_worker_retries_beeps_once_without_changing_voice_or_publishing_bad_audi
     request = {"site_packages": str(tmp_path), "model_root": "model", "device": device, "language": "vi",
                "speaker_mode": "multiple", "status_path": str(tmp_path / "status.json"), "inference_steps": 32,
                "items": [{"text": "90.000 đô la.", "voice": "omnivoice:male", "wav_path": str(tmp_path / "voice.wav"),
-                          "preset_reference_path": "preset.mp3", "preset_reference_text": "Giọng mẫu."}]}
+                          "preset_reference_path": str(reference), "preset_reference_text": "Giọng mẫu."}]}
     path = tmp_path / "request.json"
     path.write_text(json.dumps(request), encoding="utf-8")
     if permanently_bad:
