@@ -142,6 +142,17 @@ def test_source_mode_does_not_schedule_or_touch_user_installations(monkeypatch):
     launch.assert_not_called()
 
 
+def test_already_installed_bootstrap_does_not_spawn_another_worker(installation, monkeypatch):
+    layout = installation
+    assert refresh.install(layout, layout.core(VERSION))
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(layout.core(VERSION) / "HaizFlowCore.exe"))
+    launch = Mock()
+    monkeypatch.setattr(refresh.subprocess, "Popen", launch)
+    assert not refresh.schedule()
+    launch.assert_not_called()
+
+
 def test_running_only_after_desktop_shutdown_and_validated_entrypoint():
     root = Path(__file__).parents[1]
     main = (root / "src/haizflow/desktop/main.py").read_text("utf-8")
