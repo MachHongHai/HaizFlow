@@ -14,7 +14,7 @@ Allow space for the app, packs, source videos and exports. Setup shows the requi
 
 ## 2. Install the app
 
-**[Download HaizFlow-0.1.10-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.10/HaizFlow-0.1.10-Setup.exe).** This is the only file you need to install the app. Core files on the [release page](https://github.com/MachHongHai/HaizFlow/releases/latest) are for automatic updates; do not download or extract them for installation.
+**[Download HaizFlow-1.0.6-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v1.0.6/HaizFlow-1.0.6-Setup.exe).** This is the only file you need to install the app. Core files on the [release page](https://github.com/MachHongHai/HaizFlow/releases/latest) are for in-app updates; do not download or extract them for installation.
 
 1. Open **Setup.exe**, select the language and read the terms.
 2. Choose an installation folder on a drive with enough free space.
@@ -33,7 +33,7 @@ Open **Settings → General**:
 
 Choose **Apply** and review the project's models before processing. CPU users do not need a CUDA pack. Installing CUDA Toolkit manually is not necessary for the app's packaged engines.
 
-On a 4 GB GPU with 16 GB RAM, start with Whisper Small GPU, HY-MT2 CPU Q4 (or a translation API) and OmniVoice GPU. Whisper Turbo is also selectable: when supported by CTranslate2, the 4 GB path uses INT8 compute and batch size 1, constructs VAD directly on CPU, and aligns timestamps on CPU. Full HY-MT2 GPU remains unavailable below 5 GiB VRAM; its verified full checkpoint alone is about 3.8 GiB, before inference allocations. The CUDA recognition and voice stages run sequentially; voice synthesis uses one sentence at a time without changing its checkpoint, FP16 precision or 32 inference steps. Demucs uses shorter GPU segments. Keep other GPU/CPU memory-intensive applications closed, and allow Windows to manage the page file. These settings reduce peak memory but do not guarantee every long project or busy 4 GB machine will fit. GTX 1650 admission is covered by simulated hardware tests, not a benchmark on that physical card.
+On a 4 GB GPU, start with Whisper Small GPU and HY-MT2 CPU Q4 or a translation API. Whisper Turbo is also available on supported hardware in a lower-memory mode; full HY-MT2 GPU still requires at least 5 GiB VRAM. Choose VieNeu for Vietnamese or a compatible multilingual voice model for other languages. Close unnecessary heavy apps: free RAM/VRAM at the time of processing still matters.
 
 ## 4. Install the tools you need
 
@@ -47,7 +47,7 @@ For Douyin downloads, also install **Douyin browser (Chromium)** in the **Downlo
 | Local translation | HY-MT2 CPU or HY-MT2 GPU |
 | Vocal separation | Demucs CPU or Demucs GPU, matching the app's mode |
 | Original-caption detection | OCR |
-| Local voice generation | OmniVoice and its matching processing environment |
+| Local voice generation | VieNeu for Vietnamese, or OmniVoice for supported languages, with the matching processing environment |
 
 The app lists the resources needed for each tool. Some resources are shared between packs; **Installed** means that resource is available and ready to use.
 
@@ -57,12 +57,12 @@ The project has one vocal-separation option, but Demucs has separate CPU/GPU pac
 
 ## 5. Add API keys only if needed
 
-Local Whisper, HY-MT2, Demucs and OCR do not require Gemini or Zernio keys.
+Local Whisper, HY-MT2, Demucs and OCR do not require translation-service or Zernio keys.
 
-- **Gemini:** for Gemini translation.
+- **Gemini, OpenAI, DeepSeek, OpenRouter or a custom API:** for translation through that service.
 - **Zernio:** for social publishing.
 
-Open **Settings → API Key**, select a provider, add and check your keys. Zernio connection checks test the listed keys: green dots indicate valid keys; red dots indicate keys that need checking. Select the key to use.
+Open **Settings → API Key**, select a provider, add and check a key, then choose **Use**. All providers select their active key here. Translation models are selected separately inside each project. See the [API guide](translation-api.md), including compatible local Ollama servers.
 
 Keys are stored in Windows Credential Manager. Never include them in screenshots, public logs or issues. You manage external service accounts and any associated charges.
 
@@ -71,6 +71,14 @@ Keys are stored in Windows Credential Manager. Never include them in screenshots
 Keep independent copies of important source and exported videos. Working data lives in the installation's runtime folder. Use **Move location** in Resource packs to move resource storage; let the operation finish and do not move folders during processing.
 
 Update checks notify you when a new version is available. Confirm the download, then confirm restarting to apply it. Finish or pause active work before updating.
+
+Versions **1.0.2–1.0.5** can update to 1.0.6 in the app without reinstalling. After your first normal exit from 1.0.6, the new launcher is installed safely for subsequent launches. Keep the normal application shortcut; do not launch a versioned Core file directly.
+
+Update the **CPU 19 / GPU CUDA 21** engines in Resource packs when needed. Existing model downloads and projects are kept; OCR remains at version 10.
+
+## 7. Connect an AI agent (optional)
+
+Open **Settings → MCP** and follow the guide for your agent. Review the enabled permissions and keep HaizFlow open while using it. See the [MCP guide](mcp.md).
 
 ## Start using HaizFlow
 

@@ -6,7 +6,10 @@
 
 - [Install HaizFlow](install.md): installer, CPU/GPU, resource packs, API keys and data.
 - [Use HaizFlow](user-guide.md): your first project, captions, voice and export.
+- [Translation APIs](translation-api.md): select a key, choose project models and connect compatible local servers.
+- [Connect an AI agent](mcp.md): illustrated MCP setup, permissions and connection checks.
 - [Help](support.md): resource packs, API keys, data management and contacting support.
+- [What's new in 1.0.6](release-notes-1.0.6.md): current improvements and in-app upgrades from 1.0.2.
 
 ## For developers and maintainers
 

@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="src/haizflow/desktop/assets/branding/haizflow-mark.png" width="96" alt="Logo HaizFlow">
+  <img src="docs/images/haizflow-mark-transparent.png" width="96" alt="Logo HaizFlow">
   <h1>HaizFlow</h1>
   <p><strong>Ứng dụng miễn phí để tải, dịch, tạo phụ đề và lồng tiếng video trên Windows.</strong></p>
   <p><a href="https://github.com/MachHongHai/HaizFlow/releases/download/v1.0.6/HaizFlow-1.0.6-Setup.exe">Cài đặt</a> · <a href="docs/user-guide.vi.md">Hướng dẫn sử dụng</a> · <a href="docs/support.vi.md">Trợ giúp</a> · <a href="README.md">English</a></p>
@@ -16,14 +16,15 @@ HaizFlow giúp bạn tải video, dịch nội dung, tạo phụ đề và lồn
 | Chức năng | Bạn có thể làm gì? |
 | --- | --- |
 | **Tải video hàng loạt** | Chọn nhiều video từ kênh hoặc trang cá nhân công khai được hỗ trợ và tải theo hàng đợi. |
-| **Dịch video** | Nhận dạng lời nói bằng Whisper; dịch bằng HY-MT2 trên máy hoặc Gemini. Sửa bản dịch trước khi xuất. |
-| **Tạo phụ đề** | Tạo phụ đề từ lời nói trong video; chỉnh nội dung, thời gian, kiểu chữ Bangers và hiệu ứng karaoke. |
+| **Dịch video** | Nhận dạng bằng Whisper; dịch trên máy với HY-MT2 hoặc dùng Gemini, OpenAI, DeepSeek, OpenRouter, API tương thích tùy chỉnh. Chọn văn phong và mức suy luận được hỗ trợ theo dự án. |
+| **Tạo phụ đề** | Chỉnh nội dung, thời gian, vị trí và karaoke; xem mẫu font đi kèm, có font dự phòng phù hợp tiếng Trung, Nhật, Hàn. |
 | **Lồng tiếng** | Tạo giọng đọc cho nội dung đã dịch, chọn giọng có sẵn hoặc dùng mẫu giọng bạn có quyền sử dụng. |
 | **Xử lý tự động** | Chọn ngôn ngữ, model và giọng đọc, rồi để ứng dụng chạy các bước nhận dạng, dịch, tạo giọng và che phụ đề đã chọn. |
-| **Xử lý hàng loạt** | Áp dụng thiết lập chung cho nhiều video, theo dõi tiến trình và kết quả của từng video. |
+| **Xử lý hàng loạt** | Áp dụng thiết lập chung, xem video dùng cài đặt riêng, xóa mục và xử lý/xử lý lại toàn bộ hoặc các video đã chọn. |
 | **Che phụ đề gốc** | Dùng OCR tìm vùng phụ đề, sau đó làm mờ hoặc vá nền để che chữ gốc. |
 | **Nhận diện nhiều người nói** | Phân nhóm người nói trong video và gán giọng đọc riêng cho từng nhóm, thay vì dùng một giọng cho cả hội thoại. |
 | **Đăng mạng xã hội** | Chọn tài khoản, chuẩn bị nội dung và đăng video qua Zernio. Có thể lấy video đã xử lý trực tiếp từ dự án. |
+| **Điều khiển bằng AI agent (MCP)** | Kết nối agent tương thích để xem dự án và thực hiện các công việc được hỗ trợ qua hàng đợi, theo quyền của phiên MCP. |
 
 Các công cụ trong trình sửa Thủ công chạy độc lập: không bắt buộc lồng tiếng nếu bạn chỉ cần video có phụ đề dịch.
 
@@ -31,7 +32,7 @@ Xem trước video, chỉnh phụ đề và chọn giọng đọc phù hợp tr�
 
 ## Hình ảnh giao diện
 
-[Trang chủ](#trang-chủ) · [Xử lý tự động](#xử-lý-tự-động) · [Trình sửa thủ công](#trình-sửa-thủ-công) · [Tải xuống](#tải-xuống) · [Đăng mạng xã hội](#đăng-mạng-xã-hội) · [Cài đặt](#cài-đặt)
+[Trang chủ](#trang-chủ) · [Xử lý tự động](#xử-lý-tự-động) · [Trình sửa thủ công](#trình-sửa-thủ-công) · [Xử lý hàng loạt](#xử-lý-hàng-loạt) · [API dịch](#api-dịch) · [MCP](#mcp) · [Tải xuống](#tải-xuống) · [Đăng mạng xã hội](#đăng-mạng-xã-hội) · [Cài đặt](#cài-đặt)
 
 Ảnh minh họa giao diện tiếng Việt; tùy chọn và số phiên bản có thể khác ở các bản mới. Bấm vào ảnh để xem kích thước đầy đủ.
 
@@ -53,6 +54,24 @@ So sánh video nguồn và kết quả, chạy từng bước độc lập, chia
 
 ![Trình sửa thủ công với preview, bảng xử lý và timeline phụ đề, âm thanh](docs/images/screenshots/manual-editor-2026-10-14.png)
 
+### Xử lý hàng loạt
+
+Quản lý các thẻ video trong một hàng đợi, áp dụng cài đặt chung, xem cài đặt riêng và chọn phạm vi xử lý/xử lý lại. Tiến trình hiển thị gọn ở hàng thao tác dưới cùng và từng thẻ video.
+
+![Dự án hàng loạt với năm video hoàn tất, nhãn cài đặt riêng và hàng tiến trình gọn](docs/images/screenshots/batch-processing-1.0.6.png)
+
+### API dịch
+
+Chọn API sử dụng tại **Cài đặt → API Key**. Trong từng dự án, mở nhóm nhà cung cấp để chọn model dịch; OpenRouter có tìm kiếm, tải lại và nhãn Miễn phí/Tính phí theo danh sách gần nhất. Danh sách có thể thay đổi; nhãn không bảo đảm máy chủ còn chỗ hoặc tài khoản còn hạn mức.
+
+![Danh sách model OpenRouter với ô tìm kiếm, tải lại và nhãn miễn phí](docs/images/screenshots/translation-models-1.0.6.png)
+
+### MCP
+
+Mở **Cài đặt → MCP** để bật kết nối cục bộ, xem quyền và sao chép thông tin kết nối cho agent. **Kiểm tra HaizFlow** kiểm tra phía app; cần thử lại từ agent để xác nhận cả hai phía.
+
+![Cài đặt MCP với nút bật kết nối cục bộ và hướng dẫn kết nối agent theo từng bước](docs/images/screenshots/mcp-settings-1.0.6.png)
+
 ### Tải xuống
 
 Kiểm tra liên kết video, kênh hoặc âm thanh, xem trước danh sách và chọn các video cần tải. Ảnh minh họa một kênh Douyin.
@@ -67,13 +86,15 @@ Thêm video đã xử lý từ dự án vào hàng đợi và chuẩn bị bài 
 
 ### Cài đặt
 
-Chọn ngôn ngữ giao diện và chế độ CPU/GPU. Các tab còn lại quản lý API key và gói tài nguyên.
+Chọn ngôn ngữ giao diện và chế độ CPU/GPU. Các tab còn lại quản lý API key, gói tài nguyên và MCP.
 
 ![Trang cài đặt với ngôn ngữ, bộ xử lý, giữ model sẵn sàng và kiểm tra cập nhật](docs/images/screenshots/settings.png)
 
 ## Dịch trên máy, không cần trả phí API theo lượt
 
-Whisper và HY-MT2 chạy trên máy sau khi cài gói tài nguyên, không cần API key hoặc phí dịch theo lượt gọi. Gemini là lựa chọn thêm nếu bạn muốn dùng dịch vụ trực tuyến.
+Whisper và HY-MT2 chạy trên máy sau khi cài gói tài nguyên, không cần API key hoặc phí dịch theo lượt gọi. Gemini, OpenAI, DeepSeek, OpenRouter và API tương thích tùy chỉnh là các lựa chọn thêm, kể cả máy chủ Ollama tương thích chạy cục bộ.
+
+Các API dịch hỗ trợ văn phong, bối cảnh, tên nhân vật và xưng hô trong Thủ công, Tự động và Hàng loạt. Mức suy luận được chọn riêng, không tự tăng khi đổi văn phong. Xem [kết nối API và chọn model](docs/translation-api.vi.md).
 
 Máy không có GPU NVIDIA vẫn dùng được các lựa chọn CPU. Với GPU NVIDIA tương thích, bạn có thể chọn các model GPU. Chọn chế độ trong Cài đặt và cài các gói tương ứng với công cụ bạn muốn dùng.
 
@@ -90,9 +111,13 @@ Gemini, Zernio và các dịch vụ bên ngoài có điều khoản, hạn mức
 
 Ứng dụng hỗ trợ Windows 10 phiên bản 1809 trở lên và Windows 11 x64, RAM hệ thống từ 16 GB. Không cần cài Python khi dùng bộ cài. Cần thêm dung lượng cho gói tài nguyên, video và tệp xuất; bộ cài và trang Gói tài nguyên hiển thị yêu cầu tương ứng.
 
-Chế độ GPU hỗ trợ card NVIDIA loại 4 GB (CUDA báo ít nhất 3,5 GiB VRAM riêng). Với card 4 GB, chọn Whisper Small GPU, HY-MT2 CPU Q4 hoặc Gemini và OmniVoice GPU; các bước nặng chạy lần lượt, giọng đọc tạo từng câu. Whisper Turbo và HY-MT2 GPU đầy đủ cần nhiều VRAM hơn. VRAM trống và RAM hệ thống tại lúc chạy vẫn phải đủ. Bản chưa ký số có thể bị Windows Smart App Control hoặc chính sách Application Control chặn; xem [hướng dẫn cài đặt](docs/install.vi.md).
+Card NVIDIA 4 GB tương thích có thể dùng Whisper Small GPU và lựa chọn Whisper Turbo ít tốn bộ nhớ được hỗ trợ. Chọn HY-MT2 CPU Q4 hoặc API dịch; HY-MT2 GPU đầy đủ cần ít nhất 5 GiB VRAM. RAM/VRAM trống lúc chạy vẫn phải đủ. Bản chưa ký số có thể bị chính sách Windows chặn; xem [hướng dẫn cài đặt](docs/install.vi.md).
 
 Xem [hướng dẫn cài đặt](docs/install.vi.md) để chọn gói CPU/GPU, thêm API key và chọn vị trí lưu dữ liệu. Xem [hướng dẫn sử dụng](docs/user-guide.vi.md) để tạo dự án, chỉnh phụ đề, lồng tiếng và đăng bài.
+
+## Kết nối AI agent (MCP)
+
+Kết nối Claude, Codex, Antigravity hoặc agent hỗ trợ stdio tại **Cài đặt → MCP** và giữ HaizFlow mở. Bật MCP sẽ cấp các quyền cho phiên hiện tại; bạn có thể tắt từng quyền không muốn cấp. Khi đã có quyền, xử lý, xóa và đăng bài không cần xác nhận lần nữa trong trang MCP của HaizFlow; ứng dụng agent vẫn có thể hỏi theo chính sách riêng. MCP và quyền được đặt lại khi thoát app. Xem [hướng dẫn MCP](docs/mcp.vi.md).
 
 ## Giấy phép và sử dụng thương mại
 

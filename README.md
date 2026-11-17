@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="src/haizflow/desktop/assets/branding/haizflow-mark.png" width="96" alt="HaizFlow logo">
+  <img src="docs/images/haizflow-mark-transparent.png" width="96" alt="HaizFlow logo">
   <h1>HaizFlow</h1>
   <p><strong>A free Windows app for downloading, translating, subtitling and dubbing videos.</strong></p>
   <p><a href="https://github.com/MachHongHai/HaizFlow/releases/download/v1.0.6/HaizFlow-1.0.6-Setup.exe">Installation</a> · <a href="docs/user-guide.md">User guide</a> · <a href="docs/support.md">Help</a> · <a href="README.vi.md">Tiếng Việt</a></p>
@@ -16,14 +16,15 @@ Automatic mode runs the steps you select. The Manual editor lets you review and 
 | Feature | What you can do |
 | --- | --- |
 | **Batch video downloads** | Select multiple videos from supported public channels or profiles and queue them for download. |
-| **Video translation** | Recognize speech with Whisper; translate locally with HY-MT2 or use Gemini. Review translations before exporting. |
-| **Subtitle creation** | Create captions from video speech; edit text, timing, Bangers styling and karaoke highlighting. |
+| **Video translation** | Recognize speech with Whisper; translate locally with HY-MT2 or use Gemini, OpenAI, DeepSeek, OpenRouter or a custom compatible API. Choose style and supported reasoning per project. |
+| **Subtitle creation** | Edit text, timing, placement and karaoke highlighting; preview bundled fonts with script-aware Chinese, Japanese and Korean fallbacks. |
 | **Video dubbing** | Generate speech for translated text using built-in voices or a reference sample you have permission to use. |
 | **Automatic processing** | Choose languages, models and voice settings, then run your selected recognition, translation, dubbing and caption-coverage steps. |
-| **Batch processing** | Apply common settings to multiple videos and follow each video's progress and results. |
+| **Batch processing** | Apply common settings, inspect per-video overrides, remove items and process or rerun all or selected videos. |
 | **Cover original subtitles** | Detect caption regions with OCR and cover them using blur or background patching. |
 | **Multiple-speaker detection** | Group speakers and assign a separate voice to each group instead of using one voice for the entire conversation. |
 | **Social publishing** | Select an account, prepare the post and publish through Zernio. You can use processed videos directly from projects. |
+| **AI-agent control (MCP)** | Connect compatible agents to inspect projects and operate supported workflows through HaizFlow's queues and session permissions. |
 
 Manual tools run independently: dubbing is optional when you only need translated captions.
 
@@ -31,7 +32,7 @@ Preview the video, edit captions and choose suitable voices before exporting or 
 
 ## App screenshots
 
-[Home](#home) · [Automatic processing](#automatic-processing) · [Manual editor](#manual-editor) · [Downloads](#downloads) · [Social publishing](#social-publishing) · [Settings](#settings)
+[Home](#home) · [Automatic processing](#automatic-processing) · [Manual editor](#manual-editor) · [Batch processing](#batch-processing) · [Translation APIs](#translation-apis) · [MCP](#mcp) · [Downloads](#downloads) · [Social publishing](#social-publishing) · [Settings](#settings)
 
 The screenshots show the Vietnamese interface. Options and version labels may differ in newer releases. Click an image to view it at full size.
 
@@ -53,6 +54,24 @@ Review source and result previews, run individual processing steps, split the Re
 
 ![Manual editor with video preview, processing panel and subtitle and audio timeline](docs/images/screenshots/manual-editor-2026-10-14.png)
 
+### Batch processing
+
+Manage video cards in one queue, apply shared settings, see individual overrides and choose which videos to process or rerun. Progress stays in the compact bottom row and each video card.
+
+![Batch project with five completed videos, individual-settings badge and compact progress controls](docs/images/screenshots/batch-processing-1.0.6.png)
+
+### Translation APIs
+
+Choose the API key to use in **Settings → API Key**. Inside each project, open a provider's submenu to select its translation model; OpenRouter includes search, refresh and last-known Free/Paid labels. The catalogue changes over time: these labels do not guarantee current capacity or quota.
+
+![Translation-model picker showing OpenRouter search, refresh and free-model labels](docs/images/screenshots/translation-models-1.0.6.png)
+
+### MCP
+
+Open **Settings → MCP** to enable the local connection, review permissions and copy the connection details for your agent. **Check HaizFlow** tests the app's connection; verify it separately from the agent too.
+
+![MCP settings with local connection switch and a step-by-step agent connection guide](docs/images/screenshots/mcp-settings-1.0.6.png)
+
 ### Downloads
 
 Inspect a video, channel or audio link, review the channel's video list and select the items to download. This example shows a Douyin channel.
@@ -67,15 +86,15 @@ Add processed videos from existing projects to the publishing queue and prepare 
 
 ### Settings
 
-Choose the interface language and CPU/GPU mode. The other tabs manage API keys and resource packs.
+Choose the interface language and CPU/GPU mode. The other tabs manage API keys, resource packs and MCP.
 
 ![Settings page with language, processing device, warm-up and update controls](docs/images/screenshots/settings.png)
 
 ## Local translation without per-call API charges
 
-Whisper and HY-MT2 run on your computer after their resource packs are installed. They do not require API keys or per-call translation fees. Gemini is an additional option for online translation.
+Whisper and HY-MT2 run on your computer after their resource packs are installed. They do not require API keys or per-call translation fees. Gemini, OpenAI, DeepSeek, OpenRouter and custom compatible APIs are additional options for online or locally hosted translation, including compatible Ollama servers.
 
-Gemini also supports [translation styles, guidance and character/address conventions](docs/gemini-translation-guidance.md) in Manual, Auto and Batch, with bounded dialogue context shared between translation batches.
+Cloud translation supports [styles, guidance and character/address conventions](docs/gemini-translation-guidance.md) in Manual, Auto and Batch. Supported reasoning controls are independent of style. See [API setup and model selection](docs/translation-api.md).
 
 Computers without an NVIDIA GPU can use supported CPU options. Compatible NVIDIA GPUs can use GPU models. Choose a processing mode in Settings and install the matching resources for the tools you want to use.
 
@@ -92,13 +111,13 @@ Gemini, Zernio and other external services have their own terms, limits and char
 
 Supported systems are Windows 10 version 1809 or later and Windows 11 x64, with at least 16 GB system RAM. Installer users do not need Python. Resource packs, projects and exports need additional storage; Setup and the Resource packs page show their corresponding requirements.
 
-GPU mode supports compatible NVIDIA 4 GB-class cards (at least 3.5 GiB dedicated VRAM reported by CUDA). On 4 GB, Whisper Small GPU remains the default; Whisper Turbo can also use supported INT8 compute with batch size 1 and CPU-side VAD/alignment. Use HY-MT2 CPU Q4 or a translation API: the full HY-MT2 GPU model still requires at least 5 GiB VRAM. Recognition and voice stages run sequentially, with one voice sentence at a time. Available VRAM and system memory still matter at runtime; these policies do not guarantee every project fits. Windows Smart App Control or an Application Control policy may block this unsigned build; see the [installation guide](docs/install.md).
+Compatible NVIDIA 4 GB cards can use Whisper Small GPU and supported lower-memory Whisper Turbo options. Use HY-MT2 CPU Q4 or a translation API; full HY-MT2 GPU requires at least 5 GiB VRAM. Available RAM/VRAM still matters. This unsigned build may be blocked by Windows policy; see the [installation guide](docs/install.md).
 
 See [Installation](docs/install.md) for CPU/GPU packs, API keys and storage. See the [User guide](docs/user-guide.md) for projects, captions, dubbing and publishing.
 
 ## Agent integration (MCP)
 
-Connect Claude, Codex, Antigravity and other stdio MCP clients from **Settings → MCP**. The dedicated page includes setup instructions and copyable configuration for each host. Agents can inspect and operate project, subtitle, processing, download and publishing workflows through the app's existing queues. Deletion and publishing require explicit in-app approval. See the [MCP setup and permissions guide](docs/mcp.md).
+Connect Claude, Codex, Antigravity and other stdio MCP clients from **Settings → MCP** and keep HaizFlow open. Enabling MCP grants its session permissions; turn off any permissions you do not want to grant. Authorized processing, deletion and publishing run without a second confirmation inside HaizFlow MCP; the agent host may still ask for approval. MCP resets when HaizFlow exits. See the [MCP setup and permissions guide](docs/mcp.md).
 
 ## License and commercial use
 

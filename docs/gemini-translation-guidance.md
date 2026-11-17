@@ -1,7 +1,7 @@
-# Hướng dẫn dịch Gemini
+# Văn phong và hướng dẫn dịch
 
-Trong Manual, Auto và cấu hình chung Batch, chọn một model Gemini để hiện nút
-**Văn phong & hướng dẫn**. Chọn một văn phong rồi nhập hướng dẫn riêng nếu cần;
+Trong Thủ công, Tự động và Cài đặt hàng loạt, chọn một model API dịch rồi mở
+**Văn phong & hướng dẫn**. Chọn văn phong và nhập hướng dẫn riêng nếu cần;
 các lựa chọn được lưu cùng cấu hình video/dự án:
 
 - **Cân bằng** (mặc định): rõ nghĩa, trung tính, cân bằng độ sát và dễ đọc.
@@ -38,18 +38,16 @@ Không chia sẻ ngữ cảnh giữa các video, không thêm một lượt gọ
 tích toàn phim và không thay thế đại từ hàng loạt sau dịch. Có thêm token ngữ
 cảnh trong các yêu cầu dịch hiện có.
 
-Gemini dùng cấu hình lấy mẫu mặc định của Google, không ép temperature thấp.
-Với Flash-Lite, khi nhập hướng dẫn riêng hoặc chọn văn phong khác Cân bằng, mức suy luận tăng từ `minimal` lên
-`low` để xử lý quy ước/quan hệ; lượt dịch có thể chậm và dùng nhiều token suy
-luận hơn một chút. Không thêm lượt gọi kiểm tra toàn bộ bản dịch. Prompt yêu
-cầu soát chính tả và không sao chép lỗi từ bản dịch trước; không tự sửa tên
-riêng bằng từ điển hoặc bảng thay thế chữ cố định.
+Văn phong và suy luận là hai lựa chọn độc lập. Chọn **Tự nhiên** hoặc nhập
+hướng dẫn không tự nâng **Mức/Suy luận**. Bạn vẫn có thể dùng mức thấp nhất
+được model hỗ trợ; chỉ nâng khi muốn thử xử lý nội dung khó hơn và chấp nhận
+thêm thời gian, token. Đổi model sẽ dùng mặc định phù hợp của model mới.
 
-Đổi văn phong/hướng dẫn làm mất hiệu lực cache dịch Gemini liên quan, không buộc Whisper
+Đổi văn phong/hướng dẫn làm mất hiệu lực cache dịch liên quan, không buộc Whisper
 nhận dạng lại chỉ vì thay hướng dẫn. Phụ đề và giọng đã xuất bản trong editor
 vẫn giữ nguyên đến khi người dùng chủ động chạy lại. Các model HY-MT2 không dùng
-hai trường này. Hướng dẫn và phụ đề được gửi tới Google khi chạy Gemini;
-không ghi nội dung hướng dẫn hay API key vào log kỹ thuật.
+hai trường này. Hướng dẫn và phụ đề được gửi tới dịch vụ đã chọn khi chạy API;
+không ghi nội dung hướng dẫn hay API key vào log kỹ thuật. Xem [hướng dẫn API](translation-api.vi.md).
 
 ## Giới hạn
 

@@ -15,7 +15,7 @@ Tài nguyên dùng chung có thể đã được cung cấp bởi gói khác. **
 
 ## API key
 
-Trong **Cài đặt → API Key**, kiểm tra key đã được dán đầy đủ và chọn đúng tài khoản. Với Zernio, chấm đỏ nghĩa là kiểm tra chưa thành công: xem lại key, quyền truy cập và kết nối mạng, rồi kiểm tra lại.
+Trong **Cài đặt → API Key**, kiểm tra key đã được dán đầy đủ và chọn **Sử dụng** ở tài khoản muốn dùng. Mỗi nhà cung cấp chọn key tại đây; model dịch chọn trong dự án. **Kiểm tra kết nối** liên hệ lại dịch vụ, nhưng thành công không bảo đảm model luôn sẵn sàng hoặc tài khoản còn tiền. Xem [hướng dẫn API](translation-api.vi.md).
 
 Key nằm trong Windows Credential Manager của tài khoản Windows đang dùng. Khi đổi máy hoặc tài khoản Windows, thêm lại key. Không gửi key trong ảnh, log hoặc yêu cầu hỗ trợ.
 
@@ -23,19 +23,27 @@ Key nằm trong Windows Credential Manager của tài khoản Windows đang dùn
 
 Kiểm tra các track nguồn, giọng đọc và nhạc nền trên timeline. Bật track cần nghe, điều chỉnh âm lượng và tránh phát đồng thời lời gốc với giọng lồng tiếng khi không cần.
 
-Phụ đề dùng Bangers đi kèm ứng dụng. Xem lại vị trí, kích thước và vùng hiển thị ở vài thời điểm trong video.
+Chọn font đi kèm qua mẫu xem trước; tiếng Trung, Nhật, Hàn có font dự phòng phù hợp. Xem lại vị trí, kích thước và vùng chữ ở vài thời điểm. Khi chỉ cần sửa một vài đoạn giọng, chọn các câu đó trong phạm vi tạo giọng của Thủ công, không cần tạo lại cả video.
 
 ## Bộ nhớ và dung lượng
 
-Whisper tự chọn kiểu tính toán theo khả năng CTranslate2 của GPU: GPU hỗ trợ FP16 vẫn dùng FP16; GPU đời cũ như GTX 1070 dùng INT8/FP32 khi backend hỗ trợ. Không đổi checkpoint hoặc ép toàn bộ máy sang CPU. Kiểu tính toán thực tế được ghi trong log nhận dạng. Driver và môi trường GPU vẫn cần tương thích; chế độ tương thích không bảo đảm mọi model đều vừa VRAM.
+Nếu model GPU không khả dụng, kiểm tra driver NVIDIA và gói tài nguyên tương ứng. Chọn model nhỏ hơn được hỗ trợ khi cần; có GPU tương thích không có nghĩa mọi model đều vừa bộ nhớ.
 
 Với thông báo thiếu RAM/VRAM, đóng ứng dụng khác hoặc chọn model nhỏ hơn, phù hợp với máy. Có thể tắt **Giữ model sẵn sàng** để giải phóng model giữa các lượt xử lý; tùy chọn này giảm thời gian nạp lại, không làm tăng bộ nhớ máy.
 
-RAM lắp đặt quyết định máy có đạt cấu hình CPU tối thiểu; RAM còn trống và bộ nhớ Windows còn cấp phát được quyết định có thể nạp model ngay lúc đó hay không. Khi chuyển sang HY-MT2 CPU, ứng dụng giải phóng các runtime warm-up không còn cần và đo lại bộ nhớ trong tối đa 2 giây nếu thiếu tài nguyên. Nếu vẫn thiếu, ứng dụng giữ kết quả đã hoàn thành và dừng an toàn, không bỏ kiểm tra bộ nhớ.
+Đủ RAM lắp đặt không có nghĩa luôn đủ bộ nhớ trống ở thời điểm chạy. Khi app yêu cầu thêm bộ nhớ, giải phóng tài nguyên hoặc chọn model nhỏ hơn rồi tiếp tục từ kết quả đã lưu còn hợp lệ.
 
-OmniVoice CPU có thể mất vài phút cho một câu dài; phần trăm hoàn thành chỉ tăng khi đã có âm thanh hợp lệ. Log `decoder_forwards` ghi nhận lượt suy luận thực để phân biệt đang tính toán với worker không tiến triển. Không giảm precision hay số bước suy luận để tăng tốc. Phục hồi GPU → CPU chỉ thay backend cho lượt đang phục hồi; không ghi đè lựa chọn model đã lưu hoặc bỏ checkpoint còn hợp lệ.
+OmniVoice CPU có thể mất vài phút cho một câu dài. Nếu thấy tiến trình đứng lâu, mở **Chi tiết** để xem log trước khi chạy lại. Muốn tạo giọng nhanh hơn, chọn GPU tương thích và bảo đảm đủ bộ nhớ trống.
 
 Chuyển tài nguyên bằng **Chuyển vị trí** trong Gói tài nguyên. Đợi thao tác hoàn tất và giữ bản sao video nguồn, video xuất quan trọng. Không xóa thủ công thư mục dự án hoặc gói đang được dùng.
+
+## Kết nối MCP
+
+Giữ HaizFlow mở và bật **Cài đặt → MCP**. **Kiểm tra HaizFlow** kiểm tra phía app; sau đó gửi câu lệnh thử từ agent. Nếu vừa di chuyển hoặc cập nhật app, sao chép lại thông tin kết nối hiện tại. Không dùng lệnh mở giao diện thông thường làm lệnh máy chủ MCP. Xem [hướng dẫn MCP](mcp.vi.md).
+
+## Thông báo lỗi
+
+Đọc phần tóm tắt trước. **Chi tiết** mở log kỹ thuật; **Xác nhận** hoặc nút đóng sẽ bỏ thông báo. Menu **…** của dự án cũng có log kỹ thuật. Khi báo lỗi, chỉ gửi đoạn liên quan và che thông tin riêng tư.
 
 ## Bộ cài và Windows
 

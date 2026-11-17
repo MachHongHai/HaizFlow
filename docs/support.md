@@ -15,7 +15,7 @@ Another pack may already provide a shared resource. **Installed** indicates read
 
 ## API keys
 
-In **Settings → API Key**, check that the complete key is pasted and the correct account is selected. A red Zernio dot means the check did not succeed: review the key, permissions and network connection, then check again.
+In **Settings → API Key**, check the complete key and choose **Use** for the intended account. Each provider selects its active key here; translation models are chosen inside projects. **Check connection** contacts the service again, but success does not guarantee model availability or remaining credit. See the [API guide](translation-api.md).
 
 Keys are stored in Windows Credential Manager for the current Windows account. Add them again when changing computers or Windows accounts. Never send keys in screenshots, logs or support requests.
 
@@ -23,19 +23,27 @@ Keys are stored in Windows Credential Manager for the current Windows account. A
 
 Check the source, voice and music tracks on the timeline. Enable the tracks you want to hear and adjust their levels. Avoid playing original and dubbed speech together unless intended.
 
-Captions use the bundled Bangers font. Review their position, size and caption area at several points in the video.
+Choose a bundled font with its preview; Chinese, Japanese and Korean have suitable regional fallbacks. Review position, size and caption area at several points in the video. To correct a voice without regenerating the whole video, select the affected sentences in Manual's voice-generation scope.
 
 ## Memory and storage
 
-Whisper selects precision from the GPU capabilities reported by CTranslate2. FP16-capable GPUs keep FP16; older GPUs such as the GTX 1070 use INT8/FP32 when supported by the backend. This does not change checkpoints or force all machines to CPU. Recognition logs show the selected mode. Compatible drivers and GPU runtimes are still required; compatibility mode does not guarantee that every model fits in VRAM.
+If a GPU model is unavailable, check the NVIDIA driver and matching resource packs. Choose a smaller supported model when necessary; having a compatible GPU does not mean every model fits its memory.
 
 For RAM/VRAM notifications, close other apps or choose a smaller model suitable for your computer. Turn off **Keep models ready** to release models between processing runs if needed. This setting reduces repeated loading; it does not increase your computer's memory.
 
-Installed RAM determines minimum CPU eligibility; currently available RAM and Windows commit headroom determine whether a model can be loaded now. Before CPU HY-MT2, unused warm-up runtimes are released and low memory is remeasured for up to two seconds. If budgets remain insufficient, processing stops safely while retaining completed results; memory validation is not bypassed.
+Having enough installed RAM is different from having enough free memory right now. If the app asks for more memory, free some resources or choose a smaller model, then continue from the valid saved results.
 
-OmniVoice CPU can take minutes for a long sentence. Completion percentage increases only after valid audio exists; `decoder_forwards` diagnostics report actual inference activity rather than timer heartbeats. Precision and inference steps are unchanged. GPU-to-CPU recovery changes only the recovering invocation's backend, not saved model choices or valid checkpoints.
+OmniVoice CPU can take minutes for a long sentence. If progress seems stuck, open **Details** to inspect the technical log before restarting. For faster synthesis, use a compatible GPU option with enough available memory.
 
 Use **Move location** in Resource packs to relocate resources. Let the operation finish and keep independent copies of important source videos and exports. Do not manually delete project folders or packs in use.
+
+## MCP connection
+
+Keep HaizFlow open and enable **Settings → MCP**. **Check HaizFlow** checks the app side; then send the test prompt from your agent. If you moved or updated HaizFlow, copy the current connection details again. Do not use a normal GUI launch command as an MCP server. See the [MCP guide](mcp.md).
+
+## Error notifications
+
+Read the short notification first. **Details** opens the technical log; **Confirm** or the close button dismisses the notification. The project's **…** menu also provides technical logs. Include only the relevant, redacted portion when contacting support.
 
 ## Windows and installation
 

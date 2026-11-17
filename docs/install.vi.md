@@ -14,7 +14,7 @@ Chọn ổ còn đủ chỗ cho ứng dụng, tài nguyên, video nguồn và vi
 
 ## 2. Cài ứng dụng
 
-**[Tải HaizFlow-0.1.10-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.10/HaizFlow-0.1.10-Setup.exe).** Đây là file duy nhất bạn cần để cài ứng dụng. Các tệp Core ở [trang phiên bản](https://github.com/MachHongHai/HaizFlow/releases/latest) dành cho cập nhật tự động; không tải hoặc giải nén chúng để cài.
+**[Tải HaizFlow-1.0.6-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v1.0.6/HaizFlow-1.0.6-Setup.exe).** Đây là file duy nhất bạn cần để cài ứng dụng. Các tệp Core ở [trang phiên bản](https://github.com/MachHongHai/HaizFlow/releases/latest) dành cho cập nhật trong app; không tải hoặc giải nén chúng để cài.
 
 1. Mở tệp **Setup.exe**, chọn ngôn ngữ và đọc điều kiện sử dụng.
 2. Chọn thư mục cài. Có thể dùng ổ D hoặc ổ khác còn đủ chỗ.
@@ -31,7 +31,7 @@ Mở **Cài đặt → Chung**:
 - **CPU:** dành cho máy không có GPU NVIDIA tương thích, hoặc khi bạn muốn dùng các model CPU.
 - **GPU NVIDIA:** dành cho máy có GPU tương thích. Các lựa chọn GPU còn cần gói xử lý và model tương ứng.
 
-Chọn **Áp dụng**. Khi đổi chế độ, kiểm tra lại model trong dự án trước khi chạy. Với card 4 GB và RAM 16 GB, nên chọn Whisper Small GPU, HY-MT2 CPU Q4 (hoặc API dịch) và OmniVoice GPU. Whisper Turbo cũng có thể chọn: nếu CTranslate2 hỗ trợ, app dùng INT8, batch 1, nạp VAD trực tiếp trên CPU và căn timestamp trên CPU để giảm đỉnh VRAM. HY-MT2 GPU đầy đủ vẫn cần ít nhất 5 GiB VRAM; riêng trọng số đã khoảng 3,8 GiB, chưa tính bộ nhớ chạy. Bước nhận dạng và giọng đọc dùng GPU lần lượt; OmniVoice tạo từng câu, giữ nguyên checkpoint, FP16 và 32 bước suy luận. Demucs dùng đoạn GPU ngắn hơn. Đóng ứng dụng nặng và để Windows quản lý page file; các tối ưu này không bảo đảm mọi video dài đều đủ bộ nhớ khi máy đang bận. Cấu hình GTX 1650 được kiểm thử giả lập, chưa có benchmark trên đúng card đó. Máy CPU không cần cài gói CUDA. Bạn cũng không cần tự cài CUDA Toolkit để dùng gói xử lý của HaizFlow.
+Chọn **Áp dụng**. Khi đổi chế độ, kiểm tra lại model trong dự án trước khi chạy. Với card 4 GB, nên bắt đầu bằng Whisper Small GPU và HY-MT2 CPU Q4 hoặc API dịch. Whisper Turbo cũng có chế độ ít tốn bộ nhớ trên phần cứng được hỗ trợ; HY-MT2 GPU đầy đủ vẫn cần ít nhất 5 GiB VRAM. Dùng VieNeu cho tiếng Việt hoặc model đa ngôn ngữ phù hợp cho tiếng khác. Đóng ứng dụng nặng không cần thiết vì RAM/VRAM trống lúc chạy vẫn ảnh hưởng đến xử lý. Máy CPU không cần gói CUDA; bạn không phải tự cài CUDA Toolkit cho các gói xử lý của HaizFlow.
 
 ## 4. Cài những gói cần dùng
 
@@ -45,7 +45,7 @@ Mở **Cài đặt → Gói tài nguyên**, chọn **Cài đặt** cạnh công 
 | Dịch trên máy | HY-MT2 CPU hoặc HY-MT2 GPU |
 | Tách giọng khỏi nhạc | Demucs CPU hoặc Demucs GPU, theo chế độ của ứng dụng |
 | Tìm vùng phụ đề gốc | OCR |
-| Tạo giọng cục bộ | OmniVoice và môi trường xử lý tương ứng |
+| Tạo giọng cục bộ | VieNeu cho tiếng Việt hoặc OmniVoice cho ngôn ngữ được hỗ trợ, kèm môi trường xử lý tương ứng |
 
 Ứng dụng hiển thị các tài nguyên cần cho mỗi công cụ. Một số tài nguyên được dùng chung giữa các gói; trạng thái **Đã cài** cho biết tài nguyên đã có và sẵn sàng sử dụng.
 
@@ -55,12 +55,12 @@ Demucs là một lựa chọn tách giọng trong dự án, nhưng có hai gói 
 
 ## 5. API key — chỉ khi cần
 
-Whisper, HY-MT2, Demucs và OCR không cần Gemini hoặc Zernio key.
+Whisper, HY-MT2, Demucs và OCR không cần key của dịch vụ dịch hoặc Zernio.
 
-- **Gemini:** thêm key nếu dùng dịch qua Gemini.
+- **Gemini, OpenAI, DeepSeek, OpenRouter hoặc API tùy chỉnh:** thêm key khi dùng dịch vụ đó để dịch.
 - **Zernio:** thêm key nếu dùng Đăng mạng xã hội.
 
-Mở **Cài đặt → API Key**, chọn nhà cung cấp, thêm key và kiểm tra. Với Zernio, thao tác kiểm tra kết nối kiểm tra các key trong danh sách: chấm xanh là hợp lệ; chấm đỏ cho biết key cần được kiểm tra lại. Chọn key muốn dùng.
+Mở **Cài đặt → API Key**, chọn nhà cung cấp, thêm key, kiểm tra rồi bấm **Sử dụng**. Tất cả nhà cung cấp đều chọn key đang dùng tại đây. Model dịch được chọn riêng trong từng dự án. Xem [hướng dẫn API](translation-api.vi.md), gồm cả máy chủ Ollama cục bộ tương thích.
 
 Key được lưu trong Windows Credential Manager. Không gửi key trong ảnh, log công khai hoặc issue. Tài khoản và chi phí của các dịch vụ ngoài do bạn quản lý.
 
@@ -69,6 +69,14 @@ Key được lưu trong Windows Credential Manager. Không gửi key trong ảnh
 Giữ một bản sao độc lập của video nguồn và video xuất quan trọng. Dữ liệu làm việc của bản cài nằm trong thư mục runtime của ứng dụng; tài nguyên có thể được chuyển qua **Chuyển vị trí** trong Gói tài nguyên. Để ứng dụng hoàn tất thao tác, không di chuyển thư mục khi đang xử lý.
 
 Nút kiểm tra cập nhật sẽ thông báo khi có phiên bản mới. Bạn xác nhận tải và xác nhận khởi động lại để áp dụng. Hoàn tất hoặc tạm dừng công việc đang chạy trước khi cập nhật.
+
+Bản **1.0.2–1.0.5** có thể cập nhật lên 1.0.6 trong app, không cần cài lại. Sau lần thoát bình thường đầu tiên của 1.0.6, launcher mới được thay an toàn cho các lần mở sau. Tiếp tục dùng shortcut thông thường, không mở trực tiếp tệp Core trong thư mục phiên bản.
+
+Cập nhật bộ xử lý **CPU 19 / GPU CUDA 21** trong Gói tài nguyên khi cần. Model và dự án đã có được giữ nguyên; OCR vẫn ở phiên bản 10.
+
+## 7. Kết nối AI agent — tùy chọn
+
+Mở **Cài đặt → MCP** và làm theo hướng dẫn cho agent bạn dùng. Xem lại các quyền được bật và giữ HaizFlow mở trong lúc sử dụng. Xem [hướng dẫn MCP](mcp.vi.md).
 
 ## Bắt đầu sử dụng
 

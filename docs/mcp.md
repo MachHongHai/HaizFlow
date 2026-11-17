@@ -1,72 +1,55 @@
-# HaizFlow MCP
+# Connect HaizFlow to an AI agent
 
-HaizFlow exposes its desktop workflows to MCP-compatible agents over **stdio**. The adapter talks to the running app through a Windows named pipe restricted to the current OS user. It does not start a second GUI, open a TCP port or run a second processing pipeline.
+[Home](../README.md) · [User guide](user-guide.md) · [Tiếng Việt](mcp.vi.md)
 
-## Connect an agent
+MCP lets a compatible agent work with HaizFlow projects, subtitles, processing, downloads and publishing. Keep HaizFlow open while using the connection.
 
-1. Open HaizFlow → **Settings → MCP** (Cài đặt → MCP), from the settings menu or the dedicated settings tab.
-2. Enable **Local MCP**. This enables control, online services, deletion and publishing permissions for this session. Review the switches and turn off anything you do not want to grant. Online services may incur API charges. Turning off control also turns off all other mutation permissions, leaving read-only access. MCP starts disabled and all permissions reset when HaizFlow exits; enabling it again grants all permissions anew. Re-applying “enabled” while already connected preserves any permissions you have turned off.
-3. In **Connection guide**, choose Codex, Claude Code, Claude Desktop, Antigravity IDE/App or another host. Follow the three client-specific steps. Copy the separate Command/Arguments fields, a setup request (Claude Code), or the ready-made JSON as shown. Use the generated paths rather than another user's configuration.
-4. Save and restart/reconnect that host's MCP server. Keep HaizFlow running, then use **Copy test prompt** and send it in your agent.
+![MCP settings with connection controls and the agent setup guide](images/screenshots/mcp-settings-1.0.6.png)
 
-Supported configuration formats:
+## Connect in four steps
 
-- **Codex:** `[mcp_servers.haizflow]` in Codex's `config.toml`.
-- **Claude Code:** the `mcpServers.haizflow` entry in `.mcp.json` (or add an equivalent stdio server with `claude mcp add`). **Claude Desktop:** its MCP JSON configuration.
-- **Antigravity IDE:** MCP Servers → Manage → View raw config; merge the generated `mcpServers.haizflow` entry. **Antigravity App:** Customizations → Installed → MCP Servers → Copy Config File Path, then open that existing file and merge the entry.
-- Other standard stdio MCP clients can use the same command/args JSON entry.
+1. Open **Settings → MCP**, enable the connection and review its permissions.
+2. Under **Connection guide**, choose your agent: Codex, Claude Code, Claude Desktop, Antigravity or another compatible client.
+3. Follow the guide shown in HaizFlow. Copy the **Command** and each **Argument** into separate fields, or use the generated setup request/configuration for that client. Preserve any other servers already configured.
+4. Save and reconnect the server in your agent. Use **Copy test prompt** in HaizFlow, then send it to the agent to check the connection.
 
-Merge the entry; do not overwrite other servers. HaizFlow never edits agent configuration files automatically and requires no OpenAI/Anthropic/Google key just to connect MCP. Existing HaizFlow service keys are used only for the workflows you authorize.
+Use the details generated on your own machine, not the paths shown in a screenshot. If the agent asks for a connection type, choose **STDIO**, not a web address.
 
-### Step-by-step setup
+| Agent | What to use from HaizFlow |
+| --- | --- |
+| Codex | The separate Command and Arguments fields in the in-app guide. |
+| Claude Code | The generated setup request; approve setup changes if the agent asks. |
+| Claude Desktop | The generated configuration and instructions for opening its local MCP settings. |
+| Antigravity IDE/App | The guide matching your edition, then its generated configuration. |
+| Other compatible clients | A local stdio server using the exact Command and individual Arguments. |
 
-The in-app guide starts from each agent's own application UI, not manual file
-creation. After enabling MCP above, it provides three steps: open the agent's MCP
-settings, enter the generated connection details, then save/reconnect and send a
-read-only test prompt. Permissions and troubleshooting are expandable to keep
-the main setup flow short. It does not send users to a ChatGPT documentation page.
+The configuration can point to a versioned Core executable. After updating or moving HaizFlow, copy the current details again if the old command no longer works. Do not replace the command with the normal GUI launcher or add an autostart shortcut.
 
-- **Codex:** open the desktop app → Settings → MCP servers → Add server. Name it
-  `haizflow`, select STDIO, and paste the separate Command/Arguments values shown
-  in HaizFlow. Save and restart the server. TOML remains available only under
-  advanced configuration for clients that need it.
-- **Claude Code:** open a conversation in the app/IDE and paste HaizFlow's
-  generated connection request. Ask Claude to register the local stdio server,
-  preserving other entries, then approve its setup changes if prompted. Verify
-  via `/mcp` and `haizflow_status`; do not ask users to hand-author configuration.
-- **Claude Desktop:** open Settings → Desktop app → Manage next to Extensions
-  → Local MCP servers (older layout: Settings → Developer → Edit Config). Open
-  the configuration through the app and paste the ready-made entry. This local
-  stdio integration is not a remote connector URL. HaizFlow does not currently
-  supply a `.mcpb` desktop extension; do not claim a one-click package install.
-- **Antigravity IDE:** agent panel … → MCP Servers → Manage MCP Servers → View raw
-  config. Merge `haizflow`, save, refresh the list and enable the server. Reopen
-  the app/chat if tool discovery has not refreshed.
-- **Antigravity App:** Customizations → Installed → MCP Servers → Copy Config
-  File Path. Open the file at that path (the menu copies a path, not file contents),
-  merge the generated entry and save. Select Restart in haizflow's ⋮ menu.
-- **Other local clients:** select stdio and copy `command` and the individual
-  `args` elements exactly. Do not substitute a URL/HTTP port or manually launch
-  another GUI. A remote-only client cannot reach this local Windows named pipe.
+## Permissions
 
-Test prompt: “Call `haizflow_status` to check the HaizFlow connection.” The agent should receive status without calling
-translation/TTS services or listing unrelated project data.
+Enabling MCP grants control, online-service, deletion and publishing permissions for that app session. Turn off any you do not want to grant. Turning off control leaves the connection read-only. Closing HaizFlow resets MCP and its permissions.
 
-### Test MCP connection
+With the relevant permission enabled, requested processing, deletion and publishing do not ask for another confirmation inside HaizFlow MCP. The agent may still ask for approval under its own rules. Be precise about which projects, videos and accounts it should use. Online services can incur charges.
 
-The in-app **Check HaizFlow** button launches an isolated, short-lived stdio client on a worker
-thread. It performs MCP initialisation, tool discovery and `haizflow_status`
-against the app's actual private pipe. It does not grant permissions, configure
-an agent, call online APIs or change projects. Closing/disabling MCP cancels
-the check; late responses cannot overwrite the new disabled state. A bounded
-timeout cleans up the SDK subprocess instead of blocking the GUI.
+## Check the connection
 
-A successful result means **HaizFlow's local MCP transport is working**. It
-does not prove that Codex/Claude/Antigravity has configured or connected its own
-client. The guide therefore asks users to verify `haizflow_status` from inside
-their chosen agent as a separate final step.
+**Check HaizFlow** checks the app's side of the connection. A successful result does not confirm your agent has been configured correctly: send the test prompt from inside the agent too.
 
-In source installations the command is the current virtual environment's Python with `-m haizflow.mcp --endpoint …`. In packaged installations it is `HaizFlowCore.exe --mcp-server --endpoint …`. After updating/moving a packaged installation, copy the configuration again if its versioned Core path changed.
+If the connection fails:
+
+- Check that HaizFlow is open and MCP is enabled.
+- Copy the current connection details again, with each argument in its own field.
+- Save and reconnect the server in the agent.
+- Use **Check HaizFlow**, then try the agent's test prompt again.
+
+## Keep agent conversations compact
+
+Ask for a specific project and task rather than all project data. For example: “Open project X, inspect these three captions and suggest wording changes.” Review the proposal before asking the agent to apply or publish it.
+
+The default compact MCP setup reduces unnecessary tool descriptions and repeated results. It does not guarantee a fixed quota saving.
+
+<details>
+<summary>For agent developers: commands, permissions and workflow examples</summary>
 
 ## Available workflows
 
@@ -165,9 +148,10 @@ schemas are added (compact stays at nine entry points):
   `all` retains the combined legacy result.
 - `translation_models(provider="openrouter", connection_id="…", query="…",
   free_only=true, offset=0, limit=10, details=true)` searches the same filtered public cache
-  used by the app. A connection ID determines its provider and returns directly
-  configurable `api:connection:model` IDs. Without a connection, non-Gemini
-  IDs are discovery only. Free models sort first; pricing, supported reasoning,
+  used by the app. A connection ID determines the provider; discovery uses that
+  provider's active connection selected in Settings and returns configurable
+  `api:provider:model` IDs. Without an active connection, non-Gemini IDs are
+  discovery only. Free models sort first; pricing, supported reasoning,
   public token limits and data-collection warnings appear only on the requested
   page (reasoning/limits/notices require `details=true`). No keys, network requests or AI charges are involved. A cached entry is
   not a guarantee of live endpoint availability or account quota. Refresh the
@@ -299,11 +283,14 @@ Use `haizflow_execute` for these commands; no additional top-level tool schemas
 are required, including in the compact profile:
 
 - `translation_api` defaults to a paginated connection list (10 entries, maximum
-  50). It exposes IDs, provider, label, default model and format, never API keys
+  50). It exposes IDs, provider, label, active selection and legacy model/format metadata, never API keys
   or private endpoint URLs. No video/project is needed for discovery.
+- `translation_api(action="select", connection_id="…")` selects that provider's
+  active API, just like **Use** in Settings, and requires control permission.
+  It is a settings change for subsequent work, not a project-local key override.
 - `translation_choice(connection_id="…", model="Vendor/Model",
   output_format="prompt")` validates a project-local choice without applying it.
-  Apply its `value` through `configure`'s `translation_model` field. Custom formats
+  Apply its `value` through `configure`'s `translation_model` field. Credentials still follow the provider's active API selected in Settings. Custom formats
   are `json_schema`, `json_object`, and `prompt`; official connections cannot
   receive a custom-format suffix. Saving a choice does not start inference.
 - `translation_api(action="verify"|"refresh_models", connection_id="…")`
@@ -331,3 +318,5 @@ not prove translation quality, live capacity, or sufficient account quota.
 ## Official host documentation
 
 [Codex MCP](https://developers.openai.com/codex/mcp), [Claude Code MCP](https://code.claude.com/docs/en/mcp), [Claude Desktop local MCP](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop), [Antigravity MCP](https://antigravity.google/docs/mcp), [Python MCP SDK](https://py.sdk.modelcontextprotocol.io/).
+
+</details>
