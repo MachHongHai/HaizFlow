@@ -63,6 +63,7 @@ Item {
 
     Component.onCompleted: filteredModel = options
     onOptionsChanged: filteredModel = root.filterOptions(searchField.text)
+    onEnabledChanged: if (!enabled) languagePopup.close()
     onVisibleChanged: {
         if (!visible)
             languagePopup.close();

@@ -14,6 +14,8 @@ Control {
     signal fontSelected(string value)
     implicitWidth: fields.implicitWidth
     implicitHeight: fields.implicitHeight
+    onVisibleChanged: if (!visible) picker.close()
+    onEnabledChanged: if (!enabled) picker.close()
 
     function filterFonts() {
         const query = search.text.trim().toLowerCase();
@@ -42,10 +44,20 @@ Control {
         StudioButton {
             id: trigger
             objectName: "subtitleFontButton"
+            property bool popupWasVisibleOnPress: false
             Layout.fillWidth: true
             text: root.family
             Accessible.name: qsTr("Chọn phông chữ: %1").arg(root.family)
-            onClicked: picker.open()
+            onPressed: popupWasVisibleOnPress = picker.visible
+            onClicked: {
+                if (popupWasVisibleOnPress || picker.visible)
+                    picker.close();
+                else
+                    picker.open();
+            }
+            Keys.onReturnPressed: picker.visible ? picker.close() : picker.open()
+            Keys.onEnterPressed: picker.visible ? picker.close() : picker.open()
+            Keys.onDownPressed: picker.open()
             contentItem: RowLayout {
                 Text {
                     Layout.fillWidth: true
@@ -71,14 +83,16 @@ Control {
         objectName: "subtitleFontPopup"
         parent: Overlay.overlay
         implicitWidth: Math.min(410, parent ? parent.width - 24 : 410)
-        implicitHeight: Math.min(490, parent ? parent.height - 24 : 490)
         property point anchorPoint: Qt.point(0, 0)
+        readonly property real spaceBelow: parent ? parent.height - anchorPoint.y - 12 : 490
+        readonly property real spaceAbove: anchorPoint.y - trigger.height - 24
+        implicitHeight: Math.min(490, Math.max(0, spaceBelow, spaceAbove))
         x: Math.max(12, Math.min(anchorPoint.x, parent ? parent.width - width - 12 : 12))
         y: parent && anchorPoint.y + height <= parent.height - 12 ? anchorPoint.y
             : Math.max(12, anchorPoint.y - trigger.height - height - 12)
         padding: Theme.space12
         focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
         onAboutToShow: {
             anchorPoint = trigger.mapToItem(parent, 0, trigger.height + 6);
             root.catalog = AppController.subtitleFontChoices(root.language, "");
@@ -90,7 +104,8 @@ Control {
         onClosed: {
             root.catalog = [];
             root.choices = [];
-            trigger.forceActiveFocus();
+            if (root.visible && root.enabled)
+                trigger.forceActiveFocus(Qt.PopupFocusReason);
         }
         background: Rectangle {
             color: Theme.surfaceElevated

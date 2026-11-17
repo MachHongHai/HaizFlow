@@ -13,6 +13,8 @@ StudioButton {
     toolTipText: qsTr("Tốc độ video khi xuất")
     variant: "ghost"
     implicitWidth: root.compactLabel ? 64 : 124
+    onVisibleChanged: if (!visible) speedPopup.close()
+    onEnabledChanged: if (!enabled) speedPopup.close()
     onClicked: {
         if (speedPopup.opened) speedPopup.close();
         else speedPopup.open();
@@ -25,6 +27,7 @@ StudioButton {
         y: root.height + Theme.space8
         width: 340
         padding: Theme.space16
+        focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         background: Rectangle {
             color: Theme.surface

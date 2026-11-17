@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import queue
+import threading
 
 from haizflow.core.hardware import runtime_profile
 from haizflow.core.memory import cpu_memory_constrained
@@ -16,6 +17,23 @@ class ProcessingLifecycleController:
     def __init__(self, host):
         self._host = host
         self._disk_log_revision = None
+        self._wake_lock = threading.Lock()
+        self._wake_pending = False
+
+    def _wake_ui(self) -> None:
+        """One queued Qt wake-up for a burst of control events, not log lines."""
+        signal = getattr(self._host, "_processingEventsReady", None)
+        if signal is None or getattr(self._host, "_shutdown_started", False):
+            return
+        with self._wake_lock:
+            if self._wake_pending:
+                return
+            self._wake_pending = True
+        try:
+            signal.emit()
+        except RuntimeError:
+            with self._wake_lock:
+                self._wake_pending = False
 
     def enqueue_video(self, video_id: str) -> bool:
         host = self._host
@@ -137,12 +155,14 @@ class ProcessingLifecycleController:
             project_store.touch_project_by_key(str(getattr(video, "project_key", "") or ""))
         self.update_queue_positions()
         self._host._log_queue.put(f"__QUEUE_FINISHED__:{video_id}")
+        self._wake_ui()
 
     def on_processing_queue_idle(self) -> None:
         warmup = getattr(self._host, "_smart_warmup", None)
         if warmup is not None:
             warmup.resume_after_foreground()
         self._host._log_queue.put("__QUEUE_IDLE__")
+        self._wake_ui()
 
     def on_processing_queue_error(self, video_id: str, exc: Exception) -> None:
         host = self._host
@@ -317,6 +337,8 @@ class ProcessingLifecycleController:
             host._log_queue.put(("video_log", video_id, line))
 
     def drain_log_queue(self) -> None:
+        with self._wake_lock:
+            self._wake_pending = False
         host = self._host
         pending_lines = []
         while True:
@@ -345,6 +367,7 @@ class ProcessingLifecycleController:
             elif item.startswith("__QUEUE_FINISHED__:"):
                 finished_video_id = item.partition(":")[2]
                 host.refreshVideos()
+                manual_preview_ready = False
                 # Voice artifacts are published by the worker, while the
                 # editor document and its QML model live on the GUI thread.
                 # Reconcile them at the completed-task boundary so a newly
@@ -401,13 +424,19 @@ class ProcessingLifecycleController:
                         else:
                             document = editor_documents.ensure(finished_video)
                         host._manual_editor_document.set_document(document)
+                        manual_preview_ready = True
                     except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
                         video_store.log_to_video(
                             finished_video_id, f"Editor voice reconciliation failed: {exc}"
                         )
-                host.selectedVideoChanged.emit()
+                if finished_video_id == str(host._selected_video_id or ""):
+                    host.selectedVideoChanged.emit()
                 host._refresh_batch_model()
                 host.batchChanged.emit()
+                ready = getattr(host, "manualToolPreviewReady", None)
+                if (manual_preview_ready and ready is not None
+                        and finished_video_id == str(host._selected_video_id or "")):
+                    ready.emit(finished_video_id)
                 # Render completion is not external export completion.
             elif item == "__QUEUE_IDLE__":
                 if host._processing_queue.has_work:

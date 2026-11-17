@@ -27,6 +27,8 @@ Control {
     hoverEnabled: true
     focusPolicy: Qt.StrongFocus
     Accessible.name: displayLabel()
+    onVisibleChanged: if (!visible) voicePopup.close()
+    onEnabledChanged: if (!enabled) voicePopup.close()
 
     function isClone(value) { return value === "omnivoice:clone" || value === "vieneu:clone" }
 

@@ -54,7 +54,7 @@ AppDialog {
             radius: Theme.radiusSmall
             color: downloadSelected ? Theme.sidebarSelected : Theme.surfaceMuted
             border.width: 1
-            border.color: downloadSelected ? Theme.focus : Theme.outline
+            border.color: downloadSelected ? Theme.outlineStrong : Theme.outline
 
             ListView.onPooled: visible = false
             ListView.onReused: visible = true

@@ -63,3 +63,37 @@ are not renamed or rewritten just to adopt the new in-memory key.
 Local reproduction scripts (ignored diagnostic artifacts):
 `build/benchmark-preview-completion.py`,
 `build/diagnose-preview-completion.py --decode`.
+
+## Completion notification experiment (2026-11-17)
+
+Worker finish/idle callbacks now queue a coalesced Qt signal to drain the
+existing FIFO control/log queue on the GUI thread. Ordinary log lines do not
+wake the UI; the existing 500 ms log timer remains the fallback. Queued delivery
+is ignored during shutdown.
+
+After successful reconciliation of the selected Manual project's editor
+document, a project-ID-scoped signal requests its preview with `Qt.callLater`,
+bypassing only the normal 100/200 ms edit debounce. The deferred callback checks
+current project, visibility, source replacement, subtitle owner and document
+owner again, then cancels the previously scheduled timer. Other projects and
+failed/cancelled tools do not receive this fast preview signal. No PCM/video
+cache keys, media preparation, GPU/CPU paths or normal editing timers changed.
+
+An isolated QML/worker-thread comparison against pre-change HEAD
+`cd5976fa59648efb8a1fff767444d0907fce391f` used five completion offsets
+(0/100/200/300/400 ms) relative to the same 500 ms poll timer:
+
+- Baseline completion-to-`requestEditorPreview`: 608.76 / 508.04 / 415.26 /
+  322.35 / 211.79 ms; median **415.26 ms**.
+- Queued completion: 4.22 / 5.59 / 1.73 / 5.40 / 1.82 ms; median **4.22 ms**.
+
+These are dispatch/debounce timings with synthetic completed tasks, not
+end-to-end OCR/TTS or preview rendering timings. No model/API calls or user
+project writes were made. GUI congestion can still delay queued delivery.
+Reproduction: `build/benchmark-completion-wakeup-20261117.py` (ignored diagnostic).
+
+Regression coverage includes worker-to-QML delivery, coalescing, ordinary edit
+debounce, duplicate timer cancellation, switching projects before deferred
+delivery, wrong subtitle/document owner, hidden workspace, source replacement,
+failed reconciliation and shutdown. The related lifecycle/preview/export suite
+passed 192 tests plus 3 subtests; native `qmllint` passed.

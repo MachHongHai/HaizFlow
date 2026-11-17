@@ -17,6 +17,8 @@ Button {
     padding: 0
     focusPolicy: Qt.TabFocus
     Accessible.name: accessibleLabel
+    onVisibleChanged: if (!visible) helpPopup.close()
+    onEnabledChanged: if (!enabled) helpPopup.close()
     onPressed: popupWasVisibleOnPress = helpPopup.visible
     onClicked: {
         if (popupWasVisibleOnPress || helpPopup.visible)

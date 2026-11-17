@@ -16,6 +16,8 @@ StudioButton {
     variant: "secondary"
     toolTipText: qsTr("Chọn tệp, liên kết hoặc video từ dự án tải xuống")
     showToolTip: true
+    onVisibleChanged: if (!visible) sourceMenu.close()
+    onEnabledChanged: if (!enabled) sourceMenu.close()
 
     function openMenu() {
         if (!enabled)

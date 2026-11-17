@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from PySide6.QtCore import Property, QEvent, QEventLoop, QObject, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QEvent, QEventLoop, QObject, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QmlNamedElement, QmlSingleton
 
@@ -240,6 +240,8 @@ class HaizFlowController(QObject):
     editorPreviewChanged = Signal()
     previewMediaChanged = Signal()
     manualToolStateChanged = Signal(str)
+    manualToolPreviewReady = Signal(str)
+    _processingEventsReady = Signal()
     manualExportCompleted = Signal(str, str)
     videoExportCompleted = Signal(str, str)
     exportStateChanged = Signal()
@@ -568,6 +570,7 @@ class HaizFlowController(QObject):
 
         subscribe_log(self._on_video_log)
         self._log_timer = QTimer(self)
+        self._processingEventsReady.connect(self._drain_processing_events, Qt.ConnectionType.QueuedConnection)
         self._log_timer.timeout.connect(self._drain_log_queue)
         self._log_timer.start(500)
 
@@ -8271,6 +8274,11 @@ class HaizFlowController(QObject):
 
     def _drain_log_queue(self):
         HaizFlowController._processing_delegate_for(self).drain_log_queue()
+
+    @Slot()
+    def _drain_processing_events(self):
+        if not self._shutdown_started:
+            self._drain_log_queue()
 
     def _read_video_logs(self, video_id):
         return HaizFlowController._processing_delegate_for(self).read_video_logs(video_id)

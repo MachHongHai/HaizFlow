@@ -12,6 +12,8 @@ IconButton {
     implicitWidth: 42
     toolTipText: qsTr("Chỉnh tốc độ phát preview")
     Accessible.name: qsTr("Tốc độ phát %1").arg(root.speedLabel)
+    onVisibleChanged: if (!visible) speedPopup.close()
+    onEnabledChanged: if (!enabled) speedPopup.close()
     onClicked: {
         if (speedPopup.opened) speedPopup.close();
         else speedPopup.open();

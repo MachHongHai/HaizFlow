@@ -294,6 +294,16 @@ Item {
         previewTimer.restart();
     }
 
+    function refreshCompletedPreview(videoId) {
+        if (!root.visible || AppController.projectType !== "manual"
+                || root.sourceReplacementPending || !root.subtitleOwnerMatches
+                || videoId !== root.previewVideoId || videoId !== AppController.selectedVideoId
+                || root.editorModel.videoId !== videoId)
+            return;
+        previewTimer.stop();
+        AppController.requestEditorPreview(JSON.stringify(root.segments), comparePreview.positionSeconds);
+    }
+
     function commitSubtitleTiming(index, start, end) {
         if (index < 0 || index >= segments.length)
             return false;
@@ -576,6 +586,7 @@ Item {
         }
 
         function onManualSubtitleSaved() { root.schedulePreview(); }
+        function onManualToolPreviewReady(videoId) { Qt.callLater(root.refreshCompletedPreview, videoId); }
         function onPreviewMediaChanged() { root.schedulePreview(); }
         function onOriginalVolumeChanged() { root.syncVolumes(); }
         function onTtsVolumeChanged() { root.syncVolumes(); }
