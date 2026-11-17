@@ -1285,9 +1285,9 @@ ApplicationWindow {{
         batch_page = (QML_DIR / "BatchPage.qml").read_text(encoding="utf-8")
         theme = (QML_DIR / "Theme.qml").read_text(encoding="utf-8")
 
-        self.assertIn("Theme.interactiveMuted", batch_page)
+        self.assertIn("Theme.interactive", batch_page)
         self.assertIn("Theme.surfaceElevated", batch_page)
-        self.assertIn("Theme.outline", batch_page)
+        self.assertIn("Theme.divider", batch_page)
         self.assertNotIn("Theme.blueSurface", batch_page)
         self.assertNotIn("Theme.violetSurface", batch_page)
         self.assertIn('qsTr("Hàng đợi xử lý")', batch_page)

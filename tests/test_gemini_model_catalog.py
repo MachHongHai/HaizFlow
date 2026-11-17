@@ -85,7 +85,7 @@ def test_zero_free_quota_explains_billing_without_retry_or_key_leak(monkeypatch,
     body = io.BytesIO(json.dumps({"error": fault}).encode())
     failure = HTTPError("https://generativelanguage.googleapis.com", 429, "limited", {}, body)
     send = Mock(side_effect=failure)
-    monkeypatch.setattr(gemini_translation.request, "urlopen", send)
+    monkeypatch.setattr(gemini_translation, "_open_request", send)
     monkeypatch.setattr(gemini_translation, "_retry_delay", lambda *_args: pytest.fail("No retry for zero quota"))
     with pytest.raises(RuntimeError, match="không có hạn mức miễn phí") as caught:
         gemini_translation._request_chunk([(0, "Hello.")], key="private-fixture-key", model="gemini-4-carbon",

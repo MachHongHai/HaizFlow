@@ -190,7 +190,7 @@ def test_gemini_pause_during_received_response_saves_batch_before_stopping(tmp_p
           patch.object(gemini_translation, "check_cancellation", side_effect=check),
           patch.object(gemini_translation, "is_paused", side_effect=lambda _: paused),
           patch.object(gemini_translation, "active_key", return_value="fixture"),
-          patch.object(gemini_translation.request, "urlopen", return_value=Response()) as request):
+          patch.object(gemini_translation, "_open_request", return_value=Response()) as request):
         with pytest.raises(RuntimeError, match="cancelled"):
             translation.translate_segments(str(source), str(output), "fixture", provider="gemini",
                 translation_model="gemini-3.1-flash-lite", checkpoint_path=str(progress))

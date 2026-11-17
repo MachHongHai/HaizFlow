@@ -990,6 +990,23 @@
 </context>
 <context>
     <name>BatchPage</name>
+    <message><source>Dự án hàng loạt · %1</source><translation>Batch project · %1</translation></message>
+    <message><source>Đã tạm dừng</source><translation>Paused</translation></message>
+    <message><source>Đã hoàn tất</source><translation>Completed</translation></message>
+    <message><source>Sẵn sàng xử lý</source><translation>Ready to process</translation></message>
+    <message><source>Đang thêm %1 / %2…</source><translation>Adding %1 / %2…</translation></message>
+    <message><source>Thêm video</source><translation>Add videos</translation></message>
+    <message><source>Xem chi tiết</source><translation>View details</translation></message>
+    <message><source>Thêm video để bắt đầu</source><translation>Add videos to get started</translation></message>
+    <message><source>Kéo thả video vào đây hoặc chọn Thêm video ở phía trên.</source><translation>Drop videos here or select Add videos above.</translation></message>
+    <message><source>%1 / %2 hoàn tất</source><translation>%1 / %2 completed</translation></message>
+    <message><source>%1 / %2 hoàn tất · %3 lỗi</source><translation>%1 / %2 completed · %3 failed</translation></message>
+    <message><source>Xử lý lại</source><translation>Process again</translation></message>
+    <message><source>Xóa video khỏi dự án?</source><translation>Remove video from project?</translation></message>
+    <message><source>Video và kết quả trong dự án sẽ bị xóa. Tệp nguồn bên ngoài và video đã xuất được giữ lại.</source><translation>The video and its project results will be deleted. External source files and exported videos will be kept.</translation></message>
+    <message><source>Hủy</source><translation>Cancel</translation></message>
+    <message><source>Đang xóa…</source><translation>Removing…</translation></message>
+    <message><source>Xóa video</source><translation>Remove video</translation></message>
     <message><source>%1 video dùng cài đặt riêng. Hàng loạt vẫn xử lý các video này.</source><translation>%1 videos use individual settings. They will still be processed.</translation></message>
     <message><source>Thành công</source><translation>Succeeded</translation></message>
     <message><source>Chi tiết</source><translation>Details</translation></message>
@@ -1179,6 +1196,9 @@
 </context>
 <context>
     <name>BatchVideoCard</name>
+    <message><source>%1, cài đặt riêng</source><translation>%1, individual settings</translation></message>
+    <message><source>Video</source><translation>Video</translation></message>
+    <message><source>Xóa video</source><translation>Remove video</translation></message>
     <message>
         <location filename="../qml/BatchVideoCard.qml" line="+19"/>
         <source>Đang chờ</source>

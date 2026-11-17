@@ -26,7 +26,7 @@ class _Response:
 class GeminiTranslationTests(unittest.TestCase):
     def test_service_failure_has_short_model_specific_message_and_safe_retry_logs(self):
         with (
-            patch.object(gemini_translation.request, "urlopen", side_effect=HTTPError(
+            patch.object(gemini_translation, "_open_request", side_effect=HTTPError(
                 "https://example.invalid", 503, "Unavailable", {}, None,
             )) as send,
             patch.object(gemini_translation.time, "sleep"),
@@ -128,7 +128,7 @@ class GeminiTranslationTests(unittest.TestCase):
         texts = [f"Sentence {index}" for index in range(50)]
         with (
             patch.object(gemini_translation.secure_credentials, "read_secret", return_value="secret-test-key"),
-            patch.object(gemini_translation.request, "urlopen", side_effect=fake_open),
+            patch.object(gemini_translation, "_open_request", side_effect=fake_open),
             patch.object(gemini_translation, "check_cancellation"),
         ):
             result = gemini_translation.translate_texts(
@@ -142,7 +142,7 @@ class GeminiTranslationTests(unittest.TestCase):
     def test_missing_key_does_not_send_any_request(self):
         with (
             patch.object(gemini_translation.secure_credentials, "read_secret", return_value=""),
-            patch.object(gemini_translation.request, "urlopen") as urlopen,
+            patch.object(gemini_translation, "_open_request") as urlopen,
         ):
             with self.assertRaisesRegex(RuntimeError, "Quản lý API Key"):
                 gemini_translation.translate_texts(
@@ -161,7 +161,7 @@ class GeminiTranslationTests(unittest.TestCase):
             output.write_text("old result", encoding="utf-8")
             with (
                 patch.object(gemini_translation.secure_credentials, "read_secret", return_value="secret-test-key"),
-                patch.object(gemini_translation.request, "urlopen", return_value=_Response(response)),
+                patch.object(gemini_translation, "_open_request", return_value=_Response(response)),
                 patch.object(gemini_translation, "check_cancellation"),
                 patch.object(translation, "log_to_video"),
             ):
@@ -174,7 +174,7 @@ class GeminiTranslationTests(unittest.TestCase):
 
     def test_auth_error_does_not_retry_or_echo_key(self):
         error = HTTPError("https://generativelanguage.googleapis.com", 403, "Forbidden", {}, None)
-        with patch.object(gemini_translation.request, "urlopen", side_effect=error) as urlopen:
+        with patch.object(gemini_translation, "_open_request", side_effect=error) as urlopen:
             with self.assertRaisesRegex(RuntimeError, "API key") as caught:
                 gemini_translation._request_chunk(
                     [(0, "Hello")], key="secret-test-key", model="gemini-3.8-flash",

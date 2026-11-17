@@ -1,5 +1,15 @@
 # Cập nhật Core vi sai
 
+## Bổ sung từ 1.0.6
+
+Full/Delta Core chứa `bootstrap-update` với launcher/updater cùng nguồn và runtime
+riêng `_bootstrap-X.Y.Z`. Sau lần thoát bình thường đầu tiên, worker của Core mới
+chờ launcher/updater nhả khóa, xác minh lại Core và toàn bộ payload, sao lưu EXE
+cũ rồi thay từng EXE bằng atomic rename. `_internal` cũ được giữ nguyên; crash
+giữa các bước không làm EXE cũ mất runtime. Không thay pointer Core hay dữ liệu.
+Lần mở kế tiếp dùng launcher mới, kể cả khi cập nhật từ 1.0.2 trong app. Các mục
+trạng thái cũ bên dưới ghi lại thiết kế và giới hạn ở thời điểm triển khai ban đầu.
+
 ## Trạng thái
 
 Đã có file-level delta/full builder, manifest validation, downloader GitHub,

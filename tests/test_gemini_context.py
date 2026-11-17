@@ -57,7 +57,7 @@ def test_http_retries_keep_guidance_and_context_in_separate_payload_parts(online
         requests.append(json.loads(request.data))
         raise HTTPError("https://invalid.test", 503, "Unavailable", {}, None)
 
-    monkeypatch.setattr(gemini.request, "urlopen", unavailable)
+    monkeypatch.setattr(gemini, "_open_request", unavailable)
     monkeypatch.setattr(gemini, "_retry_delay", lambda *_: None)
     with pytest.raises(RuntimeError, match="503"):
         gemini._request_chunk([(0, "Hello")], key="private-key", model="gemini-3.8-flash",

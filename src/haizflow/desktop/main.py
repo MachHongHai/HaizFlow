@@ -255,6 +255,12 @@ def main(*, smoke_test: bool = False) -> None:
         if controller is not None:
             del controller
         _destroy_windows_icons(native_icon_handles)
+    if not smoke_test and exit_code == 0:
+        try:
+            from haizflow.update.bootstrap_refresh import schedule
+            schedule()
+        except (OSError, ValueError):
+            logging.getLogger(__name__).exception("Launcher refresh could not be scheduled; existing launcher retained")
     sys.exit(exit_code)
 
 

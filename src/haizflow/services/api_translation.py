@@ -8,7 +8,7 @@ from http.client import HTTPException
 from urllib import error, request
 
 from haizflow.pipeline.process_registry import check_cancellation
-from haizflow.services import gemini_translation, translation_connections
+from haizflow.services import cancellable_http, gemini_translation, translation_connections
 from haizflow.services.video_store import log_to_video
 
 _MAX_RESPONSE = 2 * 1024 * 1024
@@ -47,7 +47,7 @@ def _json_request(url, key, payload=None, *, timeout=90):
         headers={**({"Authorization": "Bearer " + key} if key else {}), "Content-Type": "application/json",
                  **({"Cache-Control": "no-cache"} if payload is None else {})},
         method="GET" if payload is None else "POST")
-    with request.build_opener(_NoRedirect()).open(outgoing, timeout=timeout) as response:
+    with request.build_opener(_NoRedirect(), *cancellable_http.handlers()).open(outgoing, timeout=timeout) as response:
         raw = response.read(_MAX_RESPONSE + 1)
         content_type = response.headers.get("Content-Type", "").partition(";")[0].strip().lower()
     if len(raw) > _MAX_RESPONSE:
@@ -255,6 +255,14 @@ def _token_failure(answer):
 
 def _request_chunk(profile, chunk, *, key, model, source_language, target_language, video_id="",
                    reasoning_effort="", _protocol=None, **kwargs):
+    return cancellable_http.run(video_id, lambda: _request_chunk_sync(
+        profile, chunk, key=key, model=model, source_language=source_language,
+        target_language=target_language, video_id=video_id, reasoning_effort=reasoning_effort,
+        _protocol=_protocol, **kwargs), check=lambda: check_cancellation(video_id))
+
+
+def _request_chunk_sync(profile, chunk, *, key, model, source_language, target_language, video_id="",
+                        reasoning_effort="", _protocol=None, **kwargs):
     from haizflow.services.translation_api_policy import request_limits, request_options
 
     if profile["provider"] == "openrouter":
@@ -343,11 +351,14 @@ def _request_chunk(profile, chunk, *, key, model, source_language, target_langua
             pass
     attempts = 1 if profile["provider"] == "custom" else 3
     for attempt in range(attempts):
+        cancellable_http.check_active()
         check_cancellation(video_id)
         try:
             answer = _json_request(profile["base_url"] + suffix, key, payload,
                                    **({"timeout": limits["timeout"]} if limits["timeout"] != 90 else {}))
         except error.HTTPError as exc:
+            cancellable_http.check_active()
+            check_cancellation(video_id)
             if video_id:
                 log_to_video(video_id, f"{label}: HTTP {exc.code}, attempt {attempt + 1}/{attempts}.",
                              level="WARNING", component="TRANSLATE")
@@ -362,6 +373,7 @@ def _request_chunk(profile, chunk, *, key, model, source_language, target_langua
                 except (OSError, ValueError, TypeError, HTTPException):
                     pass  # Missing/broken hints must not replace the original HTTP error.
             exc.close()
+            cancellable_http.check_active()
             if video_id and status in {400, 404, 422} and profile["provider"] == "openrouter":
                 try:
                     log_to_video(video_id, f"{label}: model={profile['model']}, "
@@ -374,6 +386,8 @@ def _request_chunk(profile, chunk, *, key, model, source_language, target_langua
                 continue
             raise RuntimeError(_model_error(status, profile, answer=answer, headers=headers)) from None
         except (error.URLError, TimeoutError, OSError, HTTPException):
+            cancellable_http.check_active()
+            check_cancellation(video_id)
             # A lost POST response may already have incurred a charge. Do not
             # blindly resubmit it, or silently downgrade/change the chosen model.
             raise RuntimeError(f"{label}: mất kết nối hoặc quá thời gian. "

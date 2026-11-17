@@ -264,7 +264,7 @@ def test_manual_gemini_503_then_fresh_run_can_translate_and_publish_subtitles(vi
         return ['Chào bạn.']
     monkeypatch.setattr(gemini_translation, '_request_chunk', translate)
     # Never allow these regression tests to send real requests or spend tokens.
-    monkeypatch.setattr(gemini_translation.request, 'urlopen', lambda *_a, **_k: pytest.fail('Unexpected network request'))
+    monkeypatch.setattr(gemini_translation, "_open_request", lambda *_a, **_k: pytest.fail('Unexpected network request'))
     processing_runs.begin(video.video_id)
     manual_tools.run_manual_tool_sync(video.video_id, 'translation')
     processing_runs.finish(video.video_id)

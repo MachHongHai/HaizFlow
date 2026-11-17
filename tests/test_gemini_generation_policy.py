@@ -29,7 +29,7 @@ def test_styles_control_language_instructions_not_sampling(model, style, monkeyp
             {"text": json.dumps({"translations": [{"id": i, "text": text} for i, text in enumerate(expected)]},
                                 ensure_ascii=False)}]}}]}, ensure_ascii=False).encode("utf-8"))
 
-    monkeypatch.setattr(gemini_translation.request, "urlopen", send)
+    monkeypatch.setattr(gemini_translation, "_open_request", send)
     monkeypatch.setattr(gemini_translation, "check_cancellation", lambda _: None)
     result = gemini_translation._request_chunk(source, key="offline-key", model=model,
         source_language="English", target_language="Vietnamese", translation_style=style,
@@ -58,7 +58,7 @@ def test_styles_control_language_instructions_not_sampling(model, style, monkeyp
 @pytest.mark.parametrize("model", list(gemini_translation.MODELS))
 def test_default_lite_requests_remain_fast_and_use_default_sampling(model, monkeypatch):
     send = Mock(side_effect=RuntimeError("Captured without network"))
-    monkeypatch.setattr(gemini_translation.request, "urlopen", send)
+    monkeypatch.setattr(gemini_translation, "_open_request", send)
     with pytest.raises(RuntimeError, match="Captured"):
         gemini_translation._request_chunk([(0, "Hello")], key="offline", model=model,
             source_language="English", target_language="Vietnamese")
@@ -122,7 +122,7 @@ def test_auto_render_only_tracks_nondefault_style_for_gemini(monkeypatch):
 
 def test_invalid_style_is_rejected_before_any_request(monkeypatch):
     send = Mock()
-    monkeypatch.setattr(gemini_translation.request, "urlopen", send)
+    monkeypatch.setattr(gemini_translation, "_open_request", send)
     with pytest.raises(ValueError, match="style"):
         gemini_translation._request_chunk([(0, "Hello")], key="offline", model="gemini-3.5-flash-lite",
             source_language="English", target_language="Vietnamese", translation_style="unknown")

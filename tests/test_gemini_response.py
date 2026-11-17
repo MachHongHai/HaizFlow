@@ -38,7 +38,7 @@ def test_thought_parts_are_not_concatenated_with_translation_json():
     parts = answer["candidates"][0]["content"]["parts"]
     parts.insert(0, {"thought": True, "text": "This is not JSON; never publish this."})
     parts.append({"thoughtSignature": "private-signature"})
-    with patch.object(gemini.request, "urlopen", return_value=Response(answer)) as send:
+    with patch.object(gemini, "_open_request", return_value=Response(answer)) as send:
         assert call() == ["Đi thôi"]
     assert send.call_count == 1
     config = json.loads(send.call_args.args[0].data)["generationConfig"]
@@ -51,7 +51,7 @@ def test_split_text_parts_complete_json_fence_and_reordered_ids_are_supported():
     ]}) + "\n```"
     answer = envelope([])
     answer["candidates"][0]["content"]["parts"] = [{"text": raw[:20]}, {"text": raw[20:]}]
-    with patch.object(gemini.request, "urlopen", return_value=Response(answer)) as send:
+    with patch.object(gemini, "_open_request", return_value=Response(answer)) as send:
         assert call([(3, "Hello"), (8, "Goodbye")]) == ["Xin chào", "Tạm biệt"]
     assert send.call_count == 1
 
@@ -66,7 +66,7 @@ def test_split_text_parts_complete_json_fence_and_reordered_ids_are_supported():
 ])
 def test_invalid_answers_recover_only_the_failed_batch_with_bounded_retry(bad):
     good = envelope([{"id": 0, "text": "Đi thôi"}])
-    with patch.object(gemini.request, "urlopen", side_effect=[Response(bad), Response(good)]) as send:
+    with patch.object(gemini, "_open_request", side_effect=[Response(bad), Response(good)]) as send:
         assert call(speech_durations=[1]) == ["Đi thôi"]
     assert send.call_count == 2
     for invocation in send.call_args_list:
@@ -82,7 +82,7 @@ def test_provider_default_token_exhaustion_does_not_resubmit_or_reintroduce_cap(
     }}
     good = envelope([{"id": 0, "text": "Đi thôi"}])
     with (
-        patch.object(gemini.request, "urlopen", side_effect=[Response(bad), Response(good)]) as send,
+        patch.object(gemini, "_open_request", side_effect=[Response(bad), Response(good)]) as send,
         patch.object(gemini, "log_to_video") as log,
     ):
         with pytest.raises(RuntimeError, match="dừng trước khi dịch đủ câu"):
@@ -102,7 +102,7 @@ def test_provider_default_token_exhaustion_does_not_resubmit_or_reintroduce_cap(
     {"candidates": [{"finishReason": "RECITATION"}]},
 ])
 def test_content_blocks_are_terminal_not_blindly_retried(answer):
-    with patch.object(gemini.request, "urlopen", return_value=Response(answer)) as send:
+    with patch.object(gemini, "_open_request", return_value=Response(answer)) as send:
         with pytest.raises(RuntimeError, match="nội dung"):
             call()
     assert send.call_count == 1
@@ -113,7 +113,7 @@ def test_permanent_malformed_response_has_three_attempt_limit_and_redacted_diagn
         {"text": "private-subtitle"}, {"thoughtSignature": "private-signature"},
     ]}}], "usageMetadata": {"totalTokenCount": "private-token"}}
     with (
-        patch.object(gemini.request, "urlopen", return_value=Response(answer)) as send,
+        patch.object(gemini, "_open_request", return_value=Response(answer)) as send,
         patch.object(gemini, "log_to_video") as log,
     ):
         with pytest.raises(RuntimeError) as error:
@@ -122,7 +122,7 @@ def test_permanent_malformed_response_has_three_attempt_limit_and_redacted_diagn
     for value in ("private-key", "private-subtitle", "private-signature", "private-token"):
         assert value not in str(log.call_args_list) + str(error.value)
 
-    with patch.object(gemini.request, "urlopen", return_value=Response({})) as send:
+    with patch.object(gemini, "_open_request", return_value=Response({})) as send:
         with pytest.raises(RuntimeError, match="dữ liệu dịch hợp lệ"):
             call()
     assert send.call_count == 3
@@ -130,8 +130,8 @@ def test_permanent_malformed_response_has_three_attempt_limit_and_redacted_diagn
 
 def test_cancellation_after_response_prevents_retry_and_publication():
     with (
-        patch.object(gemini.request, "urlopen", return_value=Response({})) as send,
-        patch.object(gemini, "check_cancellation", side_effect=[None, RuntimeError("Video cancelled by user.")]),
+        patch.object(gemini, "_open_request", return_value=Response({})) as send,
+        patch.object(gemini, "check_cancellation", side_effect=[None, None, RuntimeError("Video cancelled by user.")]),
     ):
         with pytest.raises(RuntimeError, match="cancelled"):
             call()
@@ -157,7 +157,7 @@ def test_successful_batches_and_resumed_cues_are_never_retranslated_on_recovery(
         return Response(envelope([{"id": row["id"], "text": f"Câu {row['id']}"} for row in entries]))
 
     save = Mock()
-    with patch.object(gemini, "active_key", return_value="fixture-key"), patch.object(gemini.request, "urlopen", side_effect=send):
+    with patch.object(gemini, "active_key", return_value="fixture-key"), patch.object(gemini, "_open_request", side_effect=send):
         result = gemini.translate_texts(
             ["Short source"] * 25, model="gemini-3.1-flash-lite", source_language="English",
             target_language="Vietnamese", video_id="fixture", result_callback=save,

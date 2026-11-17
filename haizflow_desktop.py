@@ -73,6 +73,11 @@ if len(sys.argv) == 3 and sys.argv[1] == "--native-file-dialog":
 
     raise SystemExit(run_native_file_dialog(sys.argv[2]))
 
+if sys.argv[1:] == ["--refresh-bootstrap"]:
+    from haizflow.update.bootstrap_refresh import worker_main as refresh_bootstrap
+
+    raise SystemExit(refresh_bootstrap())
+
 # Configure portable cache/model/temp paths before importing Qt, Torch,
 # WhisperX, or any worker implementation.
 import haizflow.config as _runtime_config  # noqa: E402,F401

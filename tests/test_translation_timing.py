@@ -135,7 +135,7 @@ def test_gemini_json_contains_soft_budget_but_does_not_reduce_generation_token_c
         assert "meaning, grammar and spelling take priority" in payload["systemInstruction"]["parts"][0]["text"]
         return Response()
 
-    with patch.object(gemini_translation.request, "urlopen", side_effect=send):
+    with patch.object(gemini_translation, "_open_request", side_effect=send):
         assert gemini_translation._request_chunk(
             [(1, "Go now")], key="fixture", model=next(iter(gemini_translation.MODELS)),
             source_language="English", target_language="Vietnamese", speech_durations=[2, 1],

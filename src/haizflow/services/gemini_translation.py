@@ -16,7 +16,7 @@ from urllib import error, request
 from haizflow.pipeline.process_registry import check_cancellation, is_paused
 from haizflow.config import RUNTIME_DATA_DIR
 from haizflow.core.gemini_models import MODEL_LABELS
-from haizflow.services import secure_credentials
+from haizflow.services import cancellable_http, secure_credentials
 from haizflow.services.video_store import log_to_video
 from haizflow.services.translation_timing import timing_budget
 
@@ -251,6 +251,7 @@ def _retry_delay(seconds: float, video_id: str) -> None:
     # Pause/cancel must also interrupt backoff, not only the next HTTP request.
     remaining = seconds
     while remaining > 0:
+        cancellable_http.check_active()
         check_cancellation(video_id)
         interval = min(.1, remaining)
         time.sleep(interval)
@@ -365,10 +366,23 @@ def _zero_free_quota(exc) -> bool:
 
 def _request_chunk(chunk: list[tuple[int, str]], *, key: str, model: str,
                    source_language: str, target_language: str, video_id: str = "", **kwargs) -> list[str]:
+    return cancellable_http.run(video_id, lambda: _request_chunk_sync(
+        chunk, key=key, model=model, source_language=source_language,
+        target_language=target_language, video_id=video_id, **kwargs),
+        check=lambda: check_cancellation(video_id))
+
+
+def _open_request(outgoing, *, timeout):
+    return request.build_opener(*cancellable_http.handlers()).open(outgoing, timeout=timeout)
+
+
+def _request_chunk_sync(chunk: list[tuple[int, str]], *, key: str, model: str,
+                        source_language: str, target_language: str, video_id: str = "", **kwargs) -> list[str]:
     payload = _payload_for_chunk(chunk, model=model, source_language=source_language,
                                  target_language=target_language, video_id=video_id, **kwargs)
     url = _ENDPOINT.format(model=model)
     for attempt in range(3):
+        cancellable_http.check_active()
         check_cancellation(video_id)
         answer = None
         try:
@@ -378,14 +392,17 @@ def _request_chunk(chunk: list[tuple[int, str]], *, key: str, model: str,
                 headers={"Content-Type": "application/json", "x-goog-api-key": key},
                 method="POST",
             )
-            with request.urlopen(outgoing, timeout=90) as response:
+            with _open_request(outgoing, timeout=90) as response:
                 answer = json.load(response)
             # A valid response already paid for must reach the durable batch
             # callback before honoring Pause. Never publish it as final here.
             return _parse_translations(answer, chunk)
         except error.HTTPError as exc:
+            cancellable_http.check_active()
+            check_cancellation(video_id)
             no_free_quota = _zero_free_quota(exc) if exc.code == 429 else False
             exc.close()
+            cancellable_http.check_active()
             if video_id:
                 log_to_video(
                     video_id, f"Gemini {model}: HTTP {exc.code}, attempt {attempt + 1}/3.",
@@ -419,11 +436,14 @@ def _request_chunk(chunk: list[tuple[int, str]], *, key: str, model: str,
                 ) from None
             raise RuntimeError(f"Gemini không xử lý được yêu cầu (HTTP {exc.code}).") from None
         except (error.URLError, TimeoutError):
+            cancellable_http.check_active()
+            check_cancellation(video_id)
             if attempt < 2:
                 _retry_delay(min(8, 2 ** attempt + random.random()), video_id)
                 continue
             raise RuntimeError("Không kết nối được Gemini. Kiểm tra mạng rồi thử lại.") from None
         except (TypeError, ValueError) as exc:
+            cancellable_http.check_active()
             check_cancellation(video_id)
             failure = exc if isinstance(exc, _ResponseError) else _ResponseError(
                 "invalid_envelope_json", "Gemini không trả về dữ liệu dịch hợp lệ. Dữ liệu cũ được giữ nguyên.",

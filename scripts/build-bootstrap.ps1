@@ -1,6 +1,7 @@
 param(
   [string]$OutputDirectory = "",
   [string]$PythonExecutable = "",
+  [string]$RuntimeDirectory = "_internal",
   [switch]$AllowUnsigned,
   [switch]$UnsignedRelease,
   [string]$SignCertificateThumbprint = "",
@@ -9,6 +10,9 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
+if ($RuntimeDirectory -notmatch '^(_internal|_bootstrap-[0-9]+\.[0-9]+\.[0-9]+)$') {
+  throw "Bootstrap runtime directory must be _internal or a version-specific _bootstrap-X.Y.Z."
+}
 $Python = if ($PythonExecutable) { [System.IO.Path]::GetFullPath($PythonExecutable) } else { Join-Path $Root ".venv\Scripts\python.exe" }
 if ($UnsignedRelease -and ($AllowUnsigned -or $SignCertificateThumbprint -or $SignCertificatePath)) {
   throw "UnsignedRelease cannot be combined with signing or engineering flags."
@@ -46,6 +50,7 @@ try {
       --name $Entry[0] --distpath $OutputDirectory --workpath (Join-Path $Work $Entry[0]) `
       --specpath $Work --paths (Join-Path $Root "src") `
       --version-file $VersionResource `
+      --contents-directory $RuntimeDirectory `
       --add-data "$(Join-Path $Root 'src\haizflow\desktop\assets\branding\haizflow.ico');." `
       --add-data "$(Join-Path $Root 'src\haizflow\desktop\assets\branding\startup-splash.bmp');." `
       --exclude-module PySide6 --exclude-module torch --exclude-module numpy `
@@ -60,6 +65,7 @@ try {
     $FinalizeArguments = @((Join-Path $PSScriptRoot "finalize-bootstrap.py"),
       "--artifact", (Join-Path $OutputDirectory $Entry[0]), "--entrypoint", "$($Entry[0]).exe",
       "--source-commit", $BootstrapSourceCommit)
+    $FinalizeArguments += @("--runtime-directory", $RuntimeDirectory)
     if ($AllowUnsigned) { $FinalizeArguments += "--engineering" }
     & $Python @FinalizeArguments
     if ($LASTEXITCODE -ne 0) { throw "Bootstrap provenance/checksum finalization failed: $($Entry[0])" }

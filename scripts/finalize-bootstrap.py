@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import tomllib
@@ -30,9 +31,11 @@ def digest(path: Path) -> str:
     return value.hexdigest()
 
 
-def check_tree(artifact: Path, entrypoint: str) -> None:
+def check_tree(artifact: Path, entrypoint: str, runtime_directory: str = "_internal") -> None:
     no_links(artifact)
-    if entrypoint not in ENTRIES or not (artifact / entrypoint).is_file() or not (artifact / "_internal").is_dir():
+    if not re.fullmatch(r"_internal|_bootstrap-[0-9]+\.[0-9]+\.[0-9]+", runtime_directory):
+        raise ValueError("Invalid isolated bootstrap runtime directory.")
+    if entrypoint not in ENTRIES or not (artifact / entrypoint).is_file() or not (artifact / runtime_directory).is_dir():
         raise ValueError("Independent bootstrap payload is incomplete.")
     if any((artifact / name).exists() for name in ("runtime", "update-state")):
         raise ValueError("Bootstrap contains mutable user data.")
@@ -41,8 +44,8 @@ def check_tree(artifact: Path, entrypoint: str) -> None:
 
 
 def verify(artifact: Path, entrypoint: str, *, source_commit: str, version: str, engineering: bool) -> None:
-    check_tree(artifact, entrypoint)
     metadata = json.loads((artifact / "BOOTSTRAP-INFO.json").read_text(encoding="utf-8"))
+    check_tree(artifact, entrypoint, metadata.get("contents_directory", "_internal"))
     expected = dict(schema=1, application="HaizFlow", entrypoint=entrypoint,
                     kind=ENTRIES[entrypoint], version=version, git_commit=source_commit,
                     engineering=engineering, packaging="PyInstaller onedir")
@@ -63,8 +66,9 @@ def verify(artifact: Path, entrypoint: str, *, source_commit: str, version: str,
         raise ValueError("Bootstrap checksum or file inventory mismatch.")
 
 
-def finalize(artifact: Path, entrypoint: str, *, source_commit: str, engineering: bool) -> None:
-    check_tree(artifact, entrypoint)
+def finalize(artifact: Path, entrypoint: str, *, source_commit: str, engineering: bool,
+             runtime_directory: str = "_internal") -> None:
+    check_tree(artifact, entrypoint, runtime_directory)
     if git("rev-parse", "HEAD") != source_commit:
         raise ValueError("Source commit changed during the bootstrap build.")
     dirty = bool(git("status", "--porcelain"))
@@ -74,6 +78,10 @@ def finalize(artifact: Path, entrypoint: str, *, source_commit: str, engineering
     metadata = dict(schema=1, application="HaizFlow", entrypoint=entrypoint,
                     kind=ENTRIES[entrypoint], version=version, git_commit=source_commit,
                     git_dirty=dirty, engineering=engineering, packaging="PyInstaller onedir")
+    if runtime_directory != "_internal":
+        if runtime_directory != "_bootstrap-" + version:
+            raise ValueError("Isolated runtime version differs from bootstrap version.")
+        metadata["contents_directory"] = runtime_directory
     (artifact / "BOOTSTRAP-INFO.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8", newline="\n")
     manifest = artifact / "SHA256SUMS.txt"
     paths = sorted(path for path in artifact.rglob("*") if path.is_file() and path != manifest)
@@ -88,5 +96,7 @@ if __name__ == "__main__":
     parser.add_argument("--entrypoint", choices=ENTRIES, required=True)
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--engineering", action="store_true")
+    parser.add_argument("--runtime-directory", default="_internal")
     args = parser.parse_args()
-    finalize(args.artifact.resolve(), args.entrypoint, source_commit=args.source_commit, engineering=args.engineering)
+    finalize(args.artifact.resolve(), args.entrypoint, source_commit=args.source_commit,
+             engineering=args.engineering, runtime_directory=args.runtime_directory)

@@ -5,6 +5,7 @@ param(
   [switch]$UnsignedRelease,
   [switch]$CoreLayout,
   [string]$PythonExecutable = "",
+  [string]$BootstrapUpdateDirectory = "",
   [string]$ResourcePackManifest = "",
   [string]$SignCertificatePath = "",
   [string]$SignCertificateThumbprint = "",
@@ -322,6 +323,13 @@ try {
 }
 finally {
   $env:PATH = $PreviousPath
+}
+
+if ($CoreLayout -and ($UnsignedRelease -or $BootstrapUpdateDirectory)) {
+  if (!$BootstrapUpdateDirectory) { throw "Public Core updates must include the new versioned launcher payload." }
+  $BootstrapUpdateDirectory = [System.IO.Path]::GetFullPath($BootstrapUpdateDirectory)
+  Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "package-bootstrap-update.py"),
+    "--bootstrap", $BootstrapUpdateDirectory, "--core", $ArtifactPath) -Label "Versioned bootstrap update payload"
 }
 
 if (!(Test-Path -LiteralPath (Join-Path $ArtifactPath "$ArtifactName.exe") -PathType Leaf)) {

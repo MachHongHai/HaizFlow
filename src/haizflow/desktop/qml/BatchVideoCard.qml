@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
@@ -5,6 +7,7 @@ import "."
 
 Control {
     id: root
+    objectName: "batchVideoCard_" + index
 
     required property int index
     required property string fileName
@@ -19,20 +22,21 @@ Control {
     signal removalRequested
 
     readonly property string statusLabel: status === "pending" ? qsTr("Đang chờ") : status === "processing" ? qsTr("Đang xử lý") : status === "done" ? qsTr("Hoàn tất") : status === "failed" ? qsTr("Lỗi") : status === "cancelled" ? qsTr("Đã hủy") : status === "paused" ? qsTr("Đã tạm dừng") : status === "awaiting_review" ? qsTr("Cần duyệt") : I18n.taskStateLabel(status)
-    readonly property color statusColor: status === "done" ? Theme.success : status === "failed" || status === "cancelled" ? Theme.danger : status === "processing" ? Theme.warning : Theme.textMuted
-    readonly property color baseColor: status === "processing" ? Theme.warmSurface : status === "awaiting_review" ? Theme.interactiveMuted : status === "failed" || status === "cancelled" ? Theme.dangerMuted : Theme.surface
-    readonly property color stateOutline: status === "processing" ? Theme.amberMuted : status === "awaiting_review" ? Theme.interactiveOutline : status === "failed" || status === "cancelled" ? Theme.danger : Theme.outline
+    readonly property color statusColor: status === "done" ? Theme.success : status === "failed" ? Theme.danger : status === "processing" || status === "awaiting_review" ? Theme.warning : Theme.textMuted
 
     background: Rectangle {
         radius: Theme.radius
-        color: hoverHandler.hovered ? Theme.surfaceMuted : root.baseColor
+        color: hoverHandler.hovered ? Theme.surfaceMuted : Theme.surfaceElevated
         border.width: root.visualFocus ? 2 : 1
-        border.color: root.visualFocus ? Theme.controlFocus : hoverHandler.hovered ? Theme.outlineStrong : root.stateOutline
+        border.color: root.visualFocus ? Theme.controlFocus : hoverHandler.hovered ? Theme.outlineStrong : Theme.divider
     }
     focusPolicy: Qt.TabFocus
     Accessible.role: Accessible.Button
     Accessible.name: qsTr("%1, %2").arg(fileName).arg(qsTr("Chỉnh cài đặt video"))
-    scale: tapHandler.pressed ? 0.99 : 1
+    Accessible.description: root.customSettings ? qsTr("%1, cài đặt riêng").arg(root.statusLabel) : root.statusLabel
+    ToolTip.visible: hoverHandler.hovered && fileNameLabel.truncated && !tapHandler.pressed
+    ToolTip.delay: 700
+    ToolTip.text: root.fileName
 
     function resetFocusState() {
         root.focus = false;
@@ -90,9 +94,28 @@ Control {
             }
 
             Rectangle {
-                visible: root.customSettings
                 anchors.top: parent.top
                 anchors.left: parent.left
+                anchors.margins: Theme.space8
+                width: numberLabel.implicitWidth + Theme.space12
+                height: 24
+                radius: Theme.radiusSmall
+                color: Theme.scrim
+                Text {
+                    id: numberLabel
+                    anchors.centerIn: parent
+                    text: String(root.index + 1).padStart(2, "0")
+                    color: Theme.textOnDark
+                    font.pixelSize: TypeScale.metadata
+                    font.weight: Font.DemiBold
+                    textFormat: Text.PlainText
+                }
+            }
+
+            Rectangle {
+                visible: root.customSettings
+                anchors.top: parent.top
+                anchors.right: parent.right
                 anchors.margins: Theme.space8
                 width: overrideLabel.implicitWidth + Theme.space12
                 height: 24
@@ -108,32 +131,8 @@ Control {
                 }
             }
 
-            Row {
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.margins: Theme.space8
-                spacing: Theme.space4
-                visible: root.videoSize.length > 0
-
-                Rectangle {
-                    width: sizeLabel.implicitWidth + Theme.space12
-                    height: 26
-                    radius: Theme.radiusSmall
-                    color: Theme.scrim
-
-                    Text {
-                        id: sizeLabel
-                        anchors.centerIn: parent
-                        text: root.videoSize
-                        color: Theme.textOnDark
-                        font.pixelSize: Theme.label
-                        font.weight: Font.DemiBold
-                        textFormat: Text.PlainText
-                    }
-                }
-            }
-
             Rectangle {
+                visible: root.status === "processing" || root.status === "done"
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
@@ -151,18 +150,35 @@ Control {
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.leftMargin: 14
-            Layout.rightMargin: 14
-            Layout.topMargin: 11
-            Layout.bottomMargin: 11
-            spacing: 7
+            Layout.leftMargin: Theme.space12
+            Layout.rightMargin: Theme.space12
+            Layout.topMargin: Theme.space12
+            Layout.bottomMargin: Theme.space8
+            spacing: Theme.space4
 
             Text {
+                id: fileNameLabel
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.minimumHeight: 40
+                Layout.maximumHeight: 40
                 text: root.fileName
                 color: Theme.text
                 font.pixelSize: Theme.bodyLarge
                 font.weight: Font.DemiBold
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                wrapMode: Text.Wrap
+                maximumLineCount: 2
+                verticalAlignment: Text.AlignTop
+            }
+
+            Text {
+                id: sizeLabel
+                Layout.fillWidth: true
+                text: root.videoSize.length > 0 ? root.videoSize : qsTr("Video")
+                color: Theme.textSubtle
+                font.pixelSize: TypeScale.metadata
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
             }
@@ -181,13 +197,14 @@ Control {
                 Text {
                     Layout.fillWidth: true
                     text: root.statusLabel
-                    color: Theme.textMuted
+                    color: root.statusColor
                     font.pixelSize: Theme.caption
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                 }
 
                 Text {
+                    visible: root.status === "processing"
                     text: qsTr("%1%").arg(root.progress)
                     color: root.statusColor
                     font.pixelSize: Theme.caption
@@ -205,29 +222,14 @@ Control {
                     Accessible.ignored: true
                 }
                 IconButton {
+                    objectName: "batchVideoRemove_" + root.index
                     visible: root.removalEnabled
                     glyph: IconCatalog.glyph("delete")
                     toolTipText: qsTr("Xóa video")
-                    controlSize: 24
+                    controlSize: 32
                     onClicked: root.removalRequested()
                 }
             }
-        }
-    }
-
-    transform: Translate {
-        y: hoverHandler.hovered ? -2 : 0
-        Behavior on y {
-            NumberAnimation {
-                duration: Theme.motionFast
-                easing.type: Easing.OutCubic
-            }
-        }
-    }
-    Behavior on scale {
-        NumberAnimation {
-            duration: Theme.motionFast
-            easing.type: Easing.OutCubic
         }
     }
 }
