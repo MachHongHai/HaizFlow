@@ -80,6 +80,32 @@ def test_all_crop_spellings_share_request_base_visual_and_chunk_keys(session, sp
     assert Preview._crop_cache_payload(CropSettings().model_dump()) == Preview._crop_cache_payload(loaded.model_dump())
 
 
+def test_legacy_layered_asr_key_restores_without_ffmpeg_during_recognition(session, monkeypatch):
+    controller, _, settings, directory = session
+    intervals = [(0, 1), (2, 3)]
+    monkeypatch.setattr(controller, "_source_subtitle_intervals", lambda *_: intervals)
+    legacy = Preview._base_visual_cache_payload(settings)
+    legacy["original_subtitle_intervals"] = intervals
+    output = directory / f"base-{digest(legacy)[:20]}/preview.mp4"
+    complete(output, 25)
+    with patch("haizflow.desktop.editor_preview_controller.threading.Thread") as worker, \
+            patch("haizflow.desktop.editor_preview_controller.get_video_duration") as probe:
+        assert controller.request("[]", 6, cache_only=True)
+    assert Path(QUrl(controller.base_source).toLocalFile()) == output.resolve()
+    worker.assert_not_called()
+    probe.assert_not_called()
+
+
+def test_only_independent_timed_masks_can_ignore_speech_windows(session):
+    _, _, settings, _ = session
+    intervals = [(0, 1)]
+    timed = {**settings, "original_subtitle_intervals": intervals}
+    assert Preview._base_visual_cache_payload(timed)["original_subtitle_intervals"] == []
+    for legacy in ({**timed, "independent_manual_preview": False},
+                   {**timed, "ocr_region": {"x_percent": 10}}):
+        assert Preview._base_visual_cache_payload(legacy)["original_subtitle_intervals"] == intervals
+
+
 @pytest.mark.parametrize("spellings", SPELLINGS)
 def test_reopen_restores_every_existing_crop_spelling_without_probe_or_render(session, spellings):
     controller, video, settings, directory = session

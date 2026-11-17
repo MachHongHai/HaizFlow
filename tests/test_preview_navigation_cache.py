@@ -114,6 +114,57 @@ def test_cache_only_miss_does_not_start_preview_worker(preview_session):
     assert not controller.busy
 
 
+@pytest.fixture
+def layered_preview(preview_session, monkeypatch):
+    from copy import deepcopy
+
+    _, controller, _, _, _, _ = preview_session
+    state = {"intervals": []}
+    region = {"x_percent": 10, "y_percent": 70, "width_percent": 80, "height_percent": 10,
+              "treatment_layers": [{"primary": True, "mode": "patch", "start_ms": 0,
+                                    "duration_ms": 120000, "region": {"x_percent": 10,
+                                        "y_percent": 70, "width_percent": 80, "height_percent": 10}}]}
+    monkeypatch.setattr("haizflow.services.ocr_layers.render_region", lambda *_: deepcopy(region))
+    monkeypatch.setattr(controller, "_source_subtitle_intervals", lambda *_: state["intervals"])
+    return preview_session, state, region
+
+
+def test_recognition_publication_keeps_treated_preview_visible_while_queued(layered_preview):
+    session, state, _ = layered_preview
+    host, controller, renderer, videos, prime, _ = session
+    prime("a")
+    ready_source, fingerprint = controller.base_source, controller._request_fingerprint
+    controller.release()  # Also cover navigation while recognition is running.
+    videos["a"].status = "processing"
+    videos["a"].manual_target_tool = "translation"
+    state["intervals"] = [(index, index + .5) for index in range(89)]
+    assert controller.request("[]", 6, cache_only=True)
+    assert controller.base_source == ready_source and controller._request_fingerprint == fingerprint
+    assert renderer.call_count == 1 and controller.stage == "ready" and not controller.busy
+    videos["a"].status = "paused"
+    assert controller.request("[]", 6)
+    assert controller.base_source == ready_source and renderer.call_count == 1
+
+
+@pytest.mark.parametrize("change", ["region", "mode", "timing", "source"])
+def test_recognition_cache_reuse_does_not_ignore_actual_visual_changes(layered_preview, change):
+    session, state, region = layered_preview
+    _, controller, renderer, videos, prime, _ = session
+    prime("a")
+    controller.release()
+    state["intervals"] = [(0, 1)]
+    if change == "region":
+        region["treatment_layers"][0]["region"]["y_percent"] = 60
+    elif change == "mode":
+        region["treatment_layers"][0]["mode"] = "blur"
+    elif change == "timing":
+        region["treatment_layers"][0]["duration_ms"] = 60000
+    else:
+        videos["a"].manual_tool_generations = {"source": 1}
+    assert not controller.request("[]", 6, cache_only=True)
+    assert controller.base_source == "" and renderer.call_count == 1
+
+
 def test_changed_effects_do_not_resurrect_stale_preview(preview_session):
     _, controller, renderer, videos, prime, _ = preview_session
     prime("a")

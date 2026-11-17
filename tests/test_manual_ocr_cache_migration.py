@@ -108,7 +108,7 @@ def test_exact_new_epoch_cache_takes_priority_over_compatible_older_key(tmp_path
     assert controller._completed_requests[fingerprint(current)][0] == str(expected_output.resolve())
 
 
-@pytest.mark.parametrize("change", ["path", "size", "mtime_ns", "geometry", "mode", "intervals"])
+@pytest.mark.parametrize("change", ["path", "size", "mtime_ns", "geometry", "mode", "layer_timing"])
 def test_pre_epoch_fallback_still_requires_the_same_source_and_treatment(tmp_path, change):
     _old, current = old_and_layered_settings()
     current["source_identity"]["mtime_ns"] = 10
@@ -122,10 +122,20 @@ def test_pre_epoch_fallback_still_requires_the_same_source_and_treatment(tmp_pat
         current["removal_mode"] = "blur"
         current["ocr_region"]["treatment_layers"][0]["mode"] = "blur"
     else:
-        current["original_subtitle_intervals"] = [(0, 1)]
+        current["ocr_region"]["treatment_layers"][0]["duration_ms"] -= 1000
     controller = EditorPreviewController(SimpleNamespace())
     controller._restore_manual_disk_cache(tmp_path, fingerprint(current), current)
     assert not controller._completed_requests
+
+
+def test_pre_epoch_timed_mask_cache_survives_new_recognition_windows(tmp_path):
+    _old, current = old_and_layered_settings()
+    output = legacy_cache(tmp_path, current)
+    current["source_identity"]["source_replacement"] = 2
+    current["original_subtitle_intervals"] = [(0, 1)]
+    controller = EditorPreviewController(SimpleNamespace())
+    controller._restore_manual_disk_cache(tmp_path, fingerprint(current), current)
+    assert controller._completed_requests[fingerprint(current)][0] == str(output.resolve())
 
 
 @pytest.mark.parametrize("change", ["geometry", "mode", "start", "shorter", "extra", "not-primary",

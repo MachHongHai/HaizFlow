@@ -314,6 +314,7 @@ class EditorPreviewController:
         """Fingerprint source effects that do not depend on translated text."""
         removes_source_text = bool(settings["remove_original_subtitles"])
         live_watermark = not bool(settings.get("independent_manual_preview"))
+        timed_masks = (not live_watermark and "treatment_layers" in (settings.get("ocr_region") or {}))
         return {
             "video_id": settings["video_id"],
             "source_identity": settings["source_identity"],
@@ -335,8 +336,11 @@ class EditorPreviewController:
             "source_treatment_revision": 3,
             # A completed OCR retry with identical bounds does not change
             # pixels. Reuse its proxy rather than encoding the timeline again.
-            # Caption visibility windows do affect pixels and must invalidate it.
-            "original_subtitle_intervals": settings.get("original_subtitle_intervals", []) if removes_source_text else [],
+            # Manual mask layers own their timeline windows. Publishing ASR
+            # cues must not hide that ready proxy while AI work is queued:
+            # the mask renderer deliberately ignores these speech intervals.
+            "original_subtitle_intervals": settings.get("original_subtitle_intervals", [])
+                if removes_source_text and not timed_masks else [],
         }
 
     @staticmethod
@@ -472,6 +476,21 @@ class EditorPreviewController:
                 candidates.append(({**settings, "source_identity": identity}, "_source_epoch"))
             for compatible, suffix in candidates:
                 payload = cls._base_visual_cache_payload(compatible)
+                if (compatible.get("independent_manual_preview")
+                        and "treatment_layers" in (compatible.get("ocr_region") or {})
+                        and compatible.get("original_subtitle_intervals")):
+                    # Old releases included ASR timing in the ready proxy key
+                    # even though those timings never changed the mask pixels.
+                    # Read only this exact source/effects variant; never pick
+                    # an arbitrary latest proxy from another source or edit.
+                    legacy_payload = {**payload, "original_subtitle_intervals":
+                                      compatible["original_subtitle_intervals"]}
+                    for variant in cls._crop_cache_variants(legacy_payload):
+                        key = hashlib.sha256(json.dumps(variant, ensure_ascii=False, sort_keys=True,
+                                                       separators=(",", ":")).encode("utf-8")).hexdigest()[:20]
+                        if key not in seen:
+                            seen.add(key)
+                            yield key, "legacy_asr_intervals" + suffix
                 for variant in cls._crop_cache_variants(payload):
                     key = hashlib.sha256(json.dumps(variant, ensure_ascii=False, sort_keys=True,
                                                    separators=(",", ":")).encode("utf-8")).hexdigest()[:20]
