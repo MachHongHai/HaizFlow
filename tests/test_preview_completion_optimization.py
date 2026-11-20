@@ -1,4 +1,5 @@
 from concurrent.futures import CancelledError, ThreadPoolExecutor
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -216,6 +217,49 @@ def test_warm_editor_requests_audio_without_repeating_cold_start_delay():
     host._selected_video_id = "other"
     refresh()
     host.refreshManualPreviewAudio.assert_called_once()
+
+
+@pytest.mark.parametrize("already_loaded", [False, True])
+def test_manual_reopen_reuses_only_the_transcript_actually_loaded(tmp_path, already_loaded):
+    from haizflow.desktop.qml_controller import HaizFlowController
+
+    old_path = str(tmp_path / "hy-mt2.json")
+    new_path = tmp_path / "openrouter.json"
+    fresh = [{"segment_id": "cue-6", "text": "New translation"}]
+    new_path.write_text(json.dumps(fresh), encoding="utf-8")
+    published = SimpleNamespace(video_id="a", project_type="manual", files={"transcript_json": str(new_path)},
+                                updated_at=2, editor_document_revision=1)
+    old = SimpleNamespace(**{**vars(published), "files": {"transcript_json": old_path}, "updated_at": 1})
+
+    class Host(SimpleNamespace):
+        def _selected_video(self):
+            return self._selected_video_snapshot
+
+        @property
+        def reviewSegments(self):
+            return HaizFlowController.reviewSegments.fget(self)
+
+    host = Host(_project_import=None, _selected_video_id="a", _manual_voice_video_id="a",
+                _selected_video_snapshot=old, _editor_preview=Mock(), _manual_audio=Mock(),
+                _subtitle_overlay=Mock(), _manual_voice_refresh_timer=Mock(), _editor_transform_drafts={},
+                _manual_editor_document=SimpleNamespace(video_id="a", set_document=Mock()),
+                _manual_subtitles=SimpleNamespace(video_id="a", load=Mock(), segments=fresh,
+                                                  has_unpublished_save=lambda: False),
+                _loaded_manual_subtitle_source=("a", str(new_path) if already_loaded else old_path))
+    host._refresh_selected_video_snapshot = lambda: setattr(host, "_selected_video_snapshot", published)
+    with patch("haizflow.desktop.qml_controller.video_store.get_video", return_value=published), \
+         patch("haizflow.services.editor_documents.sync_subtitle_clips", return_value="new-document") as sync:
+        HaizFlowController.releaseEditorPreview(host)
+        HaizFlowController.loadManualSubtitles(host)
+
+    if already_loaded:
+        host._manual_subtitles.load.assert_not_called()
+        sync.assert_not_called()
+    else:
+        host._manual_subtitles.load.assert_called_once_with("a", fresh)
+        sync.assert_called_once_with(published, fresh)
+        host._manual_editor_document.set_document.assert_called_once_with("new-document")
+    assert host._loaded_manual_subtitle_source == ("a", str(new_path))
 
 
 def test_probe_batch_reuses_only_successful_unchanged_files_and_clears_after_exit(tmp_path):

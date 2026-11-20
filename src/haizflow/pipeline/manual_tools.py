@@ -8,7 +8,7 @@ import shutil
 import sys
 import traceback
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from haizflow.config import HYMT2_MODEL_REVISION
 from haizflow.core.hardware import translation_model_signature_parts
@@ -2815,7 +2815,9 @@ def migrate_legacy_artifacts(video_id: str) -> bool:
     return changed
 
 
-def run_manual_tool_sync(video_id: str, tool_id: str) -> None:
+def run_manual_tool_sync(
+    video_id: str, tool_id: str, *, on_translation_published: Callable[[str], None] | None = None,
+) -> None:
     """Run one user-selected Manual tool and only its explicit sub-operations.
 
     ``translation`` intentionally combines recognition and translation, while
@@ -2883,6 +2885,13 @@ def run_manual_tool_sync(video_id: str, tool_id: str) -> None:
             active_artifacts=dict(getattr(refreshed, "active_artifacts", {}) or {}),
         )
         video_store.log_to_video(video_id, f"Manual tool completed: {tool_id}.", component="MANUAL")
+        if tool_id == "translation" and on_translation_published is not None:
+            # The transcript and success status are durable. The editor can
+            # switch captions before the queue finishes cleaning up caches.
+            try:
+                on_translation_published(video_id)
+            except (OSError, RuntimeError, TypeError, ValueError) as exc:
+                video_store.log_to_video(video_id, f"Editor notification deferred to task completion: {exc}", component="MANUAL")
     except Exception as exc:
         if is_cancelled(video_id) or str(exc) == "Video cancelled by user.":
             if is_paused(video_id):

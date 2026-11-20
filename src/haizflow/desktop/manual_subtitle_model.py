@@ -94,10 +94,13 @@ class ManualSubtitleModel(QAbstractListModel):
     def revision(self):
         return self._revision
 
+    def has_unpublished_save(self) -> bool:
+        return any(state in {"saving", "error"} for state in self._states.values())
+
     def load(self, video_id: str, segments: list[dict]):
         identified = identify_segments(video_id, segments)
         # A background cache/status notification must never replace a live draft.
-        if video_id == self.video_id and any(s in {"saving", "error"} for s in self._states.values()):
+        if video_id == self.video_id and self.has_unpublished_save():
             return
         if video_id == self.video_id and identified == self._segments:
             return

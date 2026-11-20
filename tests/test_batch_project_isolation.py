@@ -7,8 +7,8 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from PySide6.QtCore import QEvent, QObject, QUrl
-from PySide6.QtGui import QFontDatabase, QGuiApplication
+from PySide6.QtCore import QEvent, QObject, Qt, QUrl
+from PySide6.QtGui import QFontDatabase, QGuiApplication, QImage
 from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
@@ -18,7 +18,7 @@ from haizflow.desktop.qml_controller import HaizFlowController  # noqa: F401 - r
 from haizflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
 from haizflow.desktop.video_export_controller import VideoExportController
 from haizflow.schemas.video import VideoConfig
-from haizflow.services import batch_settings, processing_runs, video_store
+from haizflow.services import batch_settings, processing_runs, video_export, video_store
 
 _APP = None
 
@@ -177,6 +177,50 @@ ApplicationWindow {{ width: 900; height: 700; visible: true
         app.processEvents()
 
 
+def test_batch_conflicts_only_count_existing_files_for_scoped_videos(app, tmp_path, monkeypatch):
+    host = export_host()
+    records = {key: SimpleNamespace(video_id=key, project_key="batch", project_type="batch",
+                                   original_filename="same.mp4", status=status)
+               for key, status in (("first", "done"), ("second", "failed"))}
+    get_video = Mock(side_effect=records.get)
+    monkeypatch.setattr(video_store, "get_video", get_video)
+    exporter = VideoExportController(host)
+    exporter.timer.stop()
+    first, second = [tmp_path / video_export.batch_filename(video) for video in records.values()]
+    first.write_bytes(b"old completed export")
+    try:
+        assert exporter.batch_destination_conflicts("batch", ["second"], str(tmp_path)) == {}
+        get_video.assert_called_once_with("second")
+        second.mkdir()  # A same-named directory is not a replaceable file.
+        checked = exporter.batch_destination_conflicts("batch", ["first", "second"], str(tmp_path))
+        assert checked == {"first": str(video_export.destination_identity(first))}
+        assert exporter.batch_destination_conflicts("other", ["first"], str(tmp_path)) == {}
+        second.rmdir()
+        second.write_bytes(b"appeared after confirmation")
+        assert not exporter.start_batch_to("batch", ["first", "second"], "source", str(tmp_path),
+                                           process=False, overwrite=True, confirmed_conflicts=checked)
+        assert exporter.jobs == []
+        assert first.read_bytes() == b"old completed export"
+        assert second.read_bytes() == b"appeared after confirmation"
+
+        new_check = exporter.batch_destination_conflicts("batch", ["second"], str(tmp_path))
+        second.write_bytes(b"independently changed")
+        assert not exporter.start_batch_to("batch", ["second"], "source", str(tmp_path),
+                                           process=False, overwrite=True, confirmed_conflicts=new_check)
+        assert second.read_bytes() == b"independently changed"
+
+        second.unlink()
+        monkeypatch.setattr(video_store, "update_video", Mock())
+        monkeypatch.setattr("haizflow.desktop.video_export_controller.current_render", lambda *_a, **_k: True)
+        monkeypatch.setattr(exporter, "launch", Mock())
+        assert exporter.start_batch_to("batch", ["first", "second"], "source", str(tmp_path),
+                                       process=False, overwrite=True, confirmed_conflicts=checked)
+        assert [(job["videoId"], job["overwrite"]) for job in exporter.jobs] == [("first", True), ("second", False)]
+        assert exporter.jobs[0]["targetIdentity"] == video_export.destination_identity(first)
+    finally:
+        exporter.shutdown()
+
+
 def test_apply_all_resynchronizes_selected_editor_before_autosave(monkeypatch):
     config = VideoConfig(project_type="batch", speech_recognition_model="small-cpu", tts_provider="vieneu")
     records = {key: SimpleNamespace(**config.model_dump(), video_id=key, files={}, status="done",
@@ -300,9 +344,13 @@ def test_delete_batch_member_is_async_and_completion_cannot_clear_new_selection(
         release.set()
 
 
-def test_batch_process_dialog_layout_and_scope_in_real_qml_window(app):
+def test_batch_process_dialog_layout_and_scope_in_real_qml_window(app, tmp_path):
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
+    thumbnail = QImage(160, 90, QImage.Format.Format_RGB32)
+    thumbnail.fill(0xFF39696B)
+    thumbnail_path = tmp_path / "frame.png"
+    assert thumbnail.save(str(thumbnail_path))
     engine = QQmlEngine()
     component = QQmlComponent(engine)
     component.setData(f'''import QtQuick
@@ -318,7 +366,7 @@ ApplicationWindow {{ width: 1050; height: 780; visible: true; color: Theme.windo
             videoIds: ["a", "b", "c"], count: 3,
             presets: [{{value: "source", label: "Theo nguồn"}}],
             videos: [{{videoId: "a", name: "Phần 1 — Video đã hoàn tất.mp4", status: "done"}},
-                {{videoId: "b", name: "Phần 2 — Video tạm dừng.mp4", status: "paused"}},
+                {{videoId: "b", name: "Phần 2 — Video tạm dừng.mp4", status: "paused", thumbnailSource: "{thumbnail_path.as_uri()}"}},
                 {{videoId: "c", name: "Phần 3 — Video cần xử lý lại.mp4", status: "failed"}}]}}; }}
     }}
     VideoExportDialog {{ id: dialog; objectName: "dialog"; controller: backend
@@ -335,6 +383,24 @@ ApplicationWindow {{ width: 1050; height: 780; visible: true; color: Theme.windo
         scope.setProperty("scope", "selection")
         scope.setProperty("selectedIds", ["b"])
         QTest.qWait(180)
+        listing = scope.findChild(QQuickItem, "batchScopeVideoList")
+
+        def descendants(item):
+            for child in item.childItems():
+                yield child
+                yield from descendants(child)
+
+        cards = list(descendants(listing))
+        thumbnails = [item.property("source").toString()
+                      for item in cards if item.objectName() == "batchScopeThumbnail"]
+        assert thumbnails.count(thumbnail_path.as_uri()) == 1
+        assert thumbnails.count("") == 2  # The same layout still has a fallback for missing thumbnails.
+        checks = [item for item in cards if item.objectName() == "batchScopeRowCheckBox"]
+        assert [item.property("checked") for item in checks] == [False, True, False]
+        check = checks[-1]
+        check.forceActiveFocus()
+        QTest.keyClick(window, Qt.Key.Key_Space)
+        assert scope.property("targetIds").toVariant() == ["b", "c"]
         button = window.findChild(QObject, "confirmVideoExport")
         assert isinstance(button, QQuickItem)
         assert button.isEnabled()
@@ -342,7 +408,7 @@ ApplicationWindow {{ width: 1050; height: 780; visible: true; color: Theme.windo
         # The list must shrink, not push its footer outside the dialog.
         point = button.mapToItem(window.contentItem(), button.boundingRect().bottomRight())
         assert 0 < point.y() < window.height()
-        artifact = root / "build/batch-scope-ui-20261112.png"
+        artifact = tmp_path / "batch-scope-ui.png"
         assert window.grabWindow().save(str(artifact))
     finally:
         window.close()

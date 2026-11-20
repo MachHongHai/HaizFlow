@@ -452,6 +452,7 @@ class HaizFlowController(QObject):
         # update can decode audio again after the user has left the editor.
         self._manual_editor_active = False
         self._manual_editing_segment_id = ""
+        self._loaded_manual_subtitle_source: tuple[str, str] | None = None
         self._manual_voice_refresh_timer = QTimer(self)
         self._manual_voice_refresh_timer.setSingleShot(True)
         self._manual_voice_refresh_timer.setInterval(800)
@@ -877,6 +878,8 @@ class HaizFlowController(QObject):
                         self._manual_subtitles.segments,
                     )
                     self._manual_editor_document.set_document(document)
+                    if not self._manual_subtitles.has_unpublished_save():
+                        self._remember_loaded_manual_subtitles(selected)
                 except (OSError, RuntimeError, TypeError, ValueError):
                     # Cache recovery must not make the workspace unusable. The
                     # next explicit project load retries the same reconciliation.
@@ -2650,9 +2653,7 @@ class HaizFlowController(QObject):
             "done",
         }:
             return []
-        transcript_path = (video.files or {}).get("translation_review_draft") or (video.files or {}).get(
-            "transcript_json"
-        )
+        transcript_path = HaizFlowController._manual_subtitle_source(video)[1]
         if not isinstance(transcript_path, str) or not transcript_path.strip():
             return []
         try:
@@ -2661,6 +2662,15 @@ class HaizFlowController(QObject):
             return segments if isinstance(segments, list) else []
         except (OSError, json.JSONDecodeError):
             return []
+
+    @staticmethod
+    def _manual_subtitle_source(video) -> tuple[str, str]:
+        files = getattr(video, "files", None) or {}
+        path = files.get("translation_review_draft") or files.get("transcript_json")
+        return str(getattr(video, "video_id", "") or ""), path if isinstance(path, str) else ""
+
+    def _remember_loaded_manual_subtitles(self, video) -> None:
+        self._loaded_manual_subtitle_source = HaizFlowController._manual_subtitle_source(video)
 
     @Property("QVariantMap", notify=previewMediaChanged)
     def reviewPreviewMedia(self):
@@ -4887,15 +4897,15 @@ class HaizFlowController(QObject):
     def exportFolderPath(self, url):
         return url.toLocalFile() if url.isLocalFile() else ""
 
-    @Slot(str, result=bool)
-    def batchExportDestinationExists(self, directory):
-        return self._video_exports.batch_destination_exists(directory)
+    @Slot(str, "QVariantList", str, result="QVariantMap")
+    def batchExportConflicts(self, project_key, video_ids, directory):
+        return self._video_exports.batch_destination_conflicts(str(project_key), list(video_ids), str(directory))
 
-    @Slot(str, "QVariantList", str, str, bool, bool, result=bool)
-    def processBatchTo(self, project_key, video_ids, preset, directory, overwrite, process):
+    @Slot(str, "QVariantList", str, str, bool, bool, "QVariantMap", result=bool)
+    def processBatchTo(self, project_key, video_ids, preset, directory, overwrite, process, confirmed_conflicts=None):
         started = self._video_exports.start_batch_to(
             str(project_key), list(video_ids), str(preset), str(directory), overwrite=bool(overwrite), process=bool(process),
-            background=True,
+            background=True, confirmed_conflicts=confirmed_conflicts,
         )
         if started:
             self.videoExportStarted.emit()
@@ -5514,7 +5524,11 @@ class HaizFlowController(QObject):
         # Settings round-trips can reuse it; another source/revision cannot.
         document_video_id = self._manual_editor_document.video_id
         video = video_store.get_video(document_video_id) if document_video_id else None
-        self._manual_editor_warm_identity = HaizFlowController._editor_warm_identity(video)
+        self._manual_editor_warm_identity = (
+            HaizFlowController._editor_warm_identity(video)
+            if video and getattr(self, "_loaded_manual_subtitle_source", None)
+            == HaizFlowController._manual_subtitle_source(video) else None
+        )
 
     @staticmethod
     def _editor_warm_identity(video):
@@ -6997,6 +7011,9 @@ class HaizFlowController(QObject):
             self._manual_voice_video_id = str(self._selected_video_id or "")
             self._manual_voice_refresh_pending = False
             self._manual_voice_refresh_enabled = False
+        refresh_snapshot = getattr(self, "_refresh_selected_video_snapshot", None)
+        if callable(refresh_snapshot):
+            refresh_snapshot()
         selected_video = getattr(self, "_selected_video", None)
         selected = selected_video() if callable(selected_video) else None
         warm = (selected is not None
@@ -7013,6 +7030,8 @@ class HaizFlowController(QObject):
                     self._manual_subtitles.segments,
                 )
                 self._manual_editor_document.set_document(document)
+                if not self._manual_subtitles.has_unpublished_save():
+                    HaizFlowController._remember_loaded_manual_subtitles(self, selected)
             except (OSError, RuntimeError, TypeError, ValueError):
                 # The legacy workspace remains usable when migration cannot be
                 # completed.  The backup created by ``ensure`` is untouched.
@@ -7108,6 +7127,8 @@ class HaizFlowController(QObject):
             try:
                 document = editor_documents.sync_subtitle_clips(video, self._manual_subtitles.segments)
                 self._manual_editor_document.set_document(document)
+                if not self._manual_subtitles.has_unpublished_save():
+                    HaizFlowController._remember_loaded_manual_subtitles(self, video)
             except (OSError, RuntimeError, TypeError, ValueError):
                 pass
         # Publish UI state only after subtitle/voice reconciliation. Undo

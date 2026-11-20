@@ -1114,6 +1114,28 @@ assert not (blocked & set(sys.modules)), blocked & set(sys.modules)
 
         runner.assert_called_once_with(video, reporter)
 
+    def test_translation_notifies_editor_after_publication_before_maintenance(self):
+        video = SimpleNamespace(video_id="manual-video", project_type="manual", active_artifacts={})
+        events = Mock()
+        with (
+            patch.object(manual_tools, "start_video"),
+            patch.object(manual_tools, "_requested_artifact", return_value=("", "")),
+            patch.object(manual_tools, "_translation_ready", return_value=False),
+            patch.object(manual_tools, "clean_video", events.clean),
+            patch("haizflow.pipeline.process_registry.check_cancellation"),
+            patch.object(manual_tools.manual_artifacts, "maintain", events.maintain),
+            patch.object(manual_tools.video_store, "get_video", return_value=video),
+            patch.object(manual_tools.video_store, "update_video", events.update),
+            patch.object(manual_tools.video_store, "log_to_video"),
+            patch("haizflow.pipeline.process_video.ProgressReporter"),
+            patch.dict(manual_tools._RUNNERS, {"translation": events.run}),
+        ):
+            manual_tools.run_manual_tool_sync(video.video_id, "translation", on_translation_published=events.notify)
+
+        assert [invocation[0] for invocation in events.mock_calls] == ["run", "update", "notify", "clean", "maintain"]
+        assert events.update.call_args.kwargs["status"] == "manual_ready"
+        events.notify.assert_called_once_with(video.video_id)
+
     def test_translation_runner_reuses_cached_recognition_without_other_models(self):
         video = SimpleNamespace(
             video_id="manual-video",

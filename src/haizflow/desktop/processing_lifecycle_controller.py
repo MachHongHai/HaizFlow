@@ -19,6 +19,7 @@ class ProcessingLifecycleController:
         self._disk_log_revision = None
         self._wake_lock = threading.Lock()
         self._wake_pending = False
+        self._previewed_translation = None
 
     def _wake_ui(self) -> None:
         """One queued Qt wake-up for a burst of control events, not log lines."""
@@ -157,6 +158,58 @@ class ProcessingLifecycleController:
         self._host._log_queue.put(f"__QUEUE_FINISHED__:{video_id}")
         self._wake_ui()
 
+    def on_translation_published(self, video_id: str) -> None:
+        self._host._log_queue.put(f"__TRANSLATION_PUBLISHED__:{video_id}")
+        self._wake_ui()
+
+    @staticmethod
+    def _translation_preview_key(video):
+        if (video is not None and getattr(video, "status", "") == "manual_ready"
+                and getattr(video, "step", "") == "manual_translation"):
+            files = getattr(video, "files", {}) or {}
+            if transcript := files.get("transcript_json"):
+                return video.video_id, str(transcript)
+        return None
+
+    def _reconcile_manual_preview(self, video, *, translation: bool = False) -> bool:
+        host = self._host
+        if (video is None or video.video_id != str(host._selected_video_id or "")
+                or getattr(video, "project_type", "") != "manual"
+                or getattr(video, "status", "") not in {"manual_ready", "done"}
+                or getattr(video, "manual_target_tool", "")
+                or getattr(host, "_manual_editor_document", None) is None):
+            return False
+        try:
+            from haizflow.services import editor_documents
+
+            refresh_snapshot = getattr(host, "_refresh_selected_video_snapshot", None)
+            if callable(refresh_snapshot):
+                refresh_snapshot()
+            subtitles = getattr(host, "_manual_subtitles", None)
+            saving_or_failed = getattr(subtitles, "video_id", video.video_id) == video.video_id and any(
+                state in {"saving", "error"} for state in getattr(subtitles, "_states", {}).values()
+            )
+            # A selected cue is not a pending write. QML keeps uncommitted
+            # text in its draft buffer; do not hold old published captions.
+            reload_subtitles = subtitles is not None and not saving_or_failed and (
+                translation or not getattr(host, "_manual_editing_segment_id", "")
+            )
+            if reload_subtitles:
+                subtitles.load(video.video_id, host.reviewSegments)
+                document = editor_documents.sync_subtitle_clips(video, subtitles.segments)
+            elif translation:
+                return False
+            else:
+                document = editor_documents.ensure(video)
+            host._manual_editor_document.set_document(document)
+            remember = getattr(host, "_remember_loaded_manual_subtitles", None)
+            if reload_subtitles and callable(remember):
+                remember(getattr(host, "_selected_video_snapshot", None) or video)
+            return True
+        except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
+            video_store.log_to_video(video.video_id, f"Editor preview reconciliation failed: {exc}")
+            return False
+
     def on_processing_queue_idle(self) -> None:
         warmup = getattr(self._host, "_smart_warmup", None)
         if warmup is not None:
@@ -289,7 +342,10 @@ class ProcessingLifecycleController:
                     from haizflow.pipeline.manual_tools import run_manual_tool_sync
 
                     video_store.log_to_video(video_id, f"Manual tool requested: {target_tool}.")
-                    run_manual_tool_sync(video_id, target_tool)
+                    if target_tool == "translation":
+                        run_manual_tool_sync(video_id, target_tool, on_translation_published=self.on_translation_published)
+                    else:
+                        run_manual_tool_sync(video_id, target_tool)
                     return
                 stop_after = str(getattr(current_video, "manual_target_stage", "") or "")
                 if not stop_after:
@@ -364,15 +420,16 @@ class ProcessingLifecycleController:
                 host.processingChanged.emit()
                 host._refresh_batch_model()
                 host.batchChanged.emit()
+            elif item.startswith("__TRANSLATION_PUBLISHED__:"):
+                video_id = item.partition(":")[2]
+                if video_id == str(host._selected_video_id or ""):
+                    published_video = video_store.get_video(video_id)
+                    key = self._translation_preview_key(published_video)
+                    if key and self._reconcile_manual_preview(published_video, translation=True):
+                        self._previewed_translation = key
             elif item.startswith("__QUEUE_FINISHED__:"):
                 finished_video_id = item.partition(":")[2]
                 host.refreshVideos()
-                manual_preview_ready = False
-                # Voice artifacts are published by the worker, while the
-                # editor document and its QML model live on the GUI thread.
-                # Reconcile them at the completed-task boundary so a newly
-                # generated voice is audible immediately, without waiting for
-                # a later volume edit or reopening the project.
                 finished_video = video_store.get_video(finished_video_id)
                 from haizflow.core.vieneu_voices import unsupported_language_notice
 
@@ -394,41 +451,13 @@ class ProcessingLifecycleController:
                     host.appAlertRequested.emit("Đã đổi công cụ giọng đọc" if vi else "Speech backend changed",
                         f"Phụ đề vừa tạo là {label.lower()}. VieNeu đã được chuyển sang OmniVoice để tạo giọng." if vi
                         else f"The new subtitles are in {label}. VieNeu was switched to OmniVoice for speech generation.", "warning")
-                if (
-                    finished_video_id == str(host._selected_video_id or "")
-                    and finished_video
-                    and getattr(finished_video, "project_type", "") == "manual"
-                    and getattr(finished_video, "status", "") in {"manual_ready", "done"}
-                    and str(getattr(finished_video, "manual_target_tool", "") or "") == ""
-                    and getattr(host, "_manual_editor_document", None) is not None
-                ):
-                    try:
-                        from haizflow.services import editor_documents
-
-                        refresh_snapshot = getattr(host, "_refresh_selected_video_snapshot", None)
-                        if callable(refresh_snapshot):
-                            refresh_snapshot()
-                        subtitles = getattr(host, "_manual_subtitles", None)
-                        if (
-                            subtitles is not None
-                            and not str(getattr(host, "_manual_editing_segment_id", "") or "")
-                            and not any(
-                                state in {"saving", "error"}
-                                for state in getattr(subtitles, "_states", {}).values()
-                            )
-                        ):
-                            subtitles.load(finished_video_id, host.reviewSegments)
-                            document = editor_documents.sync_subtitle_clips(
-                                finished_video, subtitles.segments,
-                            )
-                        else:
-                            document = editor_documents.ensure(finished_video)
-                        host._manual_editor_document.set_document(document)
-                        manual_preview_ready = True
-                    except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
-                        video_store.log_to_video(
-                            finished_video_id, f"Editor voice reconciliation failed: {exc}"
-                        )
+                key = self._translation_preview_key(finished_video)
+                if key and key == self._previewed_translation:
+                    manual_preview_ready = True
+                else:
+                    manual_preview_ready = self._reconcile_manual_preview(finished_video, translation=bool(key))
+                if self._previewed_translation and self._previewed_translation[0] == finished_video_id:
+                    self._previewed_translation = None
                 if finished_video_id == str(host._selected_video_id or ""):
                     host.selectedVideoChanged.emit()
                 host._refresh_batch_model()

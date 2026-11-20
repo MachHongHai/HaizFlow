@@ -8,6 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QAbstractListModel, QModelIndex, QObject, Qt, QTimer
 
 from haizflow.desktop.localization import QFileDialog, QMessageBox, native_media_dialog_directory
+from haizflow.desktop.media import thumbnail_source
 from haizflow.services import desktop_settings, video_store
 from haizflow.services.video_export import (
     EXPORT_PRESETS, ExportCancelled, adopt_legacy_render, batch_filename, current_render, destination_identity,
@@ -197,7 +198,8 @@ class VideoExportController(QObject):
         result.update(projectKey=str(self.host._selected_project_key or ""),
                       videoIds=[video.video_id for video in videos], count=len(videos),
                       videos=[{"videoId": video.video_id, "name": video.original_filename,
-                               "status": video.status, "progress": video.progress}
+                               "status": video.status, "progress": video.progress,
+                               "thumbnailSource": thumbnail_source((video.files or {}).get("thumbnail") or "")}
                               for video in videos])
         return result
 
@@ -239,9 +241,24 @@ class VideoExportController(QObject):
             return ""
         return str(Path(directory).resolve())
 
-    def batch_destination_exists(self, directory) -> bool:
-        return any((Path(directory) / batch_filename(video)).exists()
-                   for key in self.host._batch_video_ids if (video := video_store.get_video(key)))
+    def batch_destination_conflicts(self, project_key, video_ids, directory) -> dict[str, str]:
+        if (project_key != str(self.host._selected_project_key or "") or not directory
+                or not set(video_ids).issubset(self.host._batch_video_ids)):
+            return {}
+        conflicts = {}
+        for key in video_ids:
+            video = video_store.get_video(key)
+            if not video or video.project_type != "batch" or video.project_key != project_key:
+                continue
+            target = Path(directory) / batch_filename(video)
+            try:
+                identity = destination_identity(target) if target.is_file() else None
+            except OSError:
+                continue  # Export validation reports an unavailable destination.
+            if identity is not None:
+                # Keep the exact stat values across the QML boundary.
+                conflicts[key] = str(identity)
+        return conflicts
 
     def _set_jobs(self, jobs):
         # Keep every live owner/destination when another Auto project queues.
@@ -388,7 +405,7 @@ class VideoExportController(QObject):
         return True
 
     def start_batch_to(self, project_key, video_ids, preset, directory, *, overwrite=False, process=True,
-                       background=False) -> bool:
+                       background=False, confirmed_conflicts=None) -> bool:
         """Capture destinations and validate the whole batch before enqueueing."""
         if (self.busy or not video_ids or project_key != str(self.host._selected_project_key or "")
                 or len(set(video_ids)) != len(video_ids)
@@ -407,12 +424,18 @@ class VideoExportController(QObject):
                 raise FileNotFoundError(directory)
             for video in videos:
                 target = validate_export_destination(Path(directory) / batch_filename(video))
-                if target.exists() and not overwrite:
+                identity = destination_identity(target)
+                replace = bool(overwrite)
+                if confirmed_conflicts is not None:
+                    replace = (replace and identity is not None
+                               and confirmed_conflicts.get(video.video_id) == str(identity))
+                if identity is not None and not replace:
                     raise FileExistsError(str(target))
                 jobs.append({"videoId": video.video_id, "name": target.name, "path": str(target),
                              "status": "rendering" if process else "pending", "progress": 0, "error": "",
-                             "overwrite": bool(overwrite), "process": bool(process), "queued": bool(process),
-                             "targetIdentity": self._chosen_targets.get(str(target), destination_identity(target))})
+                             "overwrite": replace, "process": bool(process), "queued": bool(process),
+                             "targetIdentity": identity if confirmed_conflicts is not None
+                             else self._chosen_targets.get(str(target), identity)})
         except (OSError, ValueError) as exc:
             self.alert(exc)
             return False

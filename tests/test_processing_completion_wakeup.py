@@ -111,6 +111,73 @@ def test_worker_finish_and_idle_are_coalesced_and_delivered_on_qt_thread(session
     assert ready.count() == 1
 
 
+def test_translation_replaces_selected_old_caption_before_queue_cleanup(session):
+    host, video, sync = session
+    video.step = "manual_translation"
+    video.files = {"transcript_json": "openrouter/segments.json", "ocr_output": "existing-ocr.json"}
+    host._manual_editing_segment_id = "cue-6"
+    fresh = [{"segment_id": "cue-6", "text": "New translation"}]
+    host.reviewSegments = fresh
+    host._manual_subtitles.load.side_effect = lambda _id, rows: setattr(host._manual_subtitles, "segments", rows)
+    ready = QSignalSpy(host.manualToolPreviewReady)
+    worker = threading.Thread(target=host._processing_lifecycle.on_translation_published, args=("a",))
+    worker.start()
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    host._manual_subtitles.load.assert_not_called()
+    QTest.qWait(20)
+
+    host._manual_subtitles.load.assert_called_once_with("a", fresh)
+    sync.assert_called_once_with(video, fresh)
+    host._manual_editor_document.set_document.assert_called_once_with("current-document")
+    assert host.ui_threads == [threading.get_ident()]
+    assert video.files["ocr_output"] == "existing-ocr.json"
+    assert ready.count() == 0  # Media stays on the queue's normal completion path.
+
+    host._processing_lifecycle.on_queue_video_finished("a")
+    QTest.qWait(20)
+    sync.assert_called_once()
+    assert ready.count() == 1 and ready.at(0) == ["a"]
+
+
+@pytest.mark.parametrize("guard", ["other-project", "saving", "error", "paused"])
+def test_translation_publication_respects_project_ownership_and_pending_writes(session, guard):
+    host, video, sync = session
+    video.step = "manual_translation"
+    video.files = {"transcript_json": "openrouter/segments.json"}
+    if guard == "other-project":
+        host._selected_video_id = "b"
+    elif guard == "paused":
+        video.status = "paused"
+    else:
+        host._manual_subtitles._states["cue-6"] = guard
+    ready = QSignalSpy(host.manualToolPreviewReady)
+    host._processing_lifecycle.on_translation_published("a")
+    host._processing_lifecycle.on_queue_video_finished("a")
+    QTest.qWait(20)
+
+    host._manual_subtitles.load.assert_not_called()
+    host._manual_editor_document.set_document.assert_not_called()
+    sync.assert_not_called()
+    assert ready.count() == 0
+
+
+def test_translation_finish_retries_if_an_earlier_save_delayed_publication(session):
+    host, video, sync = session
+    video.step = "manual_translation"
+    video.files = {"transcript_json": "openrouter/segments.json"}
+    host._manual_editing_segment_id = "cue-6"
+    host._manual_subtitles._states["cue-6"] = "saving"
+    host._processing_lifecycle.on_translation_published("a")
+    QTest.qWait(20)
+    sync.assert_not_called()
+
+    host._manual_subtitles._states.clear()
+    host._processing_lifecycle.on_queue_video_finished("a")
+    QTest.qWait(20)
+    sync.assert_called_once()
+
+
 @pytest.mark.parametrize("switch_during_refresh", [False, True])
 def test_other_project_completion_never_reconciles_or_requests_selected_preview(session, switch_during_refresh):
     host, _video, sync = session

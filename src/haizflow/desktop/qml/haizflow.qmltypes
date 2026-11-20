@@ -2539,7 +2539,11 @@ Module {
         Method { name: "batchExportSettings"; type: "QVariantMap" }
         Method { name: "chooseBatchExportDestination"; type: "QString" }
         Method { name: "chooseBatchExportFolder"; type: "QString" }
-        Method { name: "batchExportDestinationExists"; type: "bool"; Parameter { name: "directory"; type: "QString" } }
+        Method { name: "batchExportConflicts"; type: "QVariantMap"
+            Parameter { name: "projectKey"; type: "QString" }
+            Parameter { name: "videoIds"; type: "QVariantList" }
+            Parameter { name: "directory"; type: "QString" }
+        }
         Method { name: "processBatchTo"; type: "bool"
             Parameter { name: "projectKey"; type: "QString" }
             Parameter { name: "videoIds"; type: "QVariantList" }
@@ -2547,6 +2551,7 @@ Module {
             Parameter { name: "directory"; type: "QString" }
             Parameter { name: "overwrite"; type: "bool" }
             Parameter { name: "process"; type: "bool" }
+            Parameter { name: "confirmedConflicts"; type: "QVariantMap" }
         }
         Method { name: "applyBatchSettingsValues"; type: "bool"
             Parameter { name: "projectKey"; type: "QString" }

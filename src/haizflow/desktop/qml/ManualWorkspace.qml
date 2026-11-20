@@ -1063,6 +1063,8 @@ Item {
                     srtExportLoader.invoke("openForSelection");
                 return;
             }
+            if (root.selectedStageIndex === root.subtitleToolIndex && index !== root.subtitleToolIndex)
+                root.dismissSubtitleEditor();
             root.selectedStageIndex = index;
             root.warmTool(index);
             root.activatePanel("tasks", "right");

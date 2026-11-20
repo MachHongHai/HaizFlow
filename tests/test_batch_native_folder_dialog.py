@@ -21,7 +21,8 @@ class Backend(QObject):
     def __init__(self):
         super().__init__()
         self.project = "batch-1"
-        self.collision = False
+        self.conflict_checks = []
+        self.starts = []
         self.folder_calls = 0
         self.exporter = SimpleNamespace(
             text=lambda vi, en: vi,
@@ -36,7 +37,8 @@ class Backend(QObject):
 
     @Slot(result="QVariantMap")
     def batchExportSettings(self):
-        return dict(projectKey=self.project, videos=[dict(videoId="a", name="a.mp4", status="pending")],
+        return dict(projectKey=self.project, videos=[dict(videoId="a", name="a.mp4", status="failed"),
+                                                   dict(videoId="b", name="b.mp4", status="done")],
                     presets=[dict(value="source", label="Original")], preset="source")
 
     @Slot(result="QVariantMap")
@@ -48,9 +50,15 @@ class Backend(QObject):
         self.folder_calls += 1
         return VideoExportController.choose_batch_folder(self.exporter)
 
-    @Slot(str, result=bool)
-    def batchExportDestinationExists(self, _directory):
-        return self.collision
+    @Slot(str, "QVariantList", str, result="QVariantMap")
+    def batchExportConflicts(self, project, videos, directory):
+        self.conflict_checks.append((project, videos, directory))
+        return {"b": "existing-identity"} if "b" in videos else {}
+
+    @Slot(str, "QVariantList", str, str, bool, bool, "QVariantMap", result=bool)
+    def processBatchTo(self, project, videos, _preset, directory, overwrite, _process, conflicts):
+        self.starts.append((project, videos, directory, overwrite, conflicts))
+        return True
 
     @Slot(str, result=str)
     def chooseVideoExportDestination(self, _video_id):
@@ -127,20 +135,83 @@ ApplicationWindow {{ width: 1000; height: 800; visible: true
             assert QMetaObject.invokeMethod(button, "clicked")
             assert dialog.property("destination") == ""
             unchanged()
-            # Existing files retain the QML confirmation, not a second native dialog.
-            backend.collision = True
             assert QMetaObject.invokeMethod(button, "clicked")
-            assert dialog.property("pendingFolder") == output
-            assert dialog.property("destination") == ""
-            confirm = window.findChild(QObject, "replaceBatchExportFiles")
-            assert confirm.property("visible")
-            confirm.close()
+            assert dialog.property("destination") == output
+            assert backend.conflict_checks == []
+            assert not window.findChild(QObject, "replaceBatchExportFiles").property("visible")
             unchanged()
             dialog.openForSelection(False)
             assert QMetaObject.invokeMethod(button, "clicked")
             assert dialog.property("destination") == str(tmp_path / "manual.mp4")
             unchanged()
             assert native_picker.call_count == 4 and backend.folder_calls == 3
+    finally:
+        window.close()
+        window.deleteLater()
+        component.deleteLater()
+        engine.deleteLater()
+        _APP.sendPostedEvents(None, QEvent.DeferredDelete)
+        _APP.processEvents()
+
+
+def test_batch_retry_only_prompts_for_current_selected_destination_conflicts():
+    global _APP
+    _APP = QGuiApplication.instance() or QGuiApplication([])
+    backend = Backend()
+    engine = QQmlEngine()
+    engine.rootContext().setContextProperty("AppController", backend)
+    engine.rootContext().setContextProperty("pickerBackend", backend)
+    component = QQmlComponent(engine)
+    component.setData(f'''import QtQuick
+import QtQuick.Controls.Basic
+import "{QML_DIR.as_uri()}"
+ApplicationWindow {{ width: 970; height: 780; visible: true
+    VideoExportDialog {{ objectName: "exportDialog"; controller: pickerBackend }}
+}}'''.encode(), QUrl())
+    assert component.isReady(), [error.toString() for error in component.errors()]
+    window = component.create()
+    dialog = window.findChild(QObject, "exportDialog")
+    scope = window.findChild(QObject, "batchScope")
+    start = window.findChild(QObject, "confirmVideoExport")
+    replace = window.findChild(QObject, "replaceBatchExportFiles")
+    accept_replace = window.findChild(QObject, "confirmBatchOverwrite")
+    folder = "E:/output"
+
+    def open_retry():
+        dialog.openForBatch(True)
+        dialog.setProperty("destination", folder)
+        QTest.qWait(160)
+
+    def click_start():
+        assert QMetaObject.invokeMethod(start, "clicked")
+        QTest.qWait(75)
+
+    try:
+        open_retry()
+        click_start()
+        assert backend.starts == [("batch-1", ["a"], folder, False, {})]
+        assert not replace.property("visible")
+
+        open_retry()
+        scope.setProperty("scope", "all")
+        click_start()
+        assert backend.conflict_checks[-1] == ("batch-1", ["a", "b"], folder)
+        assert replace.property("visible")
+        assert len(backend.starts) == 1
+        replace.close()
+        QTest.qWait(160)
+        scope.setProperty("scope", "selection")
+        scope.setProperty("selectedIds", ["a"])
+        click_start()
+        assert backend.starts[-1] == ("batch-1", ["a"], folder, False, {})
+        assert not replace.property("visible")
+
+        open_retry()
+        scope.setProperty("scope", "all")
+        click_start()
+        assert replace.property("visible")
+        assert QMetaObject.invokeMethod(accept_replace, "clicked")
+        assert backend.starts[-1] == ("batch-1", ["a", "b"], folder, True, {"b": "existing-identity"})
     finally:
         window.close()
         window.deleteLater()

@@ -12,14 +12,13 @@ AppDialog {
     property bool destinationExists: false
     property bool processBeforeExport: false
     property bool batchMode: false
-    property string pendingFolder: ""
     readonly property bool targetExportActive: (root.controller.videoExportJobs || []).some(job =>
         job.videoId === (root.configuration.videoId || "") &&
         (["pending", "rendering", "exporting"].indexOf(job.status) >= 0
          || root.controller.videoExportBusy && ["paused", "awaiting_review"].indexOf(job.status) >= 0))
     title: batchMode ? qsTr("Xử lý và xuất hàng loạt") : processBeforeExport ? qsTr("Xử lý và xuất video") : qsTr("Xuất video")
     subtitle: ""
-    preferredWidth: 600
+    preferredWidth: batchMode ? 680 : 600
     bodySpacing: Theme.space12
 
     function openForSelection(processFirst = false) {
@@ -29,7 +28,6 @@ AppDialog {
         exportRange.currentIndex = 0;
         destination = "";
         destinationExists = false;
-        pendingFolder = "";
         quality.currentIndex = Math.max(0, (configuration.presets || []).findIndex(item => item.value === configuration.preset));
         open();
     }
@@ -40,12 +38,26 @@ AppDialog {
         configuration = controller.batchExportSettings();
         destination = "";
         destinationExists = false;
-        pendingFolder = "";
         exportRange.currentIndex = 0;
         batchScope.scope = processFirst ? "unfinished" : "all";
         batchScope.selectedIds = [];
         quality.currentIndex = Math.max(0, (configuration.presets || []).findIndex(item => item.value === configuration.preset));
         open();
+    }
+    function matchesBatchRequest(request) {
+        return request && root.batchMode && root.visible
+            && request.projectKey === root.configuration.projectKey
+            && request.destination === root.destination && request.preset === quality.currentValue
+            && request.process === root.processBeforeExport
+            && request.videoIds.length === batchScope.targetIds.length
+            && request.videoIds.every((id, index) => id === batchScope.targetIds[index]);
+    }
+    function startBatchRequest(request, conflicts) {
+        if (root.matchesBatchRequest(request) && root.controller.processBatchTo(request.projectKey,
+                request.videoIds, request.preset, request.destination, Object.keys(conflicts).length > 0,
+                request.process, conflicts)) {
+            root.close();
+        }
     }
     BatchVideoScope {
         id: batchScope
@@ -56,10 +68,14 @@ AppDialog {
     AppDialog {
         id: replaceBatchFiles
         objectName: "replaceBatchExportFiles"
+        property var request: null
+        property var conflicts: ({})
+        onClosed: { request = null; conflicts = ({}); }
         title: qsTr("Thay thế tệp đã có?")
         Text {
             Layout.fillWidth: true
-            text: qsTr("Thư mục đã có video trùng tên. Thay thế khi xuất?")
+            text: qsTr("Có %1 tệp trùng tên trong số video đã chọn. Bạn muốn thay thế khi xuất?")
+                .arg(Object.keys(replaceBatchFiles.conflicts).length)
             color: Theme.text
             font.pixelSize: TypeScale.control
             wrapMode: Text.Wrap
@@ -67,12 +83,14 @@ AppDialog {
         footerActions: [
             StudioButton { text: qsTr("Hủy"); onClicked: replaceBatchFiles.close() },
             StudioButton {
+                objectName: "confirmBatchOverwrite"
                 text: qsTr("Thay thế")
                 variant: "primary"
                 onClicked: {
-                    root.destination = root.pendingFolder;
-                    root.destinationExists = true;
+                    const request = replaceBatchFiles.request;
+                    const conflicts = replaceBatchFiles.conflicts;
                     replaceBatchFiles.close();
+                    root.startBatchRequest(request, conflicts);
                 }
             }
         ]
@@ -133,15 +151,6 @@ AppDialog {
         }
         Text {
             Layout.fillWidth: true
-            visible: root.batchMode
-            text: qsTr("%1 video").arg(batchScope.targetIds.length)
-            textFormat: Text.PlainText
-            color: Theme.textMuted
-            font.pixelSize: TypeScale.metadata
-            wrapMode: Text.WordWrap
-        }
-        Text {
-            Layout.fillWidth: true
             visible: !root.processBeforeExport && !root.configuration.ready
             text: qsTr("Video sẽ được dựng khi xuất.")
             textFormat: Text.PlainText
@@ -174,20 +183,13 @@ AppDialog {
                         const folder = root.controller.chooseBatchExportFolder();
                         if (folder.length === 0 || projectKey !== root.configuration.projectKey)
                             return;
-                        root.pendingFolder = folder;
-                        if (root.controller.batchExportDestinationExists(folder))
-                            replaceBatchFiles.open();
-                        else {
-                            root.destination = folder;
-                            root.destinationExists = false;
-                        }
+                        root.destination = folder;
                         return;
                     }
                     const path = root.controller.chooseVideoExportDestination(root.configuration.videoId);
                     if (path.length > 0) {
                         root.destination = path;
-                        root.destinationExists = root.batchMode ? root.controller.batchExportDestinationExists(path)
-                            : root.controller.exportDestinationExists(path);
+                        root.destinationExists = root.controller.exportDestinationExists(path);
                     }
                 }
             }
@@ -213,10 +215,21 @@ AppDialog {
                 if (!context || context.videoId !== (root.configuration.videoId || "")
                         || context.projectKey !== (root.configuration.projectKey || ""))
                     return;
-                const started = context.batch
-                    ? root.controller.processBatchTo(context.projectKey, context.videoIds,
-                        context.preset, context.destination, context.overwrite, context.process)
-                    : context.process
+                if (context.batch) {
+                    if (!root.matchesBatchRequest(context))
+                        return;
+                    const conflicts = root.controller.batchExportConflicts(context.projectKey,
+                        context.videoIds, context.destination);
+                    if (Object.keys(conflicts).length > 0) {
+                        replaceBatchFiles.request = context;
+                        replaceBatchFiles.conflicts = conflicts;
+                        replaceBatchFiles.open();
+                    } else {
+                        root.startBatchRequest(context, conflicts);
+                    }
+                    return;
+                }
+                const started = context.process
                     ? root.controller.processVideoTo(context.videoId, context.preset, context.destination, context.overwrite)
                     : context.segmentId
                     ? root.controller.exportVideoSegmentTo(context.videoId, context.preset, context.destination, context.overwrite, context.segmentId)
