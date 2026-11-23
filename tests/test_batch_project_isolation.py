@@ -14,6 +14,7 @@ from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
 
 from haizflow.desktop.project_commands_controller import ProjectCommandsController
+from haizflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
 from haizflow.desktop.qml_controller import HaizFlowController  # noqa: F401 - register QML facade before Qt engines
 from haizflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
 from haizflow.desktop.video_export_controller import VideoExportController
@@ -307,14 +308,16 @@ def test_cancel_during_batch_preparation_does_not_enqueue_or_touch_unselected(ap
 
 
 def test_delete_batch_member_is_async_and_completion_cannot_clear_new_selection(app, monkeypatch):
-    video = SimpleNamespace(video_id="a", project_type="batch", project_key="batch", status="paused")
-    host = SimpleNamespace(_selected_project_key="batch", _batch_video_ids=["a", "b"],
+    videos = {key: SimpleNamespace(video_id=key, project_type="batch", project_key="batch", status=status)
+              for key, status in (("a", "done"), ("b", "pending"), ("c", "done"))}
+    exports = SimpleNamespace(blocked_video_removal_ids=lambda: {"c"}, forget_video=Mock())
+    host = SimpleNamespace(_selected_project_key="batch", _batch_video_ids=["a", "b", "c"],
         _selected_video_id="a", _deleted_video_ids=set(), _settings_owner_video_id="a",
-        _processing_queue=SimpleNamespace(contains=lambda _: False),
+        _processing_queue=SimpleNamespace(contains=lambda key: key == "b"), _video_exports=exports,
         selectedVideoChanged=Mock(), refreshVideos=Mock(), _refresh_batch_model=Mock(),
         batchChanged=Mock(), appAlertRequested=Mock())
     commands = ProjectCommandsController(host)
-    monkeypatch.setattr(video_store, "get_video", lambda _: video)
+    monkeypatch.setattr(video_store, "get_video", videos.get)
     monkeypatch.setattr(video_store, "validate_video_restart", Mock())
     monkeypatch.setattr(processing_runs, "forget_restarted", Mock())
     entered, release = threading.Event(), threading.Event()
@@ -326,9 +329,12 @@ def test_delete_batch_member_is_async_and_completion_cannot_clear_new_selection(
     monkeypatch.setattr(video_store, "delete_video", deleted)
     try:
         assert not commands.remove_batch_video("wrong", "a")
+        assert not commands.remove_batch_video("batch", "b")
+        assert not commands.remove_batch_video("batch", "c")
         assert commands.remove_batch_video("batch", "a")
         assert entered.wait(1)
         assert "a" in commands._video_deletions
+        assert not commands.remove_batch_video("batch", "a")
         host._selected_project_key, host._selected_video_id = "other", "other-video"
         release.set()
         deadline = time.monotonic() + 3
@@ -340,8 +346,63 @@ def test_delete_batch_member_is_async_and_completion_cannot_clear_new_selection(
         assert host._selected_video_id == "other-video"
         host.selectedVideoChanged.emit.assert_not_called()
         deleted.assert_called_once_with("a")
+        exports.forget_video.assert_called_once_with("a")
     finally:
         release.set()
+
+
+def test_batch_removal_projection_tracks_owners_without_progress_churn():
+    queue = Mock(owned_ids=Mock(return_value={"queued", "running"}))
+    exports = SimpleNamespace(blocked_video_removal_ids=Mock(return_value={"preparing", "copying"}))
+    commands = SimpleNamespace(_video_deletions={"deleting"})
+    host = SimpleNamespace(_processing_queue=queue, _video_exports=exports, _project_commands=commands,
+                           _batch_video_removal_blocks=set(), batchVideoRemovalChanged=Mock())
+    refresh = HaizFlowController._refresh_batch_video_removal_blocks
+    refresh(host)
+    assert host._batch_video_removal_blocks == {"queued", "running", "preparing", "copying", "deleting"}
+    refresh(host)
+    host.batchVideoRemovalChanged.emit.assert_called_once()
+    exports.blocked_video_removal_ids.return_value = {"copying"}
+    queue.owned_ids.return_value = {"queued"}
+    commands._video_deletions.clear()
+    refresh(host)
+    assert host._batch_video_removal_blocks == {"queued", "copying"}
+    assert host.batchVideoRemovalChanged.emit.call_count == 2
+
+
+def test_export_removal_retains_cancelled_preparation_and_run_cleanup_owners(app):
+    exporter = VideoExportController(export_host())
+    exporter.timer.stop()
+    exporter._preparing_video_ids = {"cancelled-prep"}
+    exporter.jobs = [dict(videoId="cancelled-prep", status="cancelled"),
+                     dict(videoId="cleanup", status="cancelled", runScopeId="run"),
+                     dict(videoId="copy", status="exporting"),
+                     dict(videoId="settled", status="done", runScopeId="done-run", runSettled=True)]
+    try:
+        assert exporter.blocked_video_removal_ids() == {"cancelled-prep", "cleanup", "copy"}
+        exporter._preparing_video_ids.clear()
+        exporter.jobs[1]["runSettled"] = True
+        assert exporter.blocked_video_removal_ids() == {"copy"}
+    finally:
+        exporter.shutdown()
+
+
+def test_deleted_member_cannot_be_requeued_or_retried_during_async_removal(app, monkeypatch):
+    host = export_host()
+    host._deleted_video_ids = {"first"}
+    lifecycle = ProcessingLifecycleController(host)
+    exporter = VideoExportController(host)
+    exporter.timer.stop()
+    exporter.jobs = [dict(videoId="first", status="failed")]
+    read = Mock(side_effect=AssertionError("A deleting video must not be reopened"))
+    monkeypatch.setattr(video_store, "get_video", read)
+    try:
+        assert not lifecycle.enqueue_video("first")
+        assert not exporter.start("first", "source", "unused.mp4")
+        assert not exporter.retry_failed()
+        read.assert_not_called()
+    finally:
+        exporter.shutdown()
 
 
 def test_batch_process_dialog_layout_and_scope_in_real_qml_window(app, tmp_path):

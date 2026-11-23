@@ -63,11 +63,14 @@ class SerialProcessingQueueTests(unittest.TestCase):
         self.assertTrue(queue.enqueue("first"))
         self.assertTrue(queue.enqueue("second"))
         time.sleep(0.02)
+        self.assertEqual(queue.owned_ids(), {"first", "second"})
         self.assertTrue(queue.discard("second"))
+        self.assertEqual(queue.owned_ids(), {"first"})
         self.assertFalse(queue.discard("first"))
         release_first.set()
         self.assertTrue(done.wait(2))
         self.assertEqual(completed, ["first"])
+        self.assertEqual(queue.owned_ids(), set())
 
     def test_detach_pending_atomically_keeps_only_unrelated_work(self):
         active_started = threading.Event()

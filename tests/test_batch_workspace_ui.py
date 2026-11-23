@@ -109,6 +109,7 @@ def exercise(width, height, state):
         changed = Signal()
         batchChanged = Signal()
         batchResultsChanged = Signal()
+        removalBlocksChanged = Signal()
         projectName = field("projectName", str)
         projectKey = Property(str, lambda self: self.values["projectKey"], notify=changed)
         hasOpenProject = field("hasOpenProject", bool)
@@ -124,11 +125,14 @@ def exercise(width, height, state):
         videoExportBusy = field("videoExportBusy", bool)
         videoExportJobs = field("videoExportJobs", "QVariantList")
         videoExportScope = field("videoExportScope", "QVariantList")
+        batchVideoRemovalBlockedIds = Property("QVariantList", lambda self: self.removal_blocks,
+                                              notify=removalBlocksChanged)
         batchVideoModel = field("batchVideoModel", QObject)
 
         def __init__(self):
             super().__init__()
             self.calls = []
+            self.removal_blocks = ["video-1", "video-2"] if state in ("running", "pausing") else []
             self.values = dict(
                 projectName="work · Bộ video mới",
                 projectKey="batch-test",
@@ -163,6 +167,11 @@ def exercise(width, height, state):
         @Slot(str, result=bool)
         def batchVideoRemovalPending(self, video_id):
             return False
+
+        @Slot(str, str, result=bool)
+        def removeBatchVideo(self, project_key, video_id):
+            self.calls.append(("remove", project_key, video_id))
+            return True
 
         @Slot(int)
         def selectBatchVideo(self, index):
@@ -280,6 +289,28 @@ def exercise(width, height, state):
     if state == "running":
         click(item("batchPauseButton"))
         assert "pause" in backend.calls
+        detail_spy = QSignalSpy(page.openVideoDetail)
+        completed = item("batchVideoRemove_0")
+        active = item("batchVideoRemove_1")
+        queued = item("batchVideoRemove_2")
+        assert completed.isEnabled() and completed.property("iconName") == "delete"
+        assert active.isVisible() and not active.isEnabled()
+        assert queued.isVisible() and not queued.isEnabled()
+        click(queued)
+        assert detail_spy.count() == 0
+        click(completed)
+        assert detail_spy.count() == 0
+        confirm = item("confirmBatchVideoRemoval")
+        assert confirm.isVisible() and confirm.isEnabled()
+        backend.removal_blocks.append("video-0")
+        backend.removalBlocksChanged.emit()
+        assert not confirm.isEnabled()  # Work claimed after the dialog opened.
+        backend.removal_blocks.remove("video-0")
+        backend.removalBlocksChanged.emit()
+        assert confirm.isEnabled()
+        click(confirm)
+        assert backend.calls[-1] == ("remove", "batch-test", "video-0")
+        backend.batchChanged.emit()
     if state == "pausing":
         assert not item("batchPauseButton").isEnabled()
     if state in ("ready", "english"):

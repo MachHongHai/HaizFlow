@@ -49,6 +49,11 @@ class SerialProcessingQueue:
         with self._lock:
             return list(self._pending)
 
+    def owned_ids(self) -> set[str]:
+        """Snapshot the active and waiting IDs together under the queue lock."""
+        with self._lock:
+            return set(self._run_tokens)
+
     def contains(self, video_id: str) -> bool:
         with self._lock:
             return video_id == self._active_video_id or video_id in self._pending

@@ -207,6 +207,7 @@ class HaizFlowController(QObject):
     videoDeleted = Signal()
     batchDeleted = Signal()
     batchChanged = Signal()
+    batchVideoRemovalChanged = Signal()
     batchResultsChanged = Signal()
     projectCatalogChanged = Signal()
 
@@ -497,6 +498,9 @@ class HaizFlowController(QObject):
         self.hardwareChanged.connect(self.ttsProviderOptionsChanged.emit)
         self._app_updates = AppUpdateController(self)
         self._video_exports = VideoExportController(self)
+        self._batch_video_removal_blocks: set[str] = set()
+        for signal in (self.processingChanged, self.batchChanged, self.exportStateChanged):
+            signal.connect(self._refresh_batch_video_removal_blocks)
         from haizflow.services.temporary_cleanup import resume_pending_cleanup
 
         resume_pending_cleanup()
@@ -4875,7 +4879,22 @@ class HaizFlowController(QObject):
 
     @Slot(str, str, result=bool)
     def removeBatchVideo(self, project_key, video_id):
-        return HaizFlowController._project_commands_for(self).remove_batch_video(str(project_key), str(video_id))
+        started = HaizFlowController._project_commands_for(self).remove_batch_video(str(project_key), str(video_id))
+        if started:
+            self._refresh_batch_video_removal_blocks()
+        return started
+
+    @Property("QVariantList", notify=batchVideoRemovalChanged)
+    def batchVideoRemovalBlockedIds(self):
+        return sorted(self._batch_video_removal_blocks)
+
+    def _refresh_batch_video_removal_blocks(self):
+        blocked = self._processing_queue.owned_ids()
+        blocked.update(self._video_exports.blocked_video_removal_ids())
+        blocked.update(self._project_commands._video_deletions)
+        if blocked != self._batch_video_removal_blocks:
+            self._batch_video_removal_blocks = blocked
+            self.batchVideoRemovalChanged.emit()
 
     @Slot(str, result=bool)
     def batchVideoRemovalPending(self, video_id):

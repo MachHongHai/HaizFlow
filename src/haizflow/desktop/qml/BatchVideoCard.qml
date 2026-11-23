@@ -61,8 +61,9 @@ Control {
 
     TapHandler {
         id: tapHandler
-        onTapped: {
-            root.activated();
+        onTapped: point => {
+            if (!removeButton.contains(removeButton.mapFromItem(root, point.position)))
+                root.activated();
         }
     }
 
@@ -212,22 +213,22 @@ Control {
                     textFormat: Text.PlainText
                 }
 
+                StudioIconButton {
+                    id: removeButton
+                    objectName: "batchVideoRemove_" + root.index
+                    iconName: "delete"
+                    toolTipText: qsTr("Xóa video")
+                    showToolTip: true
+                    enabled: root.removalEnabled
+                    onClicked: root.removalRequested()
+                }
                 AppIcon {
-                    visible: !root.removalEnabled
                     Layout.preferredWidth: Theme.icon
                     Layout.preferredHeight: Theme.icon
                     glyph: "\uE76C"
                     iconColor: hoverHandler.hovered ? Theme.text : Theme.textSubtle
                     iconSize: Theme.iconSmall
                     Accessible.ignored: true
-                }
-                IconButton {
-                    objectName: "batchVideoRemove_" + root.index
-                    visible: root.removalEnabled
-                    glyph: IconCatalog.glyph("delete")
-                    toolTipText: qsTr("Xóa video")
-                    controlSize: 32
-                    onClicked: root.removalRequested()
                 }
             }
         }

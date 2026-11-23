@@ -280,13 +280,13 @@ class ProjectCommandsController:
         host = self._host
         video = video_store.get_video(video_id)
         if (project_key != str(host._selected_project_key or "")
-                or video_id not in host._batch_video_ids or video_id in self._video_deletions
+                or self.is_deleting(project_key) or video_id not in host._batch_video_ids
+                or video_id in host._deleted_video_ids
                 or not video or video.project_type != "batch" or video.project_key != project_key
                 or video.status == "processing" or host._processing_queue.contains(video_id)):
             return False
         exports = getattr(host, "_video_exports", None)
-        if exports and any(job["videoId"] == video_id and job["status"] in {
-                "preparing", "rendering", "exporting", "pending"} for job in exports.jobs):
+        if exports and video_id in exports.blocked_video_removal_ids():
             return False
         self._video_deletions.add(video_id)
         host._deleted_video_ids.add(video_id)

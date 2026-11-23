@@ -20,7 +20,9 @@ Item {
     property var results: ({})
     property string removalVideoId: ""
     property string removalProjectKey: ""
+    property string removalVideoName: ""
     property bool removingVideo: false
+    readonly property var removalBlockedIds: AppController.batchVideoRemovalBlockedIds
     readonly property bool preparingBatch: (AppController.videoExportJobs || []).some(job =>
         job.status === "preparing" && (AppController.videoExportScope || []).includes(job.videoId))
     readonly property string queueState: AppController.isBatchPausing ? qsTr("Đang tạm dừng")
@@ -209,12 +211,15 @@ Item {
                 cellWidth: cellContentWidth
                 cellHeight: cardHeight + Theme.space16
                 delegate: BatchVideoCard {
+                    id: card
                     required property string videoId
                     customSettings: root.settingOverrides.some(item => item.videoId === videoId)
-                    removalEnabled: !AppController.isBatchRunning && !AppController.videoExportBusy
+                    removalEnabled: !root.removingVideo && card.status !== "processing"
+                        && !root.removalBlockedIds.includes(card.videoId)
                     onRemovalRequested: {
-                        root.removalVideoId = videoId;
+                        root.removalVideoId = card.videoId;
                         root.removalProjectKey = AppController.projectKey;
+                        root.removalVideoName = card.fileName;
                         removeVideoDialog.open();
                     }
                     width: queueList.cardWidth
@@ -376,7 +381,9 @@ Item {
     }
     AppDialog {
         id: removeVideoDialog
+        readonly property bool removalBlocked: root.removalBlockedIds.includes(root.removalVideoId)
         title: qsTr("Xóa video khỏi dự án?")
+        subtitle: root.removalVideoName
         dismissible: !root.removingVideo
         Text {
             Layout.fillWidth: true
@@ -385,12 +392,22 @@ Item {
             font.pixelSize: TypeScale.control
             color: Theme.text
         }
+        Text {
+            Layout.fillWidth: true
+            visible: removeVideoDialog.removalBlocked && !root.removingVideo
+            text: qsTr("Video đang có tác vụ. Hãy chờ tác vụ kết thúc rồi thử lại.")
+            wrapMode: Text.Wrap
+            font.pixelSize: TypeScale.control
+            color: Theme.textMuted
+        }
         footerActions: [
             StudioButton { text: qsTr("Hủy"); enabled: !root.removingVideo; onClicked: removeVideoDialog.close() },
             DeferredActionButton {
+                objectName: "confirmBatchVideoRemoval"
                 readyText: root.removingVideo ? qsTr("Đang xóa…") : qsTr("Xóa video")
                 variant: "danger"
-                actionEnabled: !root.removingVideo
+                actionEnabled: !root.removingVideo && !removeVideoDialog.removalBlocked
+                    && root.removalProjectKey === AppController.projectKey
                 actionContext: ({projectKey: root.removalProjectKey, videoId: root.removalVideoId})
                 onExecute: context => {
                     if (AppController.removeBatchVideo(context.projectKey, context.videoId))

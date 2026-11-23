@@ -15,6 +15,9 @@ from haizflow.services.video_export import (
     export_filename, export_video, legacy_render_owned, preset_settings, project_display_name, validate_export_destination,
 )
 
+_ACTIVE_JOB_STATES = {"preparing", "rendering", "exporting", "pending"}
+_TERMINAL_JOB_STATES = {"done", "failed", "cancelled"}
+
 
 class ExportJobModel(QAbstractListModel):
     JobRole = Qt.UserRole + 1
@@ -53,11 +56,11 @@ def export_job_summary(jobs):
     result = dict(count=len(jobs), done=0, failed=0, cancelled=0, waiting=False, activeJob={}, activeVideoIds=[])
     for job in jobs:
         status = job.get("status")
-        if status in {"done", "failed", "cancelled"}:
+        if status in _TERMINAL_JOB_STATES:
             result[status] += 1
         if status in {"paused", "awaiting_review"}:
             result["waiting"] = True
-        if status in {"preparing", "rendering", "exporting", "pending"}:
+        if status in _ACTIVE_JOB_STATES:
             result["activeVideoIds"].append(job.get("videoId"))
             if not result["activeJob"] or (result["activeJob"].get("queued") and not job.get("queued")):
                 result["activeJob"] = dict(job)
@@ -134,9 +137,17 @@ class VideoExportController(QObject):
         for job in self.jobs:
             if job["videoId"] != str(video_id):
                 continue
-            if job["status"] in {"preparing", "pending", "rendering", "exporting"}:
+            if job["status"] in _ACTIVE_JOB_STATES:
                 return True
         return False
+
+    def blocked_video_removal_ids(self) -> set[str]:
+        # A cancelled job can still own its workspace while the preparation
+        # worker or the final run cleanup is unwinding.
+        return self._preparing_video_ids | {
+            job["videoId"] for job in self.jobs if job["status"] in _ACTIVE_JOB_STATES
+            or (job["status"] in _TERMINAL_JOB_STATES and job.get("runScopeId") and not job.get("runSettled"))
+        }
 
     def forget_video(self, video_id):
         self.jobs = [job for job in self.jobs if job["videoId"] != video_id]
@@ -320,6 +331,8 @@ class VideoExportController(QObject):
                          "Cannot save here. Choose a folder outside managed project data and retry. ") + str(error)
 
     def start(self, video_id, preset, destination, *, overwrite=False, process=False, segment_id="") -> bool:
+        if str(video_id) in getattr(self.host, "_deleted_video_ids", ()):
+            return False
         video = video_store.get_video(str(video_id))
         queue_auto = bool(process and video and video.project_type == "single")
         if queue_auto:
@@ -617,6 +630,7 @@ class VideoExportController(QObject):
         videos = [video_store.get_video(identifier) for identifier in self.host._batch_video_ids]
         videos = [video for video in videos if video]
         ready_videos = [video for video in videos if video.status == "done"
+                        and video.video_id not in getattr(self.host, "_deleted_video_ids", ())
                         and not self.host._processing_queue.contains(video.video_id)
                         and (current_render(video, verify=False)
                              or (not (video.active_artifacts or {}).get("export")
@@ -648,6 +662,8 @@ class VideoExportController(QObject):
                 return False
             for job in jobs:
                 job["overwrite"] = Path(job["path"]).exists()
+        if any(job["videoId"] in getattr(self.host, "_deleted_video_ids", ()) for job in jobs):
+            return False
         self.jobs = jobs
         self.cancel.clear()
         self._watch_batch(jobs)
@@ -666,6 +682,7 @@ class VideoExportController(QObject):
         if self.busy:
             return False
         jobs = [job for job in self.jobs if job["status"] in {"failed", "cancelled"}
+                and job["videoId"] not in getattr(self.host, "_deleted_video_ids", ())
                 and (video_ids is None or job["videoId"] in video_ids)]
         if not jobs:
             return False

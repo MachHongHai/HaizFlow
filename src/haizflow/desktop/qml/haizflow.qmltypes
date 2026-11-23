@@ -113,6 +113,8 @@ Module {
         Method { name: "exportFolderPath"; type: "QString"; Parameter { name: "url"; type: "QUrl" } }
         Method { name: "removeBatchVideo"; type: "bool"; Parameter { name: "projectKey"; type: "QString" } Parameter { name: "videoId"; type: "QString" } }
         Method { name: "batchVideoRemovalPending"; type: "bool"; Parameter { name: "videoId"; type: "QString" } }
+        Property { name: "batchVideoRemovalBlockedIds"; type: "QVariantList"; read: "batchVideoRemovalBlockedIds"; notify: "batchVideoRemovalChanged"; isReadonly: true }
+        Signal { name: "batchVideoRemovalChanged" }
         Property { name: "mcpBridge"; type: "QObject"; isPointer: true; isReadonly: true }
         Method { name: "showAlertDetails"
             Parameter { name: "title"; type: "QString" }
