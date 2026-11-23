@@ -35,11 +35,14 @@ def smoke(artifact: Path) -> None:
                     env=environment, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
                 messages: queue.Queue = queue.Queue()
+                stop_after_response = threading.Event()
 
                 def read_messages(stream=process.stdout):
                     try:
                         for line in stream:
                             messages.put(json.loads(line.decode("utf-8")))
+                            if stop_after_response.is_set():
+                                break
                     except Exception as exc:
                         messages.put(exc)
                     finally:
@@ -49,7 +52,7 @@ def smoke(artifact: Path) -> None:
                 reader.start()
                 sequence = 0
 
-                def send(method, params=None, *, notification=False):
+                def send(method, params=None, *, notification=False, abandon_response=False):
                     nonlocal sequence
                     sequence += 1
                     outgoing = {"jsonrpc": "2.0", "method": method}
@@ -59,7 +62,7 @@ def smoke(artifact: Path) -> None:
                         outgoing["params"] = params
                     process.stdin.write(json.dumps(outgoing).encode() + b"\n")
                     process.stdin.flush()
-                    if notification:
+                    if notification or abandon_response:
                         return None
                     response = messages.get(timeout=40)
                     if not isinstance(response, dict):
@@ -81,10 +84,22 @@ def smoke(artifact: Path) -> None:
                     assert send("ping") == {}
                     # A missing isolated desktop must produce a bounded tool
                     # error, not crash, leak a traceback, or connect to user data.
+                    if profile == "compact":
+                        stop_after_response.set()
                     failure = send("tools/call", {"name": "haizflow_capabilities", "arguments": {}})
                     assert failure.get("isError") is True
                     contents = json.dumps(failure, ensure_ascii=False)
                     assert "enable MCP" in contents and "Traceback" not in contents
+                    if profile == "compact":
+                        reader.join(timeout=3)
+                        assert not reader.is_alive()
+                        process.stdout.close()
+                        send("ping", abandon_response=True)
+                        # Hosts can leave stdin open briefly after discarding stdout.
+                        try:
+                            process.wait(timeout=1)
+                        except subprocess.TimeoutExpired:
+                            pass
                 finally:
                     process.stdin.close()
                     try:
@@ -95,7 +110,7 @@ def smoke(artifact: Path) -> None:
                     reader.join(timeout=3)
                     process.stdout.close()
                 assert process.returncode == 0, (root / "stderr.log").read_text("utf-8", errors="replace")[-6000:]
-                print(f"Frozen MCP {profile}: initialize, version, tools, ping and safe transport error passed.", flush=True)
+                print(f"Frozen MCP {profile}: handshake, tools, transport error and shutdown passed.", flush=True)
 
 
 if __name__ == "__main__":

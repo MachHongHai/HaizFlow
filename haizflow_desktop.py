@@ -9,11 +9,12 @@ VENV_DIR = ROOT / ".venv"
 VENV_PYTHON = ROOT / ".venv" / "Scripts" / "python.exe"
 
 
-def _restore_internal_standard_streams() -> None:
+def _restore_internal_standard_streams(*, mcp_stdio: bool = False) -> None:
     """Recreate inherited pipes hidden by a PyInstaller windowed bootloader."""
     if os.name != "nt" or not getattr(sys, "frozen", False):
         return
     import ctypes
+    import io
     import msvcrt
 
     stream_specs = (
@@ -29,7 +30,13 @@ def _restore_internal_standard_streams() -> None:
         if handle not in (0, -1):
             try:
                 descriptor = msvcrt.open_osfhandle(handle, flags)
-                stream = os.fdopen(descriptor, mode, encoding="utf-8", buffering=1, closefd=False)
+                if mcp_stdio and name == "stdout":
+                    # The MCP SDK can share this buffer directly. A failed
+                    # write must not leave bytes for Python to flush again at exit.
+                    raw = os.fdopen(descriptor, "wb", buffering=0, closefd=False)
+                    stream = io.TextIOWrapper(raw, encoding="utf-8", write_through=True)
+                else:
+                    stream = os.fdopen(descriptor, mode, encoding="utf-8", buffering=1, closefd=False)
             except OSError:
                 stream = None
         if stream is None:
@@ -97,7 +104,7 @@ _INTERNAL_STREAM_MODES = {
     "--ui-smoke-test",
 }
 if any(mode in sys.argv for mode in _INTERNAL_STREAM_MODES):
-    _restore_internal_standard_streams()
+    _restore_internal_standard_streams(mcp_stdio=_mcp_arguments is not None)
 
 if _mcp_arguments is not None:
     from haizflow.mcp.__main__ import main as run_mcp_server
