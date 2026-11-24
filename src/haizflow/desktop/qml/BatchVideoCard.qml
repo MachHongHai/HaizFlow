@@ -17,12 +17,14 @@ Control {
     required property string videoSize
     property bool customSettings: false
     property bool removalEnabled: false
+    property string step: ""
 
     signal activated
     signal removalRequested
 
-    readonly property string statusLabel: status === "pending" ? qsTr("Đang chờ") : status === "processing" ? qsTr("Đang xử lý") : status === "done" ? qsTr("Hoàn tất") : status === "failed" ? qsTr("Lỗi") : status === "cancelled" ? qsTr("Đã hủy") : status === "paused" ? qsTr("Đã tạm dừng") : status === "awaiting_review" ? qsTr("Cần duyệt") : I18n.taskStateLabel(status)
-    readonly property color statusColor: status === "done" ? Theme.success : status === "failed" ? Theme.danger : status === "processing" || status === "awaiting_review" ? Theme.warning : Theme.textMuted
+    readonly property string displayStatus: status === "pending" && step === "queued" ? "queued" : status
+    readonly property string statusLabel: TaskPresentation.label(displayStatus)
+    readonly property color statusColor: TaskPresentation.foreground(displayStatus)
 
     background: Rectangle {
         radius: Theme.radius

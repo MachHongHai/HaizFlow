@@ -62,18 +62,6 @@ AppDialog {
         const labels = (keys || []).map(key => fieldLabel(key));
         return labels.filter((label, index) => labels.indexOf(label) === index).join(" · ");
     }
-    function statusLabel(status) {
-        switch (status) {
-        case "done": return qsTr("Thành công");
-        case "failed": return qsTr("Lỗi");
-        case "cancelled": return qsTr("Đã hủy");
-        case "paused": return qsTr("Đã tạm dừng");
-        case "awaiting_review": return qsTr("Chờ duyệt phụ đề");
-        case "processing": case "rendering": case "exporting": return qsTr("Đang xử lý");
-        default: return qsTr("Đang chờ");
-        }
-    }
-
     ListView {
         id: details
         Layout.fillWidth: true
@@ -85,6 +73,8 @@ AppDialog {
         delegate: Rectangle {
             id: row
             required property var modelData
+            readonly property string taskState: modelData.status === "pending" && modelData.step === "queued"
+                ? "queued" : modelData.status
             width: details.width
             height: rowContent.implicitHeight + Theme.space24
             radius: Theme.radiusSmall
@@ -109,8 +99,8 @@ AppDialog {
                     }
                     Text {
                         visible: !root.overrides
-                        text: root.statusLabel(row.modelData.status)
-                        color: row.modelData.status === "failed" ? Theme.danger : Theme.textMuted
+                        text: TaskPresentation.label(row.taskState)
+                        color: TaskPresentation.foreground(row.taskState)
                         font.pixelSize: TypeScale.label
                     }
                 }

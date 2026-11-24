@@ -221,7 +221,12 @@ AppButton { objectName: "iconOnly"; x: 180; y: 20; iconGlyph: "\\uE768"; toolTip
 
         controller = SettingsController()
         self.engine.rootContext().setContextProperty("AppController", controller)
-        window = self.create_window('SettingsPage { objectName: "settingsPage"; anchors.fill: parent }')
+        window = self.create_window('''
+            property int exits: 0
+            function askToLeave() { guard.ask(() => { root.exits += 1; }); }
+            SettingsPage { id: settings; objectName: "settingsPage"; anchors.fill: parent }
+            SettingsLeaveDialog { id: guard; objectName: "settingsGuard"; generalPage: settings }
+        ''')
         page = window.findChild(QQuickItem, "settingsPage")
         button = window.findChild(QQuickItem, "applyGeneralSettingsButton")
         footer = window.findChild(QQuickItem, "generalSettingsFooter")
@@ -234,11 +239,40 @@ AppButton { objectName: "iconOnly"; x: 180; y: 20; iconGlyph: "\\uE768"; toolTip
         self.assertEqual(controller.language, "vi")
         self.assertEqual(page.property("draftLanguage"), "en")
         self.assertTrue(button.isEnabled())
+        page.setVisible(False)
+        page.setVisible(True)
+        self.assertEqual(page.property("draftLanguage"), "en")
+        self.assertTrue(page.property("hasPendingChanges"))
         self.assertAlmostEqual(button.mapToScene(QPointF()).y(), initial_y, delta=1)
         button.clicked.emit()
         QTest.qWait(30)
         self.assertEqual(controller.applied, ("en", "cpu", False))
         self.assertFalse(button.isEnabled())
+        guard = window.findChild(QObject, "settingsGuard")
+        stay = window.findChild(QQuickItem, "stayInSettings")
+        discard = window.findChild(QQuickItem, "discardSettingsAndLeave")
+        apply = window.findChild(QQuickItem, "applySettingsAndLeave")
+        language.activated.emit("vi")
+        window.askToLeave()
+        QTest.qWait(25)
+        self.assertTrue(guard.property("visible"))
+        stay.clicked.emit()
+        QTest.qWait(25)
+        self.assertEqual(window.property("exits"), 0)
+        self.assertEqual(page.property("draftLanguage"), "vi")
+        window.askToLeave()
+        QTest.qWait(25)
+        discard.clicked.emit()
+        QTest.qWait(25)
+        self.assertEqual(window.property("exits"), 1)
+        self.assertEqual(page.property("draftLanguage"), "en")
+        language.activated.emit("vi")
+        window.askToLeave()
+        QTest.qWait(25)
+        apply.clicked.emit()
+        QTest.qWait(25)
+        self.assertEqual(window.property("exits"), 2)
+        self.assertEqual(controller.language, "vi")
         preview_directory = os.environ.get("HAIZFLOW_UI_PREVIEWS")
         if preview_directory:
             window.grabWindow().save(str(Path(preview_directory) / "general-settings.png"))
@@ -525,6 +559,41 @@ function readDraft() { return currentDraft(); }
         self.assertIn("appearance: Object.assign({}, root.draftSubtitleStyle", source)
         self.assertNotIn("AppController.applySubtitleAppearance", source)
         self.assertIn("editable: !AppController.isBatchRunning", source)
+
+    def test_batch_settings_save_does_not_replace_overrides_without_explicit_choice(self):
+        source = (QML_DIR / "BatchSettingsDialog.qml").read_text(encoding="utf-8")
+        overwrite = next(line for line in source.splitlines() if "property bool overwriteOverrides:" in line)
+        changes = next(line for line in source.splitlines() if "function hasDraftChanges()" in line)
+        save = re.search(r"    function saveDraft\(\) \{.*?\n    \}", source, re.S)
+        self.assertIsNotNone(save)
+        window = self.create_window(f'''
+            property string openedProjectKey: "batch-a"
+            property bool replaceOverrides: false
+            property var settingOverrides: [{{ videoId: "vid-a" }}]
+            property string baselineSettings: JSON.stringify({{ outputSpeed: 1 }})
+            property real draftSpeed: 1
+            property var writes: []
+            function currentDraft() {{ return {{ outputSpeed: draftSpeed }}; }}
+            {overwrite}
+            {changes}
+            {save.group().replace("AppController", "backend")}
+            QtObject {{
+                id: backend
+                function applyBatchSettingsValues(key, settings, replace) {{
+                    root.writes = root.writes.concat([replace]);
+                    return true;
+                }}
+                function batchSettingOverrides() {{ return root.settingOverrides; }}
+            }}
+        ''')
+        self.assertTrue(window.saveDraft())
+        self.assertEqual(window.property("writes").toVariant(), [])
+        window.setProperty("draftSpeed", 1.25)
+        self.assertTrue(window.saveDraft())
+        self.assertEqual(window.property("writes").toVariant(), [False])
+        window.setProperty("replaceOverrides", True)
+        self.assertTrue(window.saveDraft())
+        self.assertEqual(window.property("writes").toVariant(), [False, True])
 
     def test_timeline_mouse_selection_updates_inspector_and_clip_selection_uses_stable_id(self):
         source = (QML_DIR / "ManualWorkspace.qml").read_text(encoding="utf-8")
@@ -1031,12 +1100,16 @@ SubtitleTransformOverlay {
                     if os.environ.get("HAIZFLOW_KARAOKE_PREVIEW"):
                         screenshot.save(os.environ["HAIZFLOW_KARAOKE_PREVIEW"])
                     self.assertFalse(screenshot.isNull())
+                    scale_x = screenshot.width() / window.width()
+                    scale_y = screenshot.height() / window.height()
                     for index, mask in enumerate(masks):
                         position = mask.mapToScene(QPointF())
                         line = frame["karaokeLines"][index]
                         yellow = 0
-                        for y in range(round(position.y()), round(position.y() + line["height"] / 2)):
-                            for x in range(round(position.x()), round(position.x() + line["width"] / 2)):
+                        for y in range(round(position.y() * scale_y),
+                                       round((position.y() + line["height"] / 2) * scale_y)):
+                            for x in range(round(position.x() * scale_x),
+                                           round((position.x() + line["width"] / 2) * scale_x)):
                                 color = screenshot.pixelColor(x, y)
                                 yellow += color.red() > 150 and color.green() > 140 and color.blue() < 80
                         if index > active_index:

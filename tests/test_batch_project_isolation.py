@@ -453,14 +453,18 @@ ApplicationWindow {{ width: 1050; height: 780; visible: true; color: Theme.windo
 
         cards = list(descendants(listing))
         thumbnails = [item.property("source").toString()
-                      for item in cards if item.objectName() == "batchScopeThumbnail"]
+                      for item in cards if item.objectName() == "videoSelectionThumbnail"]
         assert thumbnails.count(thumbnail_path.as_uri()) == 1
         assert thumbnails.count("") == 2  # The same layout still has a fallback for missing thumbnails.
-        checks = [item for item in cards if item.objectName() == "batchScopeRowCheckBox"]
+        checks = [item for item in cards if item.objectName() == "videoSelectionCheckBox"]
         assert [item.property("checked") for item in checks] == [False, True, False]
         check = checks[-1]
         check.forceActiveFocus()
         QTest.keyClick(window, Qt.Key.Key_Space)
+        assert scope.property("targetIds").toVariant() == ["b", "c"]
+        scope.setProperty("searchText", "tam dung")
+        QTest.qWait(30)
+        assert listing.property("count") == 1
         assert scope.property("targetIds").toVariant() == ["b", "c"]
         button = window.findChild(QObject, "confirmVideoExport")
         assert isinstance(button, QQuickItem)

@@ -74,6 +74,29 @@ class DownloadProjectTests(unittest.TestCase):
         self.assertEqual({item["file_name"] for item in items}, {"first.mp4", "second.mkv"})
         self.assertEqual({item["category"] for item in items}, {"channel", "video"})
         self.assertTrue(all(item["project_key"] == project["key"] for item in items))
+        self.assertTrue(all(Path(item["thumbnail_path"]).parent == downloads / ".thumbnails" for item in items))
+        self.assertEqual(len({item["thumbnail_path"] for item in items}), len(items))
+
+    def test_thumbnail_callback_cannot_update_a_reopened_picker(self):
+        from haizflow.desktop.models import DownloadProjectSourceListModel
+
+        item = {
+            "item_id": "clip", "thumbnail_path": str(self.root / "thumb.jpg"),
+            "project_name": "Source", "category": "video", "file_name": "clip.mp4",
+            "file_path": str(self.root / "clip.mp4"), "file_size": 42,
+        }
+        model = DownloadProjectSourceListModel()
+        model.set_items([item])
+        old_generation = model._thumbnail_cancel
+        model.set_items([item])
+        model._thumbnail_jobs.add("clip")
+        model._accept_thumbnail("clip", item["thumbnail_path"], "file:///old.jpg", old_generation)
+        assert model._thumbnail_jobs == {"clip"}
+        assert model.data(model.index(0, 0), model.ThumbnailRole) == ""
+
+        model._accept_thumbnail("clip", item["thumbnail_path"], "file:///new.jpg", model._thumbnail_cancel)
+        assert not model._thumbnail_jobs
+        assert model.data(model.index(0, 0), model.ThumbnailRole) == "file:///new.jpg"
 
     def test_each_queued_task_keeps_the_output_of_its_download_project(self):
         first = project_store.create_project("First", str(self.root / "outputs"), "download")

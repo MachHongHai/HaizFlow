@@ -61,7 +61,7 @@ StudioButton {
         }
 
         AppMenuItem {
-            text: qsTr("Tải xuống")
+            text: qsTr("Từ dự án tải xuống")
             iconGlyph: "\uE896"
             onTriggered: root.downloadProjectRequested()
         }

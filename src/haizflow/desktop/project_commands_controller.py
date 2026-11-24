@@ -1740,16 +1740,19 @@ class ProjectCommandsController:
         host.refreshVideos()
 
     def resume_selected_video(self) -> None:
+        self.resume_video(str(self._host._selected_video_id or ""))
+
+    def resume_video(self, video_id: str) -> bool:
         host = self._host
-        video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
+        video = video_store.get_video(video_id) if video_id else None
         if not video or video.status != "paused" or host._processing_queue.contains(video.video_id):
-            return
+            return False
         from haizflow.services.processing_resume import can_resume
 
         if not can_resume(host, video):
-            return
+            return False
         if not self._resources_ready(host, video):
-            return
+            return False
         # enqueue_video owns the paused -> queued transition because it must
         # first clear both process-registry pause and cancellation flags.
         # Pre-writing "pending" here used to skip that cleanup and strand the
@@ -1757,6 +1760,8 @@ class ProjectCommandsController:
         if host._enqueue_video(video.video_id):
             video_store.log_to_video(video.video_id, "Resumed from the saved processing state.")
             host.selectedVideoChanged.emit()
+            return True
+        return False
 
     def restart_selected_video(self, *, confirm: bool = True) -> None:
         host = self._host

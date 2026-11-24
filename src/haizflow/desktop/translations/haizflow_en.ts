@@ -990,6 +990,10 @@
 </context>
 <context>
     <name>BatchPage</name>
+    <message>
+        <source>Có thể đổi cài đặt khi lượt xử lý kết thúc.</source>
+        <translation>You can change settings when this run ends.</translation>
+    </message>
     <message><source>Dự án hàng loạt · %1</source><translation>Batch project · %1</translation></message>
     <message><source>Đã tạm dừng</source><translation>Paused</translation></message>
     <message><source>Đã hoàn tất</source><translation>Completed</translation></message>
@@ -5916,5 +5920,75 @@ Author and owner of HaizFlow.</translation>
     <name>TranslationConnectionPicker</name>
     <message><source>API sử dụng</source><translation>API connection</translation></message>
     <message><source>API sử dụng cho dự án</source><translation>API connection for this project</translation></message>
+</context>
+<context>
+    <name>TaskPresentation</name>
+    <message><source>Chưa chạy</source><translation>Not started</translation></message>
+    <message><source>Đang chờ lượt</source><translation>Queued</translation></message>
+    <message><source>Đang chuẩn bị</source><translation>Preparing</translation></message>
+    <message><source>Đang xử lý</source><translation>Processing</translation></message>
+    <message><source>Đang dựng video</source><translation>Rendering video</translation></message>
+    <message><source>Đang xuất</source><translation>Exporting</translation></message>
+    <message><source>Cần duyệt phụ đề</source><translation>Subtitle review needed</translation></message>
+    <message><source>Đã tạm dừng</source><translation>Paused</translation></message>
+    <message><source>Hoàn tất</source><translation>Complete</translation></message>
+    <message><source>Có lỗi</source><translation>Failed</translation></message>
+    <message><source>Đã hủy</source><translation>Cancelled</translation></message>
+    <message><source>Sẵn sàng</source><translation>Ready</translation></message>
+</context>
+<context>
+    <name>SettingsLeaveDialog</name>
+    <message><source>Thay đổi chưa áp dụng</source><translation>Unapplied changes</translation></message>
+    <message><source>Áp dụng thay đổi trước khi rời Cài đặt?</source><translation>Apply changes before leaving Settings?</translation></message>
+    <message><source>Chờ xử lý xong để áp dụng, hoặc bỏ thay đổi để rời Cài đặt.</source><translation>Wait for processing to finish to apply changes, or discard them to leave Settings.</translation></message>
+    <message><source>Ở lại</source><translation>Stay</translation></message>
+    <message><source>Bỏ thay đổi</source><translation>Discard</translation></message>
+    <message><source>Áp dụng</source><translation>Apply</translation></message>
+</context>
+<context>
+    <name>SettingsPage</name>
+    <message><source>Chờ xử lý xong để áp dụng cài đặt.</source><translation>Wait for processing to finish to apply settings.</translation></message>
+    <message><source>Có thay đổi chưa áp dụng</source><translation>Unapplied changes</translation></message>
+</context>
+<context>
+    <name>BatchSettingsDialog</name>
+    <message><source>Ghi đè cài đặt riêng của %1 video</source><translation>Overwrite individual settings for %1 videos</translation></message>
+    <message><source>Áp dụng và ghi đè</source><translation>Apply and overwrite</translation></message>
+</context>
+<context>
+    <name>VideoSelectionRow</name>
+    <message><source>Chọn %1</source><translation>Select %1</translation></message>
+</context>
+<context>
+    <name>BatchVideoScope</name>
+    <message><source>Tìm video</source><translation>Find videos</translation></message>
+    <message><source>Chọn kết quả</source><translation>Select results</translation></message>
+    <message><source>Không tìm thấy video</source><translation>No videos found</translation></message>
+</context>
+<context>
+    <name>SocialProjectSourceDialog</name>
+    <message><source>Tìm tên dự án hoặc video</source><translation>Find a project or video</translation></message>
+    <message><source>Không tìm thấy video</source><translation>No videos found</translation></message>
+    <message><source>Thử tìm bằng tên khác.</source><translation>Try searching for a different name.</translation></message>
+</context>
+<context>
+    <name>DownloadProjectSourceDialog</name>
+    <message><source>Tìm tên dự án hoặc video</source><translation>Find a project or video</translation></message>
+    <message><source>Không tìm thấy video</source><translation>No videos found</translation></message>
+    <message><source>Thử tìm bằng tên khác.</source><translation>Try searching for a different name.</translation></message>
+</context>
+<context>
+    <name>MediaSourceImportButton</name>
+    <message><source>Từ dự án tải xuống</source><translation>From download project</translation></message>
+</context>
+<context>
+    <name>VideoExportJobsDialog</name>
+    <message><source>%1 thành công · %2 lỗi · %3 đã hủy · %4 chưa xong</source><translation>%1 complete · %2 failed · %3 cancelled · %4 unfinished</translation></message>
+    <message><source>%1 · %2%</source><translation>%1 · %2%</translation></message>
+    <message><source>Tiếp tục</source><translation>Resume</translation></message>
+    <message><source>Duyệt phụ đề</source><translation>Review subtitles</translation></message>
+    <message><source>Thử lại</source><translation>Retry</translation></message>
+    <message><source>Chờ lượt xuất hiện tại kết thúc để thử lại.</source><translation>Wait for the current export to finish before retrying.</translation></message>
+    <message><source>Thử lại các tệp lỗi hoặc đã hủy</source><translation>Retry failed or cancelled files</translation></message>
 </context>
 </TS>

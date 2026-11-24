@@ -28,69 +28,74 @@ AppDialog {
         open();
     }
 
-    SettingLabel { text: qsTr("Văn phong dịch") }
-    AppComboBox {
-        id: styleCombo
-        objectName: "geminiStyleCombo"
-        Layout.fillWidth: true
-        textRole: "label"
-        valueRole: "value"
-        model: root.styleOptions
-        currentIndex: root.styleOptions.findIndex(function(option) { return option.value === root.translationStyle; })
-        onActivated: root.translationStyle = currentValue
-        Accessible.name: qsTr("Văn phong dịch")
-    }
-    Text {
-        Layout.fillWidth: true
-        text: root.styleOptions[Math.max(0, styleCombo.currentIndex)].description
-        textFormat: Text.PlainText
-        wrapMode: Text.Wrap
-        color: Theme.textMuted
-        font.pixelSize: TypeScale.metadata
-    }
-    SettingLabel { text: qsTr("Bối cảnh và cách dịch") }
-    ScrollView {
-        Layout.fillWidth: true
-        Layout.minimumHeight: 64
-        Layout.preferredHeight: 100
-        contentWidth: availableWidth
-        clip: true
-        AppTextArea {
-            id: instructionsEditor
-            objectName: "geminiInstructionsEditor"
-            accessibleName: qsTr("Bối cảnh và hướng dẫn dịch")
-            placeholderText: qsTr("Ví dụ: Bối cảnh hiện đại. Dịch tự nhiên, ngắn gọn. Giữ nguyên sắc thái của từng nhân vật.")
+    DialogScrollBody {
+        objectName: "geminiGuidanceScrollBody"
+        maximumBodyHeight: root.availableBodyHeight
+
+        SettingLabel { text: qsTr("Văn phong dịch") }
+        AppComboBox {
+            id: styleCombo
+            objectName: "geminiStyleCombo"
+            Layout.fillWidth: true
+            textRole: "label"
+            valueRole: "value"
+            model: root.styleOptions
+            currentIndex: root.styleOptions.findIndex(function(option) { return option.value === root.translationStyle; })
+            onActivated: root.translationStyle = currentValue
+            Accessible.name: qsTr("Văn phong dịch")
         }
-    }
-    SettingLabel { text: qsTr("Tên nhân vật và xưng hô") }
-    ScrollView {
-        Layout.fillWidth: true
-        Layout.minimumHeight: 72
-        Layout.preferredHeight: 116
-        contentWidth: availableWidth
-        clip: true
-        AppTextArea {
-            id: glossaryEditor
-            objectName: "geminiGlossaryEditor"
-            accessibleName: qsTr("Quy ước tên nhân vật và xưng hô")
-            placeholderText: qsTr("王明 → Vương Minh\nMinh và Lan là bạn cùng tuổi: tôi – cậu.\nLan nói với bố: con – bố.")
+        Text {
+            Layout.fillWidth: true
+            text: root.styleOptions[Math.max(0, styleCombo.currentIndex)].description
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: Theme.textMuted
+            font.pixelSize: TypeScale.metadata
         }
-    }
-    Text {
-        objectName: "geminiGuidanceDisclosure"
-        Layout.fillWidth: true
-        text: qsTr("Phụ đề và hướng dẫn được gửi tới nhà cung cấp đã chọn khi dịch.")
-        textFormat: Text.PlainText
-        wrapMode: Text.Wrap
-        color: Theme.textMuted
-        font.pixelSize: TypeScale.metadata
-    }
-    Text {
-        Layout.fillWidth: true
-        visible: instructionsEditor.length > 4000 || glossaryEditor.length > 4000
-        text: qsTr("Mỗi ô tối đa 4000 ký tự.")
-        color: Theme.danger
-        font.pixelSize: TypeScale.metadata
+        SettingLabel { text: qsTr("Bối cảnh và cách dịch") }
+        ScrollView {
+            Layout.fillWidth: true
+            Layout.minimumHeight: 64
+            Layout.preferredHeight: 100
+            contentWidth: availableWidth
+            clip: true
+            AppTextArea {
+                id: instructionsEditor
+                objectName: "geminiInstructionsEditor"
+                accessibleName: qsTr("Bối cảnh và hướng dẫn dịch")
+                placeholderText: qsTr("Ví dụ: Bối cảnh hiện đại. Dịch tự nhiên, ngắn gọn. Giữ nguyên sắc thái của từng nhân vật.")
+            }
+        }
+        SettingLabel { text: qsTr("Tên nhân vật và xưng hô") }
+        ScrollView {
+            Layout.fillWidth: true
+            Layout.minimumHeight: 72
+            Layout.preferredHeight: 116
+            contentWidth: availableWidth
+            clip: true
+            AppTextArea {
+                id: glossaryEditor
+                objectName: "geminiGlossaryEditor"
+                accessibleName: qsTr("Quy ước tên nhân vật và xưng hô")
+                placeholderText: qsTr("王明 → Vương Minh\nMinh và Lan là bạn cùng tuổi: tôi – cậu.\nLan nói với bố: con – bố.")
+            }
+        }
+        Text {
+            objectName: "geminiGuidanceDisclosure"
+            Layout.fillWidth: true
+            text: qsTr("Phụ đề và hướng dẫn được gửi tới nhà cung cấp đã chọn khi dịch.")
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: Theme.textMuted
+            font.pixelSize: TypeScale.metadata
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: instructionsEditor.length > 4000 || glossaryEditor.length > 4000
+            text: qsTr("Mỗi ô tối đa 4000 ký tự.")
+            color: Theme.danger
+            font.pixelSize: TypeScale.metadata
+        }
     }
     footerActions: [
         StudioButton { text: qsTr("Hủy"); variant: "secondary"; onClicked: root.close() },

@@ -8,6 +8,8 @@ StackLayout {
     id: root
 
     required property string currentRoute
+    readonly property SettingsWorkspace settingsWorkspace: settingsLoader.status === Loader.Ready
+        ? settingsLoader.item as SettingsWorkspace : null
     // Loader.item is a QObject to qmllint; the guarded source is DownloadsPage.
     // qmllint disable missing-property
     readonly property bool downloadCanGoBack: currentRoute === "download-workspace" && downloadWorkspaceLoader.status === Loader.Ready && downloadWorkspaceLoader.item !== null && downloadWorkspaceLoader.item.canGoBack
@@ -348,6 +350,7 @@ StackLayout {
     }
 
     Loader {
+        id: settingsLoader
         Layout.fillWidth: true
         Layout.fillHeight: true
         Layout.margins: 0

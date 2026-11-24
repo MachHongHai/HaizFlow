@@ -17,6 +17,9 @@ Dialog {
     readonly property bool hasFooterActions: actionArea.children.length > 0
     readonly property int headerHeight: subtitle.length > 0 ? 64 : 56
     readonly property int footerHeight: hasFooterActions ? 60 : 0
+    readonly property int availableBodyHeight: Math.max(0,
+        Math.min(maximumHeight, parent ? parent.height - 48 : maximumHeight)
+        - headerHeight - footerHeight - Theme.space20 * 2 - 2)
     default property alias body: bodyColumn.data
     property alias footerActions: actionArea.data
 

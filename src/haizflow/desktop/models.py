@@ -2,19 +2,26 @@
 
 from __future__ import annotations
 
+import os
 import re
+import threading
+import unicodedata
 from datetime import datetime
+from pathlib import Path
 
 from PySide6.QtCore import (
     Property,
     QAbstractListModel,
     QModelIndex,
     QSortFilterProxyModel,
+    QThreadPool,
     Qt,
     Signal,
+    Slot,
 )
 
-from haizflow.desktop.media import thumbnail_source
+from haizflow.core.storage_ownership import owned_path
+from haizflow.desktop.media import create_video_thumbnail_path, thumbnail_source
 
 
 def presentation_video_status(video):
@@ -716,7 +723,63 @@ class SocialPublishListModel(QAbstractListModel):
         return self._items[row]
 
 
-class SocialProjectSourceListModel(QAbstractListModel):
+class VideoSourceSelectionModel(QAbstractListModel):
+    SourceIndexRole = Qt.ItemDataRole.UserRole + 32
+    sourceCountChanged = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self._items: list[dict] = []
+        self._search = ""
+        self._search_texts: list[str] = []
+        self._source_rows: list[int] = []
+        self._visible_rows: dict[int, int] = {}
+
+    @Property(int, notify=sourceCountChanged)
+    def sourceCount(self):
+        return len(self._items)
+
+    @staticmethod
+    def _normalise(text):
+        return "".join(ch for ch in unicodedata.normalize("NFKD", text.casefold().replace("đ", "d"))
+                       if not unicodedata.combining(ch))
+
+    def _update_visible_rows(self):
+        words = self._search.split()
+        self._source_rows = [row for row, text in enumerate(self._search_texts) if all(word in text for word in words)]
+        self._visible_rows = {source: row for row, source in enumerate(self._source_rows)}
+
+    @Slot(str)
+    def setSearch(self, text):
+        query = self._normalise(text.strip())
+        if query == self._search:
+            return
+        self.beginResetModel()
+        self._search = query
+        self._update_visible_rows()
+        self.endResetModel()
+
+    def set_items(self, items):
+        self.beginResetModel()
+        self._items = list(items)
+        self._search_texts = [self._normalise(f"{item['project_name']} {item['file_name']}") for item in self._items]
+        self._update_visible_rows()
+        self.endResetModel()
+        self.sourceCountChanged.emit()
+
+    def rowCount(self, parent=QModelIndex()):
+        return 0 if parent.isValid() else len(self._source_rows)
+
+    def _source_index(self, index):
+        return self._source_rows[index.row()] if index.isValid() and 0 <= index.row() < len(self._source_rows) else -1
+
+    def _notify_row(self, source_row, role):
+        if (row := self._visible_rows.get(source_row)) is not None:
+            index = self.index(row, 0)
+            self.dataChanged.emit(index, index, [role])
+
+
+class SocialProjectSourceListModel(VideoSourceSelectionModel):
     """Completed single and batch outputs that can be copied into a publish project."""
 
     VideoIdRole = Qt.ItemDataRole.UserRole + 1
@@ -728,18 +791,13 @@ class SocialProjectSourceListModel(QAbstractListModel):
     SelectedRole = Qt.ItemDataRole.UserRole + 7
     VideoCountRole = Qt.ItemDataRole.UserRole + 8
 
-    def __init__(self):
-        super().__init__()
-        self._items = []
-
-    def rowCount(self, parent=QModelIndex()):
-        return 0 if parent.isValid() else len(self._items)
-
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
-        if not index.isValid() or index.row() < 0 or index.row() >= len(self._items):
+        row = self._source_index(index)
+        if row < 0:
             return None
-        item = self._items[index.row()]
+        item = self._items[row]
         return {
+            self.SourceIndexRole: row,
             self.VideoIdRole: item["video_id"],
             self.ProjectNameRole: item["project_name"],
             self.ProjectTypeRole: item["project_type"],
@@ -752,6 +810,7 @@ class SocialProjectSourceListModel(QAbstractListModel):
 
     def roleNames(self):
         return {
+            self.SourceIndexRole: b"sourceIndex",
             self.VideoIdRole: b"videoId",
             self.ProjectNameRole: b"projectName",
             self.ProjectTypeRole: b"projectType",
@@ -762,11 +821,6 @@ class SocialProjectSourceListModel(QAbstractListModel):
             self.VideoCountRole: b"sourceVideoCount",
         }
 
-    def set_items(self, items) -> None:
-        self.beginResetModel()
-        self._items = list(items)
-        self.endResetModel()
-
     def set_selected(self, row: int, selected: bool) -> bool:
         if row < 0 or row >= len(self._items):
             return False
@@ -774,12 +828,11 @@ class SocialProjectSourceListModel(QAbstractListModel):
         if self._items[row]["selected"] == value:
             return True
         self._items[row]["selected"] = value
-        index = self.index(row, 0)
-        self.dataChanged.emit(index, index, [self.SelectedRole])
+        self._notify_row(row, self.SelectedRole)
         return True
 
 
-class DownloadProjectSourceListModel(QAbstractListModel):
+class DownloadProjectSourceListModel(VideoSourceSelectionModel):
     """Videos downloaded by HaizFlow that can be copied into processing projects."""
 
     ItemIdRole = Qt.ItemDataRole.UserRole + 1
@@ -789,19 +842,26 @@ class DownloadProjectSourceListModel(QAbstractListModel):
     FilePathRole = Qt.ItemDataRole.UserRole + 5
     FileSizeRole = Qt.ItemDataRole.UserRole + 6
     SelectedRole = Qt.ItemDataRole.UserRole + 7
+    ThumbnailRole = Qt.ItemDataRole.UserRole + 8
+    _thumbnailReady = Signal(str, str, str, object)
 
     def __init__(self):
         super().__init__()
-        self._items: list[dict] = []
-
-    def rowCount(self, parent=QModelIndex()):
-        return 0 if parent.isValid() else len(self._items)
+        self._thumbnails = QThreadPool(self)
+        self._thumbnails.setMaxThreadCount(2)
+        self._thumbnail_cancel = threading.Event()
+        self._thumbnail_jobs: set[str] = set()
+        self._thumbnail_failed: set[str] = set()
+        self._thumbnailReady.connect(self._accept_thumbnail)
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
-        if not index.isValid() or index.row() < 0 or index.row() >= len(self._items):
+        row = self._source_index(index)
+        if row < 0:
             return None
-        item = self._items[index.row()]
+        item = self._items[row]
         return {
+            self.SourceIndexRole: row,
+            self.ThumbnailRole: item.get("thumbnail_source", ""),
             self.ItemIdRole: item["item_id"],
             self.ProjectNameRole: item["project_name"],
             self.CategoryRole: item["category"],
@@ -813,6 +873,8 @@ class DownloadProjectSourceListModel(QAbstractListModel):
 
     def roleNames(self):
         return {
+            self.SourceIndexRole: b"sourceIndex",
+            self.ThumbnailRole: b"thumbnailSource",
             self.ItemIdRole: b"downloadItemId",
             self.ProjectNameRole: b"downloadProjectName",
             self.CategoryRole: b"downloadCategory",
@@ -823,9 +885,69 @@ class DownloadProjectSourceListModel(QAbstractListModel):
         }
 
     def set_items(self, items) -> None:
-        self.beginResetModel()
-        self._items = [{**item, "selected": bool(item.get("selected", False))} for item in items]
-        self.endResetModel()
+        self.stopThumbnails()
+        self._thumbnail_cancel = threading.Event()
+        super().set_items({**item, "selected": bool(item.get("selected", False))} for item in items)
+
+    @Slot()
+    def stopThumbnails(self):
+        self._thumbnail_cancel.set()
+        self._thumbnails.clear()
+        self._thumbnail_jobs.clear()
+        self._thumbnail_failed.clear()
+
+    @Slot(int)
+    def requestThumbnail(self, row):
+        if not 0 <= row < len(self._items) or self._thumbnail_cancel.is_set():
+            return
+        item = self._items[row]
+        key, target = item["item_id"], item.get("thumbnail_path", "")
+        owner = item.get("thumbnail_root", "")
+        if (
+            not target or not owner or item.get("thumbnail_source")
+            or key in self._thumbnail_jobs or key in self._thumbnail_failed
+            or len(self._thumbnail_jobs) >= 16
+        ):
+            return
+        self._thumbnail_jobs.add(key)
+        source, modified, cancel = item["file_path"], item.get("modified_ns", 0), self._thumbnail_cancel
+
+        def generate():
+            if cancel.is_set():
+                return
+            try:
+                owned_path(target, owner)
+                Path(target).parent.mkdir(exist_ok=True)
+            except (OSError, ValueError):
+                if not cancel.is_set():
+                    self._thumbnailReady.emit(key, target, "", cancel)
+                return
+            try:
+                cached = os.stat(target).st_mtime_ns >= modified
+            except OSError:
+                cached = False
+            result = target if cached else create_video_thumbnail_path(
+                source, target, timeout_seconds=5, cancel_event=cancel,
+                create_directory=False, seek_seconds=0,
+            )
+            if not cancel.is_set():
+                self._thumbnailReady.emit(key, target, thumbnail_source(result), cancel)
+
+        self._thumbnails.start(generate)
+
+    @Slot(str, str, str, object)
+    def _accept_thumbnail(self, key, target, source, generation):
+        if generation is not self._thumbnail_cancel or generation.is_set():
+            return
+        self._thumbnail_jobs.discard(key)
+        if not source:
+            self._thumbnail_failed.add(key)
+            return
+        for row, item in enumerate(self._items):
+            if item["item_id"] == key and item.get("thumbnail_path") == target:
+                item["thumbnail_source"] = source
+                self._notify_row(row, self.ThumbnailRole)
+                break
 
     def set_selected(self, row: int, selected: bool, *, exclusive: bool = False) -> bool:
         if row < 0 or row >= len(self._items):
@@ -843,8 +965,7 @@ class DownloadProjectSourceListModel(QAbstractListModel):
                 self._items[row]["selected"] = value
                 changed_rows.append(row)
         for changed_row in changed_rows:
-            model_index = self.index(changed_row, 0)
-            self.dataChanged.emit(model_index, model_index, [self.SelectedRole])
+            self._notify_row(changed_row, self.SelectedRole)
         return True
 
     def selected_items(self) -> list[dict]:

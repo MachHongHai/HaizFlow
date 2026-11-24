@@ -110,6 +110,7 @@ Module {
         Method { name: "setVideoExportDialogScope"; Parameter { name: "videoIds"; type: "QVariantList" } }
         Method { name: "cancelVideoExportsFor"; Parameter { name: "videoIds"; type: "QVariantList" } }
         Method { name: "retryVideoExportsFor"; type: "bool"; Parameter { name: "videoIds"; type: "QVariantList" } }
+        Method { name: "continueVideoExportJob"; type: "bool"; Parameter { name: "videoId"; type: "QString" } Parameter { name: "expectedStatus"; type: "QString" } }
         Method { name: "exportFolderPath"; type: "QString"; Parameter { name: "url"; type: "QUrl" } }
         Method { name: "removeBatchVideo"; type: "bool"; Parameter { name: "projectKey"; type: "QString" } Parameter { name: "videoId"; type: "QString" } }
         Method { name: "batchVideoRemovalPending"; type: "bool"; Parameter { name: "videoId"; type: "QString" } }
@@ -290,6 +291,7 @@ Module {
             read: "tiktokProjectSourceModel"
             index: 7
             isReadonly: true
+            isConstant: true
         }
         Property {
             name: "downloadProjectSourceModel"
@@ -297,6 +299,7 @@ Module {
             read: "downloadProjectSourceModel"
             index: 140
             isReadonly: true
+            isConstant: true
         }
         Property {
             name: "downloadProjectSourceSelectedCount"

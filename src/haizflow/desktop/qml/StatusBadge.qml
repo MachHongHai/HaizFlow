@@ -10,14 +10,8 @@ Rectangle {
     property string iconName: status === "done" || status === "success" ? "success"
         : status === "failed" || status === "error" ? "error"
         : status === "processing" ? "info" : ""
-    readonly property color foreground: status === "done" || status === "success" ? Theme.success
-        : status === "failed" || status === "error" ? Theme.danger
-        : status === "processing" || status === "paused" ? Theme.warning
-        : Theme.textMuted
-    readonly property color fill: status === "done" || status === "success" ? Theme.successMuted
-        : status === "failed" || status === "error" ? Theme.dangerMuted
-        : status === "processing" || status === "paused" ? Theme.warningMuted
-        : Theme.surfaceMuted
+    readonly property color foreground: TaskPresentation.foreground(status)
+    readonly property color fill: TaskPresentation.background(status)
 
     implicitWidth: badgeContent.implicitWidth + 16
     implicitHeight: 24

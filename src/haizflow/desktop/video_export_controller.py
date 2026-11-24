@@ -209,7 +209,7 @@ class VideoExportController(QObject):
         result.update(projectKey=str(self.host._selected_project_key or ""),
                       videoIds=[video.video_id for video in videos], count=len(videos),
                       videos=[{"videoId": video.video_id, "name": video.original_filename,
-                               "status": video.status, "progress": video.progress,
+                               "status": video.status, "step": getattr(video, "step", ""), "progress": video.progress,
                                "thumbnailSource": thumbnail_source((video.files or {}).get("thumbnail") or "")}
                               for video in videos])
         return result

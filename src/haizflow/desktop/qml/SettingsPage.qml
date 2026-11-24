@@ -11,6 +11,7 @@ Item {
     property bool localEditsPending: false
     readonly property bool draftDirty: draftLanguage !== AppController.settingsLanguage
         || draftDevice !== AppController.processingDevice || draftKeepWarm !== AppController.keepModelsWarm
+    readonly property bool hasPendingChanges: localEditsPending && draftDirty
 
     function loadDraft() {
         draftLanguage = AppController.settingsLanguage;
@@ -19,11 +20,13 @@ Item {
         localEditsPending = false;
     }
     function applyDraft() {
-        if (localEditsPending && draftDirty
-            && AppController.applyGeneralSettings(draftLanguage, draftDevice, draftKeepWarm))
-            loadDraft();
+        if (!hasPendingChanges)
+            return true;
+        if (AppController.isProcessing || !AppController.applyGeneralSettings(draftLanguage, draftDevice, draftKeepWarm))
+            return false;
+        loadDraft();
+        return true;
     }
-    onVisibleChanged: { if (visible) loadDraft(); }
     Component.onCompleted: loadDraft()
     Connections {
         target: AppController
@@ -53,7 +56,7 @@ Item {
                         Layout.preferredWidth: 240
                         currentValue: root.draftLanguage
                         options: [{ label: qsTr("English"), value: "en" }, { label: qsTr("Tiếng Việt"), value: "vi" }]
-                        onActivated: function(value) { root.draftLanguage = value; root.localEditsPending = true; }
+                        onActivated: function(value) { root.draftLanguage = value; root.localEditsPending = root.draftDirty; }
                     }
                 }
             }
@@ -70,7 +73,7 @@ Item {
                         currentValue: root.draftDevice
                         enabled: !AppController.isProcessing
                         options: [{ label: qsTr("CPU"), value: "cpu" }, { label: qsTr("GPU NVIDIA"), value: "gpu" }]
-                        onActivated: function(value) { root.draftDevice = value; root.localEditsPending = true; }
+                        onActivated: function(value) { root.draftDevice = value; root.localEditsPending = root.draftDirty; }
                     }
                 }
                 SettingRow {
@@ -85,7 +88,7 @@ Item {
                     AppSwitch {
                         checked: root.draftKeepWarm
                         Accessible.name: qsTr("Giữ model sẵn sàng")
-                        onToggled: { root.draftKeepWarm = checked; root.localEditsPending = true; }
+                        onToggled: { root.draftKeepWarm = checked; root.localEditsPending = root.draftDirty; }
                     }
                 }
             }
@@ -119,7 +122,16 @@ Item {
                 Layout.fillWidth: true
                 Layout.bottomMargin: Theme.space8
                 spacing: Theme.space8
-                Item { Layout.fillWidth: true }
+                Text {
+                    Layout.fillWidth: true
+                    visible: root.hasPendingChanges
+                    text: AppController.isProcessing ? qsTr("Chờ xử lý xong để áp dụng cài đặt.")
+                        : qsTr("Có thay đổi chưa áp dụng")
+                    color: Theme.textMuted
+                    font.pixelSize: TypeScale.metadata
+                    wrapMode: Text.WordWrap
+                }
+                Item { Layout.fillWidth: true; visible: !root.hasPendingChanges }
                 StudioButton {
                     text: qsTr("Hủy thay đổi")
                     enabled: root.draftDirty

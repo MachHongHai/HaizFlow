@@ -19,6 +19,11 @@ SrtImportDialog 1.0 SrtImportDialog.qml
 typeinfo haizflow.qmltypes
 BatchVideoScope 1.0 BatchVideoScope.qml
 singleton Theme 1.0 Theme.qml
+singleton TaskPresentation 1.0 TaskPresentation.qml
+SettingsLeaveDialog 1.0 SettingsLeaveDialog.qml
+VideoSelectionRow 1.0 VideoSelectionRow.qml
+FocusScroll 1.0 FocusScroll.qml
+DialogScrollBody 1.0 DialogScrollBody.qml
 singleton I18n 1.0 I18n.qml
 singleton TypeScale 1.0 TypeScale.qml
 singleton Motion 1.0 Motion.qml

@@ -8,6 +8,7 @@ import "."
 AppDialog {
     id: root
     property var controller: AppController
+    property string reviewVideoId: ""
     title: qsTr("Xuất video")
     preferredWidth: 640
     maximumHeight: 650
@@ -17,12 +18,14 @@ AppDialog {
         done: scopedJobs.filter(job => job.status === "done").length,
         failed: scopedJobs.filter(job => job.status === "failed").length,
         cancelled: scopedJobs.filter(job => job.status === "cancelled").length,
+        unfinished: scopedJobs.filter(job => !["done", "failed", "cancelled"].includes(job.status)).length,
         waiting: scopedJobs.some(job => ["paused", "awaiting_review"].includes(job.status))})
     readonly property bool scopeBusy: scopedJobs.some(job => ["preparing", "pending", "rendering", "exporting"].includes(job.status))
 
     function openForVideos(ids) {
         if (!(controller.videoExportJobs || []).some(job => ids.includes(job.videoId)))
             return;
+        reviewVideoId = "";
         videoIds = ids.slice();
         controller.setVideoExportDialogScope(videoIds);
         open();
@@ -31,7 +34,8 @@ AppDialog {
     Text {
         Layout.fillWidth: true
         visible: root.jobSummary.count > 1
-        text: qsTr("%1 thành công · %2 lỗi · %3 đã hủy").arg(root.jobSummary.done).arg(root.jobSummary.failed).arg(root.jobSummary.cancelled)
+        text: qsTr("%1 thành công · %2 lỗi · %3 đã hủy · %4 chưa xong")
+            .arg(root.jobSummary.done).arg(root.jobSummary.failed).arg(root.jobSummary.cancelled).arg(root.jobSummary.unfinished)
         color: Theme.text
         font.pixelSize: TypeScale.control
         wrapMode: Text.WordWrap
@@ -40,6 +44,7 @@ AppDialog {
     ListView {
         id: jobsView
         Layout.fillWidth: true
+        Layout.minimumHeight: 0
         Layout.preferredHeight: Math.min(420, contentHeight)
         clip: true
         reuseItems: true
@@ -50,7 +55,9 @@ AppDialog {
             id: exportJob
             required property var model
             readonly property var modelData: model.job || model.modelData
-            readonly property bool measured: modelData.status === "exporting" || Boolean(modelData.progressMeasured)
+            readonly property string taskState: TaskPresentation.exportState(modelData.status, modelData.queued)
+            readonly property bool measured: taskState === "exporting"
+                || (taskState === "rendering" && Boolean(modelData.progressMeasured))
             readonly property int progressPercent: Math.max(0, Math.min(100, Number(modelData.progress || 0)))
             width: jobsView.width - Theme.space16
             spacing: Theme.space8
@@ -64,18 +71,22 @@ AppDialog {
                 font.pixelSize: TypeScale.control
             }
             Text {
+                objectName: "exportJobStatus"
                 Layout.fillWidth: true
-                text: exportJob.modelData.queued && ["preparing", "rendering"].includes(exportJob.modelData.status) ? qsTr("Đang chờ") : exportJob.modelData.status === "preparing" ? qsTr("Đang chuẩn bị") : exportJob.modelData.status === "rendering" ? ((exportJob.modelData.process ? qsTr("Đang xử lý và dựng video") : qsTr("Đang dựng video")) + (exportJob.measured ? " · " + exportJob.progressPercent + "%" : "")) : exportJob.modelData.status === "exporting" ? qsTr("Đang lưu · %1%").arg(exportJob.modelData.progress) : exportJob.modelData.status === "done" ? qsTr("Đã xuất thành công") : exportJob.modelData.status === "pending" ? qsTr("Đang chờ") : exportJob.modelData.status === "cancelled" ? qsTr("Đã hủy xuất") : qsTr("Xuất chưa hoàn tất")
+                text: exportJob.taskState === "done" ? qsTr("Đã xuất thành công") : exportJob.measured
+                    ? qsTr("%1 · %2%").arg(TaskPresentation.label(exportJob.taskState)).arg(exportJob.progressPercent)
+                    : TaskPresentation.label(exportJob.taskState)
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
-                color: exportJob.modelData.status === "failed" ? Theme.danger : Theme.textMuted
+                color: TaskPresentation.foreground(exportJob.taskState)
                 font.family: Theme.fontFamily
                 font.pixelSize: TypeScale.metadata
             }
             AppProgressBar {
                 objectName: "exportJobProgress"
                 Layout.fillWidth: true
-                visible: !exportJob.modelData.queued && (exportJob.modelData.status === "preparing" || exportJob.modelData.status === "exporting" || exportJob.modelData.status === "rendering")
+                visible: ["exporting", "rendering"].includes(exportJob.taskState)
+                    || (exportJob.taskState === "preparing" && !exportJob.modelData.queued)
                 value: exportJob.progressPercent
                 indeterminate: !exportJob.measured
                 active: visible
@@ -100,6 +111,31 @@ AppDialog {
                 variant: "secondary"
                 onClicked: root.controller.openExportDestinationFolder(exportJob.modelData.path)
             }
+            StudioButton {
+                objectName: "exportJobNextAction"
+                visible: ["paused", "awaiting_review", "failed", "cancelled"].includes(exportJob.taskState)
+                enabled: !["failed", "cancelled"].includes(exportJob.taskState) || !root.controller.videoExportBusy
+                text: exportJob.taskState === "paused" ? qsTr("Tiếp tục")
+                    : exportJob.taskState === "awaiting_review" ? qsTr("Duyệt phụ đề") : qsTr("Thử lại")
+                onClicked: {
+                    const id = exportJob.modelData.videoId;
+                    const state = exportJob.taskState;
+                    if (["failed", "cancelled"].includes(state)) {
+                        root.controller.retryVideoExportsFor([id]);
+                    } else if (root.controller.continueVideoExportJob(id, state) && state === "awaiting_review") {
+                        root.reviewVideoId = id;
+                        root.close();
+                    }
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: root.controller.videoExportBusy && ["failed", "cancelled"].includes(exportJob.taskState)
+                text: qsTr("Chờ lượt xuất hiện tại kết thúc để thử lại.")
+                wrapMode: Text.WordWrap
+                color: Theme.textMuted
+                font.pixelSize: TypeScale.metadata
+            }
         }
     }
     footerActions: [
@@ -110,8 +146,8 @@ AppDialog {
             onClicked: root.controller.cancelVideoExportsFor(root.videoIds)
         },
         StudioButton {
-            visible: !root.controller.videoExportBusy && (root.jobSummary.failed > 0 || root.jobSummary.cancelled > 0)
-            text: qsTr("Thử lại tệp lỗi")
+            visible: !root.controller.videoExportBusy && root.jobSummary.failed + root.jobSummary.cancelled > 1
+            text: qsTr("Thử lại các tệp lỗi hoặc đã hủy")
             variant: "secondary"
             onClicked: root.controller.retryVideoExportsFor(root.videoIds)
         },

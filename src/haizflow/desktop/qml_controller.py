@@ -946,6 +946,9 @@ class HaizFlowController(QObject):
         return HaizFlowController._runtime_device_for(self)._confirm_application_close()
 
     def shutdown(self):
+        download_sources = getattr(self, "download_project_sources", None)
+        if download_sources is not None:
+            download_sources.stopThumbnails()
         workspace = getattr(self, "_project_workspace", None)
         if workspace is not None:
             workspace.close()
@@ -4785,6 +4788,22 @@ class HaizFlowController(QObject):
     @Slot("QVariantList", result=bool)
     def retryVideoExportsFor(self, video_ids):
         return bool(video_ids) and self._video_exports.retry_failed(set(map(str, video_ids)))
+
+    @Slot(str, str, result=bool)
+    def continueVideoExportJob(self, video_id, expected_status):
+        if (expected_status not in {"paused", "awaiting_review"} or video_id not in self.videoExportScope
+                or video_id in self._deleted_video_ids or self._processing_queue.contains(video_id)
+                or not any(job.get("videoId") == video_id and job.get("status") == expected_status
+                           for job in self._video_exports.jobs)):
+            return False
+        video = video_store.get_video(video_id)
+        if (not video or video.project_key != self._selected_project_key or video.status != expected_status):
+            return False
+        if expected_status == "paused":
+            return self._project_commands.resume_video(video_id)
+        if video_id != self._selected_video_id:
+            self._select_video(video)
+        return True  # The caller opens review after the export dialog closes.
 
     @Slot()
     def requestVideoExport(self):

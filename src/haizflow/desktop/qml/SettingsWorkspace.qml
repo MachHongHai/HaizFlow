@@ -8,6 +8,8 @@ Item {
     id: root
     required property string currentRoute
     signal navigateRequested(string route)
+    readonly property SettingsPage generalPage: generalLoader.status === Loader.Ready
+        ? generalLoader.item as SettingsPage : null
     readonly property bool telemetryNeeded: visible && (currentRoute === "settings" || currentRoute === "packages")
     onTelemetryNeededChanged: AppController.setHardwareTelemetryActive(telemetryNeeded)
     Component.onDestruction: AppController.setHardwareTelemetryActive(false)
@@ -49,6 +51,7 @@ Item {
             currentIndex: root.currentRoute === "api-keys" ? 1
                 : root.currentRoute === "packages" ? 2 : root.currentRoute === "mcp" ? 3 : 0
             SettingsPageLoader {
+                id: generalLoader
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 selected: settingsPages.currentIndex === 0

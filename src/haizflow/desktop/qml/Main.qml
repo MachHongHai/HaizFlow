@@ -66,7 +66,7 @@ ApplicationWindow {
     readonly property bool routeCanGoBack: routeHistoryIndex > 0
     readonly property bool routeCanGoForward: routeHistoryIndex < routeHistory.length - 1
     readonly property bool projectWorkspaceVisible: currentRoute === routeSingleWorkspace || currentRoute === routeManualWorkspace || currentRoute === routeBatchWorkspace || currentRoute === routeBatchVideo || currentRoute === routeDownloadWorkspace || currentRoute === routePublishWorkspace
-    readonly property bool globalNavigationBlocked: lazyDialogVisible(projectSetupDialogLoader) || lazyDialogVisible(urlImportDialogLoader) || lazyDialogVisible(downloadProjectSourceDialogLoader) || lazyDialogVisible(batchSettingsDialogLoader) || lazyDialogVisible(translationReviewDialogLoader) || lazyDialogVisible(aboutDialogLoader) || lazyDialogVisible(copyrightDialogLoader) || appAlertDialog.visible || modelSetupOverlayLoader.active
+    readonly property bool globalNavigationBlocked: settingsLeaveDialog.visible || lazyDialogVisible(projectSetupDialogLoader) || lazyDialogVisible(urlImportDialogLoader) || lazyDialogVisible(downloadProjectSourceDialogLoader) || lazyDialogVisible(batchSettingsDialogLoader) || lazyDialogVisible(translationReviewDialogLoader) || lazyDialogVisible(aboutDialogLoader) || lazyDialogVisible(copyrightDialogLoader) || appAlertDialog.visible || modelSetupOverlayLoader.active
     readonly property bool downloadCanGoBack: routeHost.downloadCanGoBack
     readonly property bool downloadCanGoForward: routeHost.downloadCanGoForward
     readonly property bool canNavigateBack: !globalNavigationBlocked && (downloadCanGoBack || routeCanGoBack)
@@ -146,7 +146,23 @@ ApplicationWindow {
         return false;
     }
 
+    function guardSettingsLeave(route, next) {
+        const settings = routeHost.settingsWorkspace;
+        if (!settings || !settings.generalPage || !settings.generalPage.hasPendingChanges
+                || routeHost.routeIndex(route) === routeHost.routeIndex(routeSettings))
+            return false;
+        settingsLeaveDialog.ask(next);
+        return true;
+    }
+
+    function openExportSubtitleReview(videoId) {
+        if (AppController.selectedVideoId === videoId && AppController.selectedStatus === "awaiting_review")
+            translationReviewDialogLoader.invoke("open", []);
+    }
+
     function resetRouteHistory(route) {
+        if (guardSettingsLeave(route, () => resetRouteHistory(route)))
+            return;
         routeHistory = [route];
         routeHistoryIndex = 0;
         currentRoute = route;
@@ -174,13 +190,15 @@ ApplicationWindow {
     }
 
     function openProjectWorkspace(projectsRoute, workspaceRoute) {
+        if (guardSettingsLeave(workspaceRoute, () => openProjectWorkspace(projectsRoute, workspaceRoute)))
+            return;
         workspaceReturnRoute = projectsRoute;
         resetRouteHistory(projectsRoute);
         navigate(workspaceRoute);
     }
 
     function replaceCurrentRoute(route) {
-        if (route === currentRoute)
+        if (route === currentRoute || guardSettingsLeave(route, () => replaceCurrentRoute(route)))
             return;
         saveCurrentVideoSettings();
         let nextHistory = routeHistory.slice();
@@ -200,6 +218,8 @@ ApplicationWindow {
             pruneRouteHistory();
             return;
         }
+        if (guardSettingsLeave(route, () => navigate(route)))
+            return;
 
         saveCurrentVideoSettings();
         let nextHistory = routeHistory.slice(0, routeHistoryIndex + 1);
@@ -219,6 +239,8 @@ ApplicationWindow {
         pruneRouteHistory();
         if (!routeCanGoBack)
             return;
+        if (guardSettingsLeave(routeHistory[routeHistoryIndex - 1], () => navigateBack()))
+            return;
         saveCurrentVideoSettings();
         routeHistoryIndex -= 1;
         currentRoute = routeHistory[routeHistoryIndex];
@@ -233,6 +255,8 @@ ApplicationWindow {
         }
         pruneRouteHistory();
         if (!routeCanGoForward)
+            return;
+        if (guardSettingsLeave(routeHistory[routeHistoryIndex + 1], () => navigateForward()))
             return;
         saveCurrentVideoSettings();
         routeHistoryIndex += 1;
@@ -262,6 +286,12 @@ ApplicationWindow {
         value: root.height
     }
 
+    SettingsLeaveDialog {
+        id: settingsLeaveDialog
+        generalPage: routeHost.settingsWorkspace ? routeHost.settingsWorkspace.generalPage : null
+        canApply: !AppController.isProcessing
+    }
+
     LazyDialogLoader {
         id: projectSetupDialogLoader
         sourceComponent: Component {
@@ -282,7 +312,17 @@ ApplicationWindow {
     }
     LazyDialogLoader {
         id: videoExportJobsDialogLoader
-        sourceComponent: Component { VideoExportJobsDialog { onClosed: videoExportJobsDialogLoader.release() } }
+        sourceComponent: Component {
+            VideoExportJobsDialog {
+                id: exportJobsDialog
+                onClosed: {
+                    const videoId = exportJobsDialog.reviewVideoId;
+                    if (videoId.length > 0)
+                        Qt.callLater(root.openExportSubtitleReview, videoId);
+                    videoExportJobsDialogLoader.release();
+                }
+            }
+        }
     }
     Connections {
         target: AppController

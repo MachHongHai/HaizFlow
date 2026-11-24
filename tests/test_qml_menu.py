@@ -1521,7 +1521,8 @@ ApplicationWindow {{
 
         self.assertIn("function applyDraft()", settings)
         self.assertNotIn("applyTimer", settings)
-        self.assertIn("onVisibleChanged: {", settings)
+        self.assertNotIn("onVisibleChanged:", settings)
+        self.assertIn("hasPendingChanges", settings)
         self.assertIn("applyDraft()", settings)
         self.assertIn('objectName: "applyGeneralSettingsButton"', settings)
         self.assertIn("AppController.applyGeneralSettings", settings)
@@ -1563,7 +1564,7 @@ ApplicationWindow {{
         self.assertIn("MediaSourceImportButton", batch_page)
         self.assertIn('qsTr("Tệp")', import_button)
         self.assertIn('qsTr("Liên kết")', import_button)
-        self.assertIn('qsTr("Tải xuống")', import_button)
+        self.assertIn('qsTr("Từ dự án tải xuống")', import_button)
         self.assertIn("AppController.downloadProjectSourceModel", dialog)
         self.assertIn("AppController.importSelectedDownloadProjectVideos", dialog)
 

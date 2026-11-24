@@ -102,6 +102,19 @@ def exercise(width, height, large, snapshot=""):
     assert style_combo.property("currentValue") == "balanced"
     if snapshot:
         assert window.grabWindow().save(snapshot)
+    window.setHeight(460)
+    QTest.qWait(25)
+    scroll_body = window.findChild(QQuickItem, "geminiGuidanceScrollBody")
+    assert scroll_body.property("contentHeight") > scroll_body.height()
+    instructions.forceActiveFocus()
+    QTest.qWait(25)
+    before_focus = scroll_body.property("contentY")
+    glossary.forceActiveFocus()
+    QTest.qWait(25)
+    assert scroll_body.property("contentY") > before_focus
+    assert save.mapToScene(QPointF(0, save.height())).y() < window.height()
+    window.setHeight(height)
+    QTest.qWait(25)
     instructions.setProperty("text", "x" * 4001)
     QTest.qWait(25)
     assert not save.property("enabled")

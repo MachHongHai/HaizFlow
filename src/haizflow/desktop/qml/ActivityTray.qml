@@ -21,12 +21,7 @@ Rectangle {
     border.color: Theme.outline
 
     function stateLabel(state) {
-        if (state === "failed") return qsTr("Có lỗi");
-        if (state === "processing") return qsTr("Đang xử lý");
-        if (state === "exporting") return qsTr("Đang xuất");
-        if (state === "paused") return qsTr("Đã tạm dừng");
-        if (state === "queued") return qsTr("Đang chờ");
-        return qsTr("Sẵn sàng");
+        return TaskPresentation.label(state);
     }
 
     Rectangle {

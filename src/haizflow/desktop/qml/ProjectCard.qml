@@ -23,12 +23,12 @@ Control {
     signal deleteRequested
     signal renameRequested(string key)
 
-    readonly property string statusLabel: status === "pending" ? qsTr("Đang chờ") : status === "empty" ? qsTr("Chưa chọn video nguồn") : status === "ready" || status === "manual_ready" ? qsTr("Sẵn sàng") : status === "processing" ? qsTr("Đang xử lý") : status === "done" ? qsTr("Hoàn tất") : status === "failed" ? qsTr("Lỗi") : status === "cancelled" ? qsTr("Đã hủy") : status === "paused" ? qsTr("Đã tạm dừng") : status === "awaiting_review" ? qsTr("Cần duyệt") : I18n.taskStateLabel(status)
+    readonly property string statusLabel: status === "empty" ? qsTr("Chưa chọn video nguồn") : TaskPresentation.label(status)
     readonly property string typeLabel: projectType === "manual" ? qsTr("Thủ công")
         : projectType === "batch" ? qsTr("Hàng loạt")
         : projectType === "download" ? qsTr("Tải xuống")
         : projectType === "publish" ? qsTr("Đăng mạng xã hội") : qsTr("Tự động")
-    readonly property color statusColor: status === "done" ? Theme.success : status === "failed" || status === "cancelled" ? Theme.danger : status === "processing" ? Theme.warning : status === "awaiting_review" || status === "manual_ready" ? Theme.interactive : Theme.textMuted
+    readonly property color statusColor: TaskPresentation.foreground(status)
 
     height: Math.round(width * 0.56 + 64)
     padding: 0

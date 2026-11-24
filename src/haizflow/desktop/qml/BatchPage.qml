@@ -145,6 +145,17 @@ Item {
             }
         }
 
+        Text {
+            Layout.fillWidth: true
+            Layout.alignment: Qt.AlignRight
+            visible: AppController.isBatchRunning || root.preparingBatch
+            text: qsTr("Có thể đổi cài đặt khi lượt xử lý kết thúc.")
+            horizontalAlignment: root.narrow ? Text.AlignLeft : Text.AlignRight
+            wrapMode: Text.WordWrap
+            color: Theme.textMuted
+            font.pixelSize: TypeScale.metadata
+        }
+
         RowLayout {
             Layout.fillWidth: true
             visible: root.settingOverrides.length > 0
@@ -213,6 +224,8 @@ Item {
                 delegate: BatchVideoCard {
                     id: card
                     required property string videoId
+                    required property var model
+                    step: String(card.model.step || "")
                     customSettings: root.settingOverrides.some(item => item.videoId === videoId)
                     removalEnabled: !root.removingVideo && card.status !== "processing"
                         && !root.removalBlockedIds.includes(card.videoId)

@@ -21,8 +21,7 @@ ColumnLayout {
         "extracting_audio", "separating_audio", "transcribing",
         "creating_subtitle", "building_audio_timeline"
     ].indexOf(stepId) < 0
-    readonly property string phaseTitle: phase === "queued" ? qsTr("Đang chờ")
-        : phase === "preparing" ? qsTr("Đang chuẩn bị") : qsTr("Đang xử lý")
+    readonly property string phaseTitle: TaskPresentation.label(phase === "running" ? "processing" : phase)
     readonly property string phaseDetail: phase === "queued"
         ? qsTr("Tác vụ sẽ bắt đầu khi hàng đợi sẵn sàng.")
         : phase === "preparing"

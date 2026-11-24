@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from haizflow.mcp import __main__ as mcp_entry
 from haizflow.mcp.__main__ import _run_stdio
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -113,3 +114,26 @@ def test_stdio_only_discards_transport_error_from_mixed_group():
         _run_stdio(SimpleNamespace(run=run))
     assert len(raised.value.exceptions) == 1
     assert str(raised.value.exceptions[0]) == "real error"
+
+
+@pytest.mark.parametrize("pipe_tasks", [{"stdout_writer"}, {"stdin_reader"}, set()])
+def test_windows_invalid_argument_from_sdk_flush_needs_a_verified_output_pipe(monkeypatch, pipe_tasks):
+    # Windows raises EINVAL from the SDK's flush when the IDE closes its end.
+    # Do not swallow the same error if stdout is a file or only stdin is a pipe.
+    monkeypatch.setattr(mcp_entry, "_windows_pipe_tasks", lambda: pipe_tasks)
+    stdio = {"__name__": "mcp.server.stdio", "errno": errno}
+    exec("def stdout_writer():\n    raise OSError(errno.EINVAL, 'Invalid argument')", stdio)
+
+    def run():
+        try:
+            stdio["stdout_writer"]()
+        except OSError as error:
+            raise ExceptionGroup("failed", [error]) from None
+
+    server = SimpleNamespace(run=run)
+    if "stdout_writer" in pipe_tasks:
+        _run_stdio(server)
+    else:
+        with pytest.raises(ExceptionGroup) as raised:
+            _run_stdio(server)
+        assert raised.value.exceptions[0].errno == errno.EINVAL

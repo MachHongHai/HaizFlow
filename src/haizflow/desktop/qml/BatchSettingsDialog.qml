@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
@@ -14,7 +13,7 @@ FloatingToolDialog {
     toolTitle: qsTr("Cài đặt hàng loạt")
     toolSubtitle: qsTr("Cài đặt mặc định cho mọi video trong dự án")
 
-    property var baselineSettings: ({})
+    property string baselineSettings: ""
     property string draftTargetLanguage: "vi"
     property string draftSpeechRecognitionModel: "small"
     property string draftTranslationModel: "auto"
@@ -49,7 +48,8 @@ FloatingToolDialog {
     property int draftSubtitleMaxChars: 32
     property var settingOverrides: []
     property string openedProjectKey: ""
-    property bool replaceOverrides: true
+    property bool replaceOverrides: false
+    readonly property bool overwriteOverrides: replaceOverrides && settingOverrides.length > 0
     property bool draftBackgroundMusicLoop: true
     property bool draftAudioDuckingEnabled: false
     property int draftAudioDuckingReductionDb: -12
@@ -134,7 +134,7 @@ FloatingToolDialog {
         refreshPreview();
         draftSubtitleReferenceWidth = Number(settings.subtitleReferenceWidth || previewSource.videoWidth || 1920);
         draftSubtitleReferenceHeight = Number(settings.subtitleReferenceHeight || previewSource.videoHeight || 1080);
-        replaceOverrides = true;
+        replaceOverrides = false;
         draftVoiceReferencePath = settings.voiceReferencePath || "";
         draftBackgroundMusicLoop = settings.backgroundMusicLoop !== false;
         draftAudioDuckingEnabled = Boolean(settings.audioDuckingEnabled);
@@ -152,7 +152,6 @@ FloatingToolDialog {
         draftWatermarkMoving = settings.watermarkMoving !== false;
         draftWatermarkPosition = settings.watermarkPosition || {};
         draftSubtitleStyle = settings.subtitleStyle || ({});
-        baselineSettings = settings
         draftTargetLanguage = settings.targetLanguage || "vi"
         draftSpeechRecognitionModel = settings.speechRecognitionModel || "small"
         draftTranslationModel = settings.translationModel || "q4"
@@ -186,7 +185,7 @@ FloatingToolDialog {
         draftSubtitleOutline = Number(style.outline !== undefined ? style.outline : 2)
         draftSubtitleMaxChars = Number(style.max_chars_per_line !== undefined ? style.max_chars_per_line : 32)
         settingOverrides = AppController.batchSettingOverrides()
-        baselineSettings = currentDraft()
+        baselineSettings = JSON.stringify(currentDraft())
     }
 
     function currentDraft() {
@@ -245,13 +244,13 @@ FloatingToolDialog {
         }
     }
 
-    function hasDraftChanges() { return JSON.stringify(currentDraft()) !== JSON.stringify(baselineSettings) }
+    function hasDraftChanges() { return JSON.stringify(currentDraft()) !== baselineSettings }
 
     function saveDraft() {
-        if (!hasDraftChanges() && !replaceOverrides)
+        if (!hasDraftChanges() && !overwriteOverrides)
             return true;
-        if (AppController.applyBatchSettingsValues(openedProjectKey, currentDraft(), replaceOverrides)) {
-            baselineSettings = currentDraft()
+        if (AppController.applyBatchSettingsValues(openedProjectKey, currentDraft(), overwriteOverrides)) {
+            baselineSettings = JSON.stringify(currentDraft())
             settingOverrides = AppController.batchSettingOverrides()
             return true;
         }
@@ -331,7 +330,7 @@ FloatingToolDialog {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: root.replaceOverrides ? qsTr("Sẽ thay thế cài đặt riêng sau khi xác nhận")
+                    text: root.overwriteOverrides ? qsTr("Sẽ thay thế cài đặt riêng sau khi xác nhận")
                         : qsTr("Cài đặt riêng của từng video được giữ nguyên")
                     color: Theme.interactive
                     font.pixelSize: Theme.label
@@ -340,14 +339,12 @@ FloatingToolDialog {
             }
         }
 
-        Flickable {
+        FocusScroll {
             id: settingsScroll
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentWidth: width
             contentHeight: settingsForm.implicitHeight
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
 
             ProcessingSettingsForm {
                 id: settingsForm
@@ -457,12 +454,12 @@ FloatingToolDialog {
                 onWatermarkRequested: batchWatermarkDialogLoader.invoke("openForSelectedVideo", [])
             }
 
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
         }
         AppCheckBox {
+            objectName: "batchReplaceOverrides"
             Layout.fillWidth: true
             visible: root.settingOverrides.length > 0
-            text: qsTr("Thay thế cả cài đặt riêng bằng cài đặt chung")
+            text: qsTr("Ghi đè cài đặt riêng của %1 video").arg(root.settingOverrides.length)
             checked: root.replaceOverrides
             enabled: !AppController.isBatchRunning
             onToggled: root.replaceOverrides = checked
@@ -472,9 +469,10 @@ FloatingToolDialog {
             Item { Layout.fillWidth: true }
             StudioButton { text: qsTr("Hủy"); variant: "ghost"; onClicked: root.close() }
             StudioButton {
-                text: qsTr("Áp dụng")
-                variant: "primary"
-                enabled: !AppController.isBatchRunning
+                objectName: "applyBatchSettingsButton"
+                text: root.overwriteOverrides ? qsTr("Áp dụng và ghi đè") : qsTr("Áp dụng")
+                variant: root.overwriteOverrides ? "danger" : "primary"
+                enabled: !AppController.isBatchRunning && (root.overwriteOverrides || root.hasDraftChanges())
                 onClicked: if (root.saveDraft()) root.close()
             }
         }

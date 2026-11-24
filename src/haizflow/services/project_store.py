@@ -1,5 +1,6 @@
 """Persistent metadata for desktop projects, including projects without videos."""
 
+import hashlib
 import json
 import logging
 import os
@@ -895,6 +896,7 @@ def list_download_project_videos() -> list[dict[str, Any]]:
                     stat_result = resolved.stat()
                 except (OSError, ValueError):
                     continue
+                thumb_key = hashlib.sha256(f"{category}/{relative.as_posix()}".encode()).hexdigest()
                 items.append({
                     "item_id": f"{project_key_value}:{category}:{relative.as_posix()}",
                     "project_key": project_key_value,
@@ -904,6 +906,8 @@ def list_download_project_videos() -> list[dict[str, Any]]:
                     "file_path": str(resolved),
                     "file_size": int(stat_result.st_size),
                     "modified_ns": int(stat_result.st_mtime_ns),
+                    "thumbnail_root": str(downloads_root),
+                    "thumbnail_path": str(downloads_root / ".thumbnails" / f"{thumb_key}.jpg"),
                 })
     return items
 

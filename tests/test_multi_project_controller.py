@@ -849,7 +849,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn('batchAudioMixDialogLoader.invoke("open", [])', settings)
         self.assertNotIn("AppSlider {", settings)
         self.assertNotIn("onClosed: saveDraft()", settings)
-        self.assertIn('text: qsTr("Áp dụng")', settings)
+        self.assertIn('qsTr("Áp dụng và ghi đè") : qsTr("Áp dụng")', settings)
         self.assertNotIn('I18n.t("Apply to all videos")', settings)
 
         batch_audio_dialog = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchAudioMixDialog.qml").read_text(

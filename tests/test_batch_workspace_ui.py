@@ -325,7 +325,7 @@ def exercise(width, height, state):
         # All three import routes remain reachable through the compact menu.
         url_spy = QSignalSpy(page.requestUrlImport)
         download_spy = QSignalSpy(page.requestDownloadProjectImport)
-        for labels in (("Tệp", "File"), ("Liên kết", "Link"), ("Tải xuống", "Downloads")):
+        for labels in (("Tệp", "File"), ("Liên kết", "Link"), ("Từ dự án tải xuống", "From download project")):
             click(item("batchImportButton"))
             entry = next(
                 child

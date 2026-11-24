@@ -1,6 +1,7 @@
 """A batch export must not impersonate the video currently open in Manual."""
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -98,6 +99,43 @@ def test_scope_follows_navigation_and_batch_membership_without_rewriting_jobs(co
     controller._selected_video_id = ""
     controller.selectedVideoChanged.emit()
     assert not controller.videoExportScopeSummary["activeJob"]
+
+
+@pytest.mark.parametrize("status", ["paused", "awaiting_review"])
+def test_export_actions_require_current_project_and_fresh_video_status(controller, monkeypatch, status):
+    from haizflow.desktop import qml_controller
+
+    controller._project_type = "batch"
+    controller._batch_video_ids = ["batch-a", "batch-b"]
+    controller._selected_project_key = "batch:active"
+    controller._deleted_video_ids = set()
+    controller._processing_queue.contains.return_value = False
+    controller._project_commands = Mock()
+    controller._project_commands.resume_video.return_value = True
+    controller._select_video = Mock()
+    controller._video_exports.jobs = [
+        dict(videoId="batch-a", status=status),
+        dict(videoId="foreign-c", status=status),
+    ]
+    video = SimpleNamespace(video_id="batch-a", project_key="batch:active", status="done")
+    get_video = Mock(return_value=video)
+    monkeypatch.setattr(qml_controller.video_store, "get_video", get_video)
+
+    action = HaizFlowController.continueVideoExportJob
+    assert not action(controller, "foreign-c", status)
+    get_video.assert_not_called()
+    assert not action(controller, "batch-a", status)
+    video.status = status
+    video.project_key = "batch:other"
+    assert not action(controller, "batch-a", status)
+    video.project_key = "batch:active"
+    assert action(controller, "batch-a", status)
+    if status == "paused":
+        controller._project_commands.resume_video.assert_called_once_with("batch-a")
+        controller._select_video.assert_not_called()
+    else:
+        controller._project_commands.resume_video.assert_not_called()
+        controller._select_video.assert_called_once_with(video)
 
 
 def test_selected_export_includes_preparation_and_clears_at_completion(controller):

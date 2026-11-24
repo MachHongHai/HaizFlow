@@ -84,13 +84,16 @@ def create_video_thumbnail_path(
     *,
     timeout_seconds: float = 30.0,
     cancel_event=None,
+    create_directory: bool = True,
+    seek_seconds: float = 1,
 ) -> str:
     if not path or not output_path or not os.path.exists(path):
         return ""
     temporary_path = ""
     try:
         output_directory = os.path.dirname(os.path.abspath(output_path))
-        os.makedirs(output_directory, exist_ok=True)
+        if create_directory:
+            os.makedirs(output_directory, exist_ok=True)
         handle, temporary_path = tempfile.mkstemp(
             prefix=".thumbnail-",
             suffix=".jpg",
@@ -104,7 +107,7 @@ def create_video_thumbnail_path(
             "-loglevel",
             "error",
             "-ss",
-            "00:00:01",
+            str(max(0.0, seek_seconds)),
             "-i",
             path,
             "-frames:v",
